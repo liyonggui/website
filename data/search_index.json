@@ -533,19 +533,6 @@
     "date": "2026-07-27"
   },
   {
-    "title": "ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册",
-    "summary": "1. 索引与分片核心基础",
-    "tags": [
-      "Elasticsearch",
-      "分库分表",
-      "ILM"
-    ],
-    "url": "deep/es/ES_分片ILM_完整终版手册-2.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-07-25"
-  },
-  {
     "title": "ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）",
     "summary": "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…",
     "tags": [

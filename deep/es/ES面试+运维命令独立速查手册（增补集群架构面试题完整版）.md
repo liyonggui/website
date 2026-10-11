@@ -620,4 +620,3 @@ chmod +x warm_to_hot.sh
 
 如需批量 Cold→Warm / Cold→Hot，修改脚本内查询过滤 `data_tier:cold`，同步修改目标 tier 即可复用。
 
-> （注：部分内容可能由 AI 生成）

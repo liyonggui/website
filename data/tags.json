@@ -9,7 +9,7 @@
   },
   {
     "name": "Elasticsearch",
-    "count": 16
+    "count": 15
   },
   {
     "name": "压测",
@@ -45,19 +45,19 @@
   },
   {
     "name": "分库分表",
-    "count": 9
+    "count": 8
   },
   {
     "name": "源码",
     "count": 8
   },
   {
-    "name": "ILM",
+    "name": "索引",
     "count": 7
   },
   {
-    "name": "索引",
-    "count": 7
+    "name": "ILM",
+    "count": 6
   },
   {
     "name": "事务",

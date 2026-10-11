@@ -677,9 +677,6 @@ NodeC
 <p>冷热分层依托ILM实现索引单向Hot→Warm→Cold→Delete流转，<strong>无原生自动回流能力</strong>，温层回退热需要手动修改冷热标签+暂停ILM；ILM仅依据索引创建/滚动时间判断，不识别文档业务时间；采用后台轮询调度，对比自研Cron定时任务流量更平滑、自带幂等状态、异常自愈更强，仅修改索引data_tier标签完成层级迁移，只能节约存储成本，无法治理热分片倾斜。</p>
 <p>字段改名改类型、重新分片、修改路由规则均无法原地变更，统一采用<strong>新建索引+Reindex脚本迁移+业务双写+原子别名切换</strong>方案；业务上线初期即规划固定访问别名，底层索引迭代重构无需修改业务代码，做到无感切换、回滚便捷。针对日志、流水无限写入场景，可采用Rollover滚动索引模式自动拆分时序索引，配合ILM完成生命周期管理。ILM、分片均衡属于集群常驻自动配置，而Reindex重构、ILM反向回流属于一次性人工运维变更流程，无法全自动配置执行。</p>
 <p>该分片思想通用于MySQL分库分表、Redis集群、Kafka分区；成熟中间件动态配置、内置自愈能力，运维成本更低，中小企业优先用好开源方案，不盲目自研分布式分片轮子。</p>
-<blockquote>
-<p>（注：部分内容可能由 AI 生成）</p>
-</blockquote>
     </article>
     <aside class="toc-side"><details class="toc" open>
   <summary>目录</summary>
@@ -756,9 +753,9 @@ NodeC
       <ul class="related-list">
         <li><a href="../../deep/es/ES_分片ILM_完整终版手册-3.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES_分片ILM_完整终版手册-2.html"><span class="rel-title">ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）.html"><span class="rel-title">ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ILM 全面实操手册（针对 ES 7.2 的合并修订版）.html"><span class="rel-title">ILM 全面实操手册（针对 ES 7.2 的合并修订版）</span><span class="rel-meta">es 系列</span></a></li>
       </ul>
     </div>
   </section>
