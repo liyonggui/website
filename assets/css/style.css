@@ -439,14 +439,15 @@ a.card:hover { text-decoration: none; }
 }
 .post:hover .post-cover { border-color: var(--accent); transform: translateY(-2px); }
 
-/* 项目页插图 */
+/* 项目页插图：宽度锁定内容列(820px)，高度自适应 */
 .proj-figure {
-  margin: var(--s6) 0 0; padding: var(--s4);
+  margin: var(--s6) auto 0; padding: var(--s4);
+  max-width: 820px;
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--bg-soft);
 }
 .proj-figure img {
-  display: block; max-width: 100%; height: auto; margin: 0 auto;
+  display: block; width: 100%; height: auto; margin: 0 auto;
   border-radius: var(--radius-sm); background: var(--bg); padding: 10px;
 }
 .proj-figure figcaption {
