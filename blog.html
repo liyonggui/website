@@ -5,19 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>博客 · 小番茄程序猿作品集</title>
   <meta name="description" content="高并发与 AI Agent 工程化技术博客：Redis 压测、线程池、RAG 评测、Agent 工程化实测，CSDN / 掘金 / 知乎多平台连载。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="博客 · 小番茄程序猿作品集" />
+  <meta property="og:description" content="高并发与 AI Agent 工程化技术博客：Redis 压测、线程池、RAG 评测、Agent 工程化实测。" />
+  <meta property="og:url" content="https://liyonggui.github.io/website/blog.html" />
+  <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
   <link rel="stylesheet" href="assets/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <header class="nav">
     <div class="wrap nav-inner">
-      <div class="brand">小番茄程序猿<span>.</span>dev</div>
-      <nav class="nav-links" id="navLinks">
-        <a href="index.html">首页</a>
-        <a href="projects.html">项目</a>
-        <a href="blog.html" class="active">博客</a>
-        <a href="deep.html">深度</a>
-      </nav>
-      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks">
+          <a href="index.html">首页</a>
+          <a href="projects.html">项目</a>
+          <a href="blog.html" class="active">博客</a>
+          <a href="deep.html">深度</a>
+        </nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      </div>
     </div>
   </header>
 
@@ -130,6 +151,15 @@
 
   <script>
     document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon() { th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+    syncThemeIcon();
+    th.addEventListener("click", function () {
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch (e) {}
+      syncThemeIcon();
+    });
     var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
     t.addEventListener("click", function () { l.classList.toggle("open"); });
   </script>

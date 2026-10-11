@@ -5,45 +5,72 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>项目 · 小番茄程序猿作品集</title>
   <meta name="description" content="高并发微服务与 AI Agent 工程化项目清单：Redis、MySQL、Spring Cloud、Elasticsearch、K8s、以及 Spring AI phase1-6 与 rdx-agent。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="项目 · 小番茄程序猿作品集" />
+  <meta property="og:description" content="高并发后端家族 + AI Agent 工程化家族，每个项目都带实测数据与可复现命令。" />
+  <meta property="og:url" content="https://liyonggui.github.io/website/projects.html" />
+  <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
   <link rel="stylesheet" href="assets/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <header class="nav">
     <div class="wrap nav-inner">
-      <div class="brand">小番茄程序猿<span>.</span>dev</div>
-      <nav class="nav-links" id="navLinks">
-        <a href="index.html">首页</a>
-        <a href="projects.html" class="active">项目</a>
-        <a href="blog.html">博客</a>
-        <a href="deep.html">深度</a>
-      </nav>
-      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks">
+          <a href="index.html">首页</a>
+          <a href="projects.html" class="active">项目</a>
+          <a href="blog.html">博客</a>
+          <a href="deep.html">深度</a>
+        </nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      </div>
     </div>
   </header>
 
   <main>
-    <section class="hero" style="padding-bottom:24px">
+    <section class="hero" style="padding-bottom:var(--s5)">
       <div class="wrap">
-        <div class="eyebrow">Project Portfolio</div>
+        <span class="eyebrow">Project Portfolio</span>
         <h1>项目清单</h1>
         <p class="lead">两条主线：<b>高并发后端家族</b>（压测 + 治理 + 微服务）与 <b>AI Agent 工程化家族</b>（Spring AI 渐进式实战）。每个项目都附带可复现的压测/运行命令与实测数据。</p>
       </div>
     </section>
 
-    <section style="padding-top:24px">
+    <section class="first reveal">
       <div class="wrap">
-        <div class="section-head"><h2>高并发后端家族</h2><p>位于 <code>D:\high-concurrency-projects</code></p></div>
+        <div class="section-head"><div class="kicker">Backend</div><h2>高并发后端家族</h2><p>位于 <code>D:\high-concurrency-projects</code></p></div>
 
         <div class="grid grid-2">
           <div class="card proj" id="redis">
             <div class="proj-top"><h3>Redis 高并发缓存架构</h3><span class="metric">11 场景压测</span></div>
             <p>覆盖 Pipeline 边界/槽位、哨兵 vs 集群写入选型、热点 Key、String 三种编码（int/embstr/raw）压测、分布式信号量竞争等。含 Lettuce/Pipeline 问题排查与优化，产出 benchmark 图表与面试简述。</p>
+            <div class="metric-viz">
+              <div class="mv-row"><span class="mv-label">压测场景</span><span class="mv-track"><i class="mv-fill" style="width:55%"></i></span><span class="mv-num">11</span></div>
+            </div>
             <div class="tag-row"><span class="tag">Redis</span><span class="tag">k6</span><span class="tag gray">Disruptor</span><span class="tag gray">Kafka</span><span class="tag gray">Lettuce</span></div>
           </div>
 
           <div class="card proj" id="mysql">
             <div class="proj-top"><h3>MySQL 治理与调优</h3><span class="metric">18 主场景 + 12 补测</span></div>
             <p>事务隔离/锁体系、悲观锁 vs 乐观锁、分库分表、读写分离与主从延迟、冷热分离、连接池调优、死锁监控。附 KingbaseES 锁与事务排查手册与 Sysbench 硬件上限压测。</p>
+            <div class="metric-viz">
+              <div class="mv-row"><span class="mv-label">主+补测</span><span class="mv-track"><i class="mv-fill" style="width:100%"></i></span><span class="mv-num">30</span></div>
+            </div>
             <div class="tag-row"><span class="tag">MySQL</span><span class="tag">Kingbase</span><span class="tag gray">Sysbench</span><span class="tag gray">MVCC</span></div>
           </div>
 
@@ -74,6 +101,9 @@
           <div class="card proj" id="k6">
             <div class="proj-top"><h3>k6 压测体系</h3><span class="metric">50→300 并发梯度</span></div>
             <p>基准脚本 + 多档并发（50/100/150/200/250/300）压测脚本，秒杀/库存/余额/突发尖峰等场景，输出 benchmark HTML 报告。</p>
+            <div class="metric-viz">
+              <div class="mv-row"><span class="mv-label">并发梯度</span><span class="mv-track"><i class="mv-fill" style="width:100%"></i></span><span class="mv-num">6 档</span></div>
+            </div>
             <div class="tag-row"><span class="tag">k6</span><span class="tag gray">性能压测</span></div>
           </div>
 
@@ -92,9 +122,9 @@
       </div>
     </section>
 
-    <section>
+    <section class="reveal">
       <div class="wrap">
-        <div class="section-head"><h2>AI Agent 工程化家族</h2><p>位于 <code>D:\ai-agent-project</code> · Spring AI + 百炼 MaaS（OpenAI 兼容）+ 本机瑞达星后端</p></div>
+        <div class="section-head"><div class="kicker">AI Agent</div><h2>AI Agent 工程化家族</h2><p>位于 <code>D:\ai-agent-project</code> · Spring AI + 百炼 MaaS（OpenAI 兼容）+ 本机瑞达星后端</p></div>
 
         <div class="grid grid-2">
           <div class="card proj" id="phase1">
@@ -106,6 +136,9 @@
           <div class="card proj" id="phase2">
             <div class="proj-top"><h3>Phase 2 · RAG</h3><span class="metric">8082 · 召回 83%</span></div>
             <p>embedding + 向量库 + 带引用问答 + 召回评测。深读分层/Document/SimpleVectorStore/混合检索+rerank。</p>
+            <div class="metric-viz">
+              <div class="mv-row"><span class="mv-label">RAG 召回率</span><span class="mv-track"><i class="mv-fill" style="width:83%"></i></span><span class="mv-num">83%</span></div>
+            </div>
             <div class="tag-row"><span class="tag">RAG</span><span class="tag gray">Embedding</span><span class="tag gray">向量库</span></div>
           </div>
 
@@ -118,6 +151,13 @@
           <div class="card proj" id="phase4">
             <div class="proj-top"><h3>Phase 4 · Agent 运维</h3><span class="metric">8084 · 缓存 A/B p95 836→12ms</span></div>
             <p>可观测 + 降级 + LLM 舱壁 + 缓存 + 自研熔断，k6 压测。舱壁 6/s→90% 503，缓存 A/B p95 从 836ms 降到 12ms，熔断 16 次拒绝。</p>
+            <div class="metric-viz">
+              <div class="mv-compare">
+                <div class="mv-cbar"><span class="tag-old">836ms</span><span class="dot o"></span><span class="track"><i class="o" style="width:100%"></i></span></div>
+                <div class="mv-cbar"><span class="tag-new">12ms</span><span class="dot n"></span><span class="track"><i class="n" style="width:6%"></i></span></div>
+              </div>
+              <div style="font-size:12px;color:var(--ink-faint);margin-top:4px">缓存 A/B：p95 延迟 ↓ 98.6%</div>
+            </div>
             <div class="tag-row"><span class="tag">护栏</span><span class="tag gray">舱壁</span><span class="tag gray">熔断</span><span class="tag gray">k6</span></div>
           </div>
 
@@ -130,12 +170,19 @@
           <div class="card proj" id="phase6">
             <div class="proj-top"><h3>Phase 6 · 评测</h3><span class="metric">8087 · 关键词 100% / 裁判均分 1.8</span></div>
             <p>评测 harness：关键词硬校验 + LLM-as-judge，通过率/均分；CI 门禁任一维通过率 &lt; 90 则失败。实测关键词 100%、LLM 裁判 pass 100%。</p>
+            <div class="metric-viz">
+              <div class="mv-row"><span class="mv-label">关键词通过</span><span class="mv-track"><i class="mv-fill solo" style="width:100%"></i></span><span class="mv-num">100%</span></div>
+              <div class="mv-row"><span class="mv-label">裁判均分</span><span class="mv-track"><i class="mv-fill" style="width:90%"></i></span><span class="mv-num">1.8/2</span></div>
+            </div>
             <div class="tag-row"><span class="tag">Eval</span><span class="tag gray">LLM-as-judge</span><span class="tag gray">CI 门禁</span></div>
           </div>
 
           <div class="card proj" id="rdxagent">
             <div class="proj-top"><h3>rdx-agent 产品层</h3><span class="metric">8090 · gold 13/13</span></div>
             <p>rag_search（向量+BM25+RRF+rerank）+ MCP 业务工具 + Redis（向量/缓存/记忆）+ resilience4j + Langfuse 评测 + 鉴权/脱敏。语义缓存带维度一致性护栏（guardRejects=1）。</p>
+            <div class="metric-viz">
+              <div class="mv-row"><span class="mv-label">gold 集通过</span><span class="mv-track"><i class="mv-fill solo" style="width:100%"></i></span><span class="mv-num">13/13</span></div>
+            </div>
             <div class="tag-row"><span class="tag">Spring AI</span><span class="tag">RAG</span><span class="tag gray">MCP</span><span class="tag gray">Langfuse</span></div>
           </div>
 
@@ -146,8 +193,8 @@
           </div>
         </div>
 
-        <div style="margin-top:28px">
-          <a class="btn btn-primary" href="blog.html">看相关技术博客 →</a>
+        <div style="margin-top:var(--s5)">
+          <a class="btn btn-primary" href="blog.html">看相关技术博客 <span class="arr">→</span></a>
         </div>
       </div>
     </section>
@@ -172,8 +219,25 @@
 
   <script>
     document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon() { th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+    syncThemeIcon();
+    th.addEventListener("click", function () {
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch (e) {}
+      syncThemeIcon();
+    });
     var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
     t.addEventListener("click", function () { l.classList.toggle("open"); });
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+      }, { threshold: 0.1 });
+      document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+    } else {
+      document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
+    }
   </script>
 </body>
 </html>

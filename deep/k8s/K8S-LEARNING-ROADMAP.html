@@ -5,23 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>K8s 实战学习路线图（已学 + 待学） · 小番茄程序猿</title>
 <meta name="description" content="K8s 实战学习路线图（已学 + 待学） —— 小番茄程序猿的技术文章。"/>
+<link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="K8s 实战学习路线图（已学 + 待学） · 小番茄程序猿" />
+<meta property="og:description" content="K8s 实战学习路线图（已学 + 待学） —— 小番茄程序猿的技术文章。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body>
 <header class="nav">
   <div class="wrap nav-inner">
-    <div class="brand">小番茄程序猿<span>.</span>dev</div>
-    <nav class="nav-links" id="navLinks">
-      <a href="../../index.html">首页</a>
-      <a href="../../projects.html">项目</a>
-      <a href="../../blog.html">博客</a>
-      <a href="../../deep.html" class="active">深度</a>
-    </nav>
-    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    <a class="brand" href="../../index.html">
+      <img class="logo" src="../../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks">
+        <a href="../../index.html">首页</a>
+        <a href="../../projects.html">项目</a>
+        <a href="../../blog.html">博客</a>
+        <a href="../../deep.html" class="active">深度</a>
+      </nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
   </div>
 </header>
+<div class="reading-bar"><i></i></div>
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
@@ -354,9 +376,27 @@ kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> <
 </footer>
 <script>
   document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
   var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
   t.addEventListener("click", function(){ l.classList.toggle("open"); });
   l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
 </script>
 </body>
 </html>

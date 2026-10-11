@@ -1,30 +1,44 @@
-/* 文章页正文排版（.prose）—— 与全站 style.css 同Palette */
+/* 文章页正文排版（.prose）—— 与全站 style.css 同 Palette */
 .article-head {
   padding: 40px 24px 8px;
-  max-width: 820px;
+  max-width: var(--maxw-prose);
 }
 .article-head .back {
-  display: inline-block;
+  display: inline-flex; align-items: center; gap: 5px;
   font-size: 13.5px;
   color: var(--ink-faint);
   margin-bottom: 14px;
+  transition: 0.15s var(--ease);
 }
-.article-head .back:hover { color: var(--accent); text-decoration: none; }
+.article-head .back:hover { color: var(--accent); text-decoration: none; gap: 8px; }
 .article-head h1 {
   font-size: 30px;
   line-height: 1.3;
   letter-spacing: -0.02em;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   color: var(--ink);
 }
 .article-meta {
   font-size: 13px;
   color: var(--ink-faint);
   margin-top: 6px;
+  display: flex; gap: 14px; flex-wrap: wrap;
+}
+.article-meta .src { color: var(--accent-2); font-family: var(--mono); }
+
+/* 阅读进度条 */
+.reading-bar {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60;
+  background: transparent; pointer-events: none;
+}
+.reading-bar i {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.1s linear;
 }
 
 .prose {
-  max-width: 820px;
+  max-width: var(--maxw-prose);
   margin: 0 auto;
   padding: 8px 24px 56px;
   font-size: 16px;
@@ -94,6 +108,7 @@
   margin: 18px 0;
   border-radius: var(--radius);
   overflow: hidden;
+  border: 1px solid #222a3d;
 }
 .prose .codehilite pre {
   margin: 0;
@@ -122,7 +137,7 @@
   text-align: left;
   vertical-align: top;
 }
-.prose tbody tr:nth-child(even) { background: #fafbfc; }
+.prose tbody tr:nth-child(even) { background: var(--bg-soft); }
 
 .prose hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
 .prose kbd {
@@ -130,6 +145,15 @@
   background: var(--bg-soft); border: 1px solid var(--line);
   border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px;
 }
+
+/* ——— 暗色模式适配 ——— */
+[data-theme="dark"] .prose code {
+  background: rgba(124, 151, 255, 0.12);
+  color: #aeb9ff;
+}
+[data-theme="dark"] .prose thead { background: var(--bg-soft); }
+[data-theme="dark"] .prose tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+[data-theme="dark"] .prose .codehilite { border-color: #222a3d; }
 
 @media (max-width: 640px) {
   .article-head h1 { font-size: 24px; }

@@ -22,23 +22,45 @@ TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>__TITLE__ · 小番茄程序猿</title>
 <meta name="description" content="__TITLE__ —— 小番茄程序猿的技术文章。"/>
+<link rel="icon" type="image/svg+xml" href="__PREFIX__assets/logo.svg" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="__TITLE__ · 小番茄程序猿" />
+<meta property="og:description" content="__TITLE__ —— 小番茄程序猿的技术文章。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="__PREFIX__assets/css/style.css"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/article.css"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body>
 <header class="nav">
   <div class="wrap nav-inner">
-    <div class="brand">小番茄程序猿<span>.</span>dev</div>
-    <nav class="nav-links" id="navLinks">
-      <a href="__PREFIX__index.html"__A_HOME__>首页</a>
-      <a href="__PREFIX__projects.html"__A_PROJ__>项目</a>
-      <a href="__PREFIX__blog.html"__A_BLOG__>博客</a>
-      <a href="__PREFIX__deep.html"__A_DEEP__>深度</a>
-    </nav>
-    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    <a class="brand" href="__PREFIX__index.html">
+      <img class="logo" src="__PREFIX__assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks">
+        <a href="__PREFIX__index.html"__A_HOME__>首页</a>
+        <a href="__PREFIX__projects.html"__A_PROJ__>项目</a>
+        <a href="__PREFIX__blog.html"__A_BLOG__>博客</a>
+        <a href="__PREFIX__deep.html"__A_DEEP__>深度</a>
+      </nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
   </div>
 </header>
+<div class="reading-bar"><i></i></div>
 <main>
   <div class="article-head">
     <a class="back" href="__BACK_HREF__">← __BACK_LABEL__</a>
@@ -64,9 +86,27 @@ __BODY__
 </footer>
 <script>
   document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
   var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
   t.addEventListener("click", function(){ l.classList.toggle("open"); });
   l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
 </script>
 </body>
 </html>

@@ -5,20 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>深度技术 · 底层原理专栏 | 小番茄程序猿.dev</title>
   <meta name="description" content="MySQL / Redis / Elasticsearch 底层原理与治理、高并发压测方法论、K8s 底层、AI Agent 原理详解——项目背后的硬核底层知识库。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="深度技术 · 底层原理专栏 | 小番茄程序猿.dev" />
+  <meta property="og:description" content="数据库内核、压测方法论、云原生、AI Agent 原理——项目背后的硬核底层知识库。" />
+  <meta property="og:url" content="https://liyonggui.github.io/website/deep.html" />
+  <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
   <link rel="stylesheet" href="assets/css/style.css" />
-  <link rel="stylesheet" href="assets/css/deep.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <header class="nav">
     <div class="wrap nav-inner">
-      <div class="brand">小番茄程序猿<span>.</span>dev</div>
-      <nav class="nav-links" id="navLinks">
-        <a href="index.html">首页</a>
-        <a href="projects.html">项目</a>
-        <a href="blog.html">博客</a>
-        <a href="deep.html" class="active">深度</a>
-      </nav>
-      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks">
+          <a href="index.html">首页</a>
+          <a href="projects.html">项目</a>
+          <a href="blog.html">博客</a>
+          <a href="deep.html" class="active">深度</a>
+        </nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      </div>
     </div>
   </header>
 
@@ -29,7 +49,7 @@
         <h1>项目背后的<br />底层原理与方法论。</h1>
         <p class="lead">
           这里不是项目罗列，而是支撑那些项目跑起来、能量化的底层知识：数据库内核与治理、压测方法论、云原生底层，以及 AI Agent 的原理实现。
-          每篇都已渲染为网页文章，点开即可阅读，建议在桌面端阅读。
+          每篇都已渲染为网页文章，点开即可阅读。
         </p>
         <div class="cta">
           <a class="btn btn-primary" href="#mysql">MySQL 底层 →</a>
@@ -37,168 +57,157 @@
         </div>
       </div>
     </section>
-    <section id="mysql">
+
+    <section class="first reveal">
       <div class="wrap">
-        <div class="section-head">
-          <h2>MySQL 底层原理与治理</h2>
-          <p>事务隔离、锁机制、MVCC、索引、分库分表、读写分离、冷热分离——18 主场景 + 12 补测，外加 KingbaseES 锁与事务排查。</p>
+        <div class="deep-layout">
+          <aside class="deep-nav" id="deepNav">
+            <h4>系列</h4>
+            <a href="#mysql" data-target="mysql"><span>MySQL</span><span class="cnt">44</span></a>
+            <a href="#redis" data-target="redis"><span>Redis</span><span class="cnt">18</span></a>
+            <a href="#es" data-target="es"><span>Elasticsearch</span><span class="cnt">18</span></a>
+            <a href="#bench" data-target="bench"><span>压测方法论</span><span class="cnt">5</span></a>
+            <a href="#k8s" data-target="k8s"><span>K8s 云原生</span><span class="cnt">9</span></a>
+            <a href="#agent" data-target="agent"><span>Agent 原理</span><span class="cnt">10</span></a>
+        </aside>
+
+        <div class="deep-content">
+          <div class="deep-group" id="mysql">
+            <h3><span class="ic">M</span>MySQL 底层原理与治理</h3>
+            <div class="docs">
+              <a href="deep/mysql/KingbaseES-%E9%94%81%E4%B8%8E%E4%BA%8B%E5%8A%A1%E6%8E%92%E6%9F%A5%E6%89%8B%E5%86%8C.html">KingbaseES-锁与事务排查手册</a>
+              <a href="deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html">MySQL-事务与锁排查治理手册</a>
+              <a href="deep/mysql/MySQL%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E3%80%81%E9%94%81%E6%9C%BA%E5%88%B6%E3%80%81%E7%B4%A2%E5%BC%95%E5%B7%AE%E5%BC%82%20%E6%A0%B8%E5%BF%83%E6%B1%87%E6%80%BB%E6%96%87%E6%A1%A3%EF%BC%88%E5%BC%80%E5%8F%91%26%E9%9D%A2%E8%AF%95%E7%89%88%EF%BC%89.html">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版） <span class="badge">核心</span></a>
+              <a href="deep/mysql/MySQL%E5%8E%9F%E7%90%86%E7%AF%87.html">MySQL原理篇 <span class="badge">核心</span></a>
+              <a href="deep/mysql/MySQL%E5%9B%9B%E5%B1%82%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%9B%91%E6%8E%A7%E6%B1%87%E6%80%BB.html">MySQL四层架构与监控汇总</a>
+              <a href="deep/mysql/MySQL%E9%9D%A2%E8%AF%95%E7%B2%BE%E5%8D%8E%E4%B8%8E%E8%84%91%E5%9B%BE%E9%80%9F%E8%AE%B0.html">MySQL面试精华与脑图速记 <span class="badge">核心</span></a>
+              <a href="deep/mysql/Sysbench%E5%8D%95%E4%BD%93MySQL%E7%A1%AC%E4%BB%B6%E4%B8%8A%E9%99%90%E5%8E%8B%E6%B5%8B.html">Sysbench单体MySQL硬件上限压测</a>
+              <a href="deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html">my_sql故障排查实战总结</a>
+              <a href="deep/mysql/%E5%86%99%E5%85%A5%E8%B7%AF%E5%BE%84%E5%AF%B9%E6%AF%94-MySQL%E6%89%B9%E9%87%8Fvs%E7%A3%81%E7%9B%98%E8%BF%BD%E5%8A%A0.html">写入路径对比-MySQL批量vs磁盘追加</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF1-18%E7%BB%93%E8%AE%BA%E6%B1%87%E6%80%BB.html">场景1-18结论汇总</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF1-%E8%BF%9E%E6%8E%A5%E6%B1%A0%E4%B8%8E%E8%B6%85%E5%8D%96%E9%97%AE%E9%A2%98.html">场景1-连接池与超卖问题</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF10-Redis%E7%BC%93%E5%AD%98%E4%B8%8EMySQL%E5%8F%8C%E5%86%99%E4%B8%80%E8%87%B4%E6%80%A7.html">场景10-Redis缓存与MySQL双写一致性</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF11-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E6%B2%BB%E7%90%86.html">场景11-主从延迟治理</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF12-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81.html">场景12-分布式锁</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF13-InnoDB%E5%8F%82%E6%95%B0%E8%B0%83%E4%BC%98.html">场景13-InnoDB参数调优</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html">场景14-慢查询定位与优化闭环</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF15-MySQL%E9%AB%98%E5%8F%AF%E7%94%A8.html">场景15-MySQL高可用</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF16-%E8%BF%9E%E6%8E%A5%E6%B1%A0%E5%8F%82%E6%95%B0%E8%B0%83%E4%BC%98.html">场景16-连接池参数调优</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF17-%E6%95%B0%E6%8D%AE%E5%BD%92%E6%A1%A3%E4%B8%8E%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB.html">场景17-数据归档与冷热分离 <span class="badge">核心</span></a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF18-%E9%94%81%E7%AD%89%E5%BE%85%E4%B8%8E%E6%AD%BB%E9%94%81%E7%9B%91%E6%8E%A7%E6%B2%BB%E7%90%86.html">场景18-锁等待与死锁监控治理</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF2-%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E7%BA%A7%E5%88%AB.html">场景2-事务隔离级别 <span class="badge">核心</span></a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF3-%E6%82%B2%E8%A7%82%E9%94%81vs%E4%B9%90%E8%A7%82%E9%94%81.html">场景3-悲观锁vs乐观锁</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E8%A1%A5%E5%BC%BA-InnoDB%E9%94%81%E5%AE%8C%E6%95%B4%E4%BD%93%E7%B3%BB.html">场景4-补强-InnoDB锁完整体系</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E9%94%81%E7%9A%84%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5%E4%B8%8E%E9%80%89%E5%9E%8B.html">场景4-锁的工程实践与选型</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E9%97%B4%E9%9A%99%E9%94%81%E4%B8%8ENext-KeyLock.html">场景4-间隙锁与Next-KeyLock</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF5-%E7%B4%A2%E5%BC%95%E5%A4%B1%E6%95%88%E4%B8%8E%E6%85%A2%E6%9F%A5%E8%AF%A2.html">场景5-索引失效与慢查询</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF6-%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB%E4%B8%8E%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F.html">场景6-读写分离与主从延迟</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF7-%E5%88%86%E5%BA%93%E5%88%86%E8%A1%A8.html">场景7-分库分表 <span class="badge">核心</span></a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF8-%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5%E4%BC%98%E5%8C%96.html">场景8-批量写入优化</a>
+              <a href="deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html">场景9-InnoDB并发控制MVCC <span class="badge">核心</span></a>
+              <a href="deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html">数据同步工具对比-mysqldump-DataX-FlinkCDC</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html">补测B1-备份恢复</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html">补测B10-主从延迟告警与从库自动摘除</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB11-%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB%E7%9A%84%E6%9F%A5%E8%AF%A2%E8%B7%AF%E7%94%B1.html">补测B11-冷热分离的查询路由 <span class="badge">核心</span></a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB12-%E6%AD%BB%E9%94%81%E5%90%8E%E7%9A%84%E5%BA%94%E7%94%A8%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6.html">补测B12-死锁后的应用重试机制</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html">补测B2-主从一致性校验与修复</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB3-%E7%83%AD%E7%82%B9%E8%A1%8C%E9%94%81%E6%B2%BB%E7%90%86.html">补测B3-热点行锁治理</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html">补测B4-SQL注入与安全治理</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB5-%E8%BF%9E%E6%8E%A5%E8%80%97%E5%B0%BD%E6%B2%BB%E7%90%86.html">补测B5-连接耗尽治理</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html">补测B6-深分页查询优化</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB7-%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E8%BF%87%E6%9C%9F%E4%B8%8E%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%BC%98%E5%8C%96.html">补测B7-统计信息过期与执行计划优化</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html">补测B8-容量规划与压测上限评估</a>
+              <a href="deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html">补测B9-连接泄漏与长连接治理</a>
+              <a href="deep/mysql/%E8%BF%9E%E6%8E%A5%E5%B1%82%E5%8F%82%E6%95%B0%E8%AF%A6%E7%BB%86%E8%BE%A8%E6%9E%90.html">连接层参数详细辨析</a>
+            </div>
+          </div>
+          <div class="deep-group" id="redis">
+            <h3><span class="ic">R</span>Redis 底层原理与压测</h3>
+            <div class="docs">
+              <a href="deep/redis/Redis%20%E9%AB%98%E5%B9%B6%E5%8F%91%E7%BC%93%E5%AD%98%E6%9E%B6%E6%9E%84%E5%AE%9E%E6%88%98%E6%89%8B%E5%86%8C.html">Redis 高并发缓存架构实战手册 <span class="badge">核心</span></a>
+              <a href="deep/redis/Redis%E5%8D%95%E4%BD%93%E5%B7%A5%E5%85%B7%E7%B1%BB%E4%BD%BF%E7%94%A8%E6%96%87%E6%A1%A3.html">Redis单体工具类使用文档</a>
+              <a href="deep/redis/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%85%B7%E4%BD%93%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF.html">Redis数据类型具体使用场景</a>
+              <a href="deep/redis/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%8E%9F%E7%90%86.html">Redis数据类型原理 <span class="badge">核心</span></a>
+              <a href="deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html">Redis架构演变过程 <span class="badge">核心</span></a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF1-11%E5%8E%8B%E6%B5%8B%E6%80%BB%E7%BB%93%E6%B1%87%E6%80%BB.html">场景1-11压测总结汇总 <span class="badge">核心</span></a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html">场景1-Lettuce-Pipeline压测问题排查与优化</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html">场景10-哨兵vs集群写入阶段选型</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF11-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81int-embstr-raw%E5%8E%8B%E6%B5%8B.html">场景11-String三种编码int-embstr-raw压测</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF2-%E5%A4%A7%E7%BB%93%E6%9E%84Hash%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5.html">场景2-大结构Hash批量写入</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF3-%E7%9F%AD%E6%9C%9FTTL%E6%B5%B7%E9%87%8F%E8%BF%87%E6%9C%9Fkey%E6%8C%81%E7%BB%AD%E7%81%8C%E5%85%A5.html">场景3-短期TTL海量过期key持续灌入</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF4-%E5%88%86%E5%B8%83%E5%BC%8F%E4%BF%A1%E5%8F%B7%E9%87%8F%E5%A4%9AWriter%E7%AB%9E%E4%BA%89Pipeline%E6%A7%BD%E4%BD%8D.html">场景4-分布式信号量多Writer竞争Pipeline槽位</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF5-%E8%AF%BB%E5%86%99%E4%BA%89%E6%8A%A2HGETALL-vs-HSCAN%E5%85%A8%E7%BB%B4%E5%BA%A6%E9%AA%8C%E8%AF%81.html">场景5-读写争抢HGETALL-vs-HSCAN全维度验证</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF6-%E9%AB%98%E5%B9%B6%E5%8F%91%E5%A4%9A%E8%BF%9E%E6%8E%A5Pipeline-maxclients%E8%BE%B9%E7%95%8C%E6%8E%A2%E6%B5%8B.html">场景6-高并发多连接Pipeline-maxclients边界探测</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF7-Cluster%E8%B7%A8%E6%A7%BDPipeline%E9%94%99%E8%AF%AF%E8%BD%B0%E7%82%B8.html">场景7-Cluster跨槽Pipeline错误轰炸</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF8-1-%E7%83%AD%E7%82%B9Key%20Pipeline%E8%87%AA%E5%A2%9E.html">场景8-1-热点Key Pipeline自增</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF8-2-Pipeline%20RTT%E6%95%8F%E6%84%9F%E5%BA%A6%E4%B8%8EWAIT.html">场景8-2-Pipeline RTT敏感度与WAIT</a>
+              <a href="deep/redis/%E5%9C%BA%E6%99%AF9-%E9%9B%86%E5%90%88%E8%BF%90%E7%AE%97%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E9%AA%8C%E8%AF%81.html">场景9-集合运算高并发压测验证</a>
+            </div>
+          </div>
+          <div class="deep-group" id="es">
+            <h3><span class="ic">E</span>Elasticsearch 底层与运维</h3>
+            <div class="docs">
+              <a href="deep/es/ES%20ILM%E7%B4%A2%E5%BC%95%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E7%AE%A1%E7%90%86%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%89%8B%E5%86%8C%EF%BC%88%E5%8E%9F%E7%90%86%2B%E5%8F%82%E6%95%B0%2B%E7%94%9F%E4%BA%A7%E9%85%8D%E7%BD%AE%2B%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%EF%BC%89.html">ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查） <span class="badge">核心</span></a>
+              <a href="deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-1.html">ES7.17 写入全流程-1 <span class="badge">核心</span></a>
+              <a href="deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html">ES7.17 写入全流程-2 <span class="badge">核心</span></a>
+              <a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-1.html">ES_分片ILM_完整终版手册-1 <span class="badge">核心</span></a>
+              <a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-2.html">ES_分片ILM_完整终版手册-2 <span class="badge">核心</span></a>
+              <a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-3%20-%20%E5%A4%87%E4%BB%BD%E7%89%88.html">ES_分片ILM_完整终版手册-3 - 备份版 <span class="badge">核心</span></a>
+              <a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-3.html">ES_分片ILM_完整终版手册-3 <span class="badge">核心</span></a>
+              <a href="deep/es/ES_%E8%BF%90%E7%BB%B4%E5%91%BD%E4%BB%A4%E9%80%9F%E6%9F%A5%E6%89%8B%E5%86%8C.html">ES_运维命令速查手册 <span class="badge">核心</span></a>
+              <a href="deep/es/ES%E5%88%86%E7%89%87%2B%E8%B7%AF%E7%94%B1%2BILM%E5%86%B7%E7%83%AD%2BRollover%2BReindex%2B%E5%85%A8%E5%B1%82%E7%BA%A7%E5%9B%9E%E6%B5%81%20%E6%9C%80%E7%BB%88%E5%AE%8C%E6%95%B4%E7%89%88%E6%89%8B%E5%86%8C.html">ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册 <span class="badge">核心</span></a>
+              <a href="deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87%2BILM%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2BReindex%E9%87%8D%E6%9E%84%2B%E5%88%AB%E5%90%8D%2BRollover%E6%97%B6%E5%BA%8F%E7%B4%A2%E5%BC%95%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C.html">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册 <span class="badge">核心</span></a>
+              <a href="deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87ILM%26Reindex%E5%88%AB%E5%90%8D%E5%AE%8C%E6%95%B4%E6%89%8B%E5%86%8C.html">ES路由分片ILM&Reindex别名完整手册 <span class="badge">核心</span></a>
+              <a href="deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2BMurmurHash3%E7%AE%97%E6%B3%95%2B%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E5%85%A8%E5%A5%97%E5%AE%8C%E6%95%B4%E7%89%88%E6%96%87%E6%A1%A3%EF%BC%88%E9%9D%A2%E8%AF%95%2B%E7%94%9F%E4%BA%A7%E8%90%BD%E5%9C%B0%EF%BC%89.html">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地） <span class="badge">核心</span></a>
+              <a href="deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2B%E5%88%86%E7%89%87%E5%88%86%E9%85%8D%2B%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2B%E6%95%85%E9%9A%9C%E6%8E%92%E9%9A%9C%20%E5%85%A8%E5%A5%97%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C%EF%BC%88%E9%9D%A2%E8%AF%95%2B%E7%94%9F%E4%BA%A7%E9%80%9A%E7%94%A8%EF%BC%89.html">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用） <span class="badge">核心</span></a>
+              <a href="deep/es/ES%E9%9D%A2%E8%AF%95%2B%E8%BF%90%E7%BB%B4%E5%91%BD%E4%BB%A4%E7%8B%AC%E7%AB%8B%E9%80%9F%E6%9F%A5%E6%89%8B%E5%86%8C%EF%BC%88%E5%A2%9E%E8%A1%A5%E9%9B%86%E7%BE%A4%E6%9E%B6%E6%9E%84%E9%9D%A2%E8%AF%95%E9%A2%98%E5%AE%8C%E6%95%B4%E7%89%88%EF%BC%89.html">ES面试+运维命令独立速查手册（增补集群架构面试题完整版） <span class="badge">核心</span></a>
+              <a href="deep/es/Elasticsearch%20%E5%88%86%E7%89%87%E8%8A%82%E7%82%B9%E5%88%86%E9%85%8D%E7%AE%97%E6%B3%95%20%E8%B6%85%E8%AF%A6%E7%BB%86%E8%AF%A6%E8%A7%A3.html">Elasticsearch 分片节点分配算法 超详细详解 <span class="badge">核心</span></a>
+              <a href="deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html">ILM 全面实操手册（修订版） <span class="badge">核心</span></a>
+              <a href="deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E9%92%88%E5%AF%B9%20ES%207.2%20%E7%9A%84%E5%90%88%E5%B9%B6%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html">ILM 全面实操手册（针对 ES 7.2 的合并修订版） <span class="badge">核心</span></a>
+              <a href="deep/es/%E4%B8%80%E3%80%81ES%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E7%BA%BF%E4%B8%8A%E5%BA%94%E6%80%A5%E5%A4%84%E7%90%86%E6%AD%A5%E9%AA%A4%EF%BC%88%E5%8F%AF%E7%9B%B4%E6%8E%A5%E7%85%A7%E7%9D%80%E6%93%8D%E4%BD%9C%EF%BC%89.html">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</a>
+            </div>
+          </div>
+          <div class="deep-group" id="bench">
+            <h3><span class="ic">B</span>高并发压测与方法论</h3>
+            <div class="docs">
+              <a href="deep/bench/Java%E7%A7%92%E6%9D%80%E5%BA%93%E5%AD%98%E5%9C%BA%E6%99%AF%E5%8E%8B%E6%B5%8B%E8%84%9A%E6%9C%AC%E8%AE%BE%E8%AE%A1%E6%B8%85%E5%8D%95.html">Java秒杀库存场景压测脚本设计清单</a>
+              <a href="deep/bench/%E5%8D%8F%E5%90%8C%E9%81%97%E6%BC%8F-Coordinated-Omission.html">协同遗漏-Coordinated-Omission <span class="badge">核心</span></a>
+              <a href="deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html">测试总结</a>
+              <a href="deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html">降级设计-本地文件兜底与限速回放 <span class="badge">核心</span></a>
+              <a href="deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html">高并发压测执行清单</a>
+            </div>
+          </div>
+          <div class="deep-group" id="k8s">
+            <h3><span class="ic">K</span>K8s / 云原生底层</h3>
+            <div class="docs">
+              <a href="deep/k8s/K8S-LEARNING-ROADMAP.html">K8S-LEARNING-ROADMAP</a>
+              <a href="deep/k8s/README.html">K3s 项目总览 README</a>
+              <a href="deep/k8s/ROLLING-UPDATE.html">ROLLING-UPDATE</a>
+              <a href="deep/k8s/compose-vs-k8s.html">compose-vs-k8s</a>
+              <a href="deep/k8s/ingress-hpa.html">ingress-hpa</a>
+              <a href="deep/k8s/redis-README.html">redis-README</a>
+              <a href="deep/k8s/redis-replication.html">redis-replication</a>
+              <a href="deep/k8s/redis-sentinel.html">redis-sentinel</a>
+              <a href="deep/k8s/spring-cloud-plan.html">spring-cloud-plan</a>
+            </div>
+          </div>
+          <div class="deep-group" id="agent">
+            <h3><span class="ic">A</span>AI Agent 底层原理</h3>
+            <div class="docs">
+              <a href="deep/agent/AI-Agent%E6%96%B0%E6%89%8B%E6%95%99%E5%AD%A6.html">AI-Agent新手教学</a>
+              <a href="deep/agent/Agent%E4%B8%AD%E9%97%B4%E4%BB%B6%E4%BC%98%E5%8C%96%E9%80%89%E5%9E%8B.html">Agent中间件优化选型 <span class="badge">核心</span></a>
+              <a href="deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">RAG代码与原理详解 <span class="badge">核心</span></a>
+              <a href="deep/agent/README.html">phase1 · 最小 Agent 工程 README</a>
+              <a href="deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">phase4-护栏代码与原理详解 <span class="badge">核心</span></a>
+              <a href="deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">phase5-MCP代码与原理详解 <span class="badge">核心</span></a>
+              <a href="deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">phase6-评测代码与原理详解 <span class="badge">核心</span></a>
+              <a href="deep/agent/rdx-agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html">rdx-agent-工程化落地纪要 <span class="badge">核心</span></a>
+              <a href="deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html">全链路 <span class="badge">核心</span></a>
+              <a href="deep/agent/%E9%A1%B9%E7%9B%AE%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%94%B9%E8%BF%9B%E5%BB%BA%E8%AE%AE.html">项目评估与改进建议</a>
+            </div>
+          </div>
+
         </div>
-        <ul class="doc-list">
-          <li><a href="deep/mysql/KingbaseES-%E9%94%81%E4%B8%8E%E4%BA%8B%E5%8A%A1%E6%8E%92%E6%9F%A5%E6%89%8B%E5%86%8C.html">KingbaseES-锁与事务排查手册</a></li>
-          <li><a href="deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html">MySQL-事务与锁排查治理手册</a></li>
-          <li><a href="deep/mysql/MySQL%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E3%80%81%E9%94%81%E6%9C%BA%E5%88%B6%E3%80%81%E7%B4%A2%E5%BC%95%E5%B7%AE%E5%BC%82%20%E6%A0%B8%E5%BF%83%E6%B1%87%E6%80%BB%E6%96%87%E6%A1%A3%EF%BC%88%E5%BC%80%E5%8F%91%26%E9%9D%A2%E8%AF%95%E7%89%88%EF%BC%89.html">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/MySQL%E5%8E%9F%E7%90%86%E7%AF%87.html">MySQL原理篇</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/MySQL%E5%9B%9B%E5%B1%82%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%9B%91%E6%8E%A7%E6%B1%87%E6%80%BB.html">MySQL四层架构与监控汇总</a></li>
-          <li><a href="deep/mysql/MySQL%E9%9D%A2%E8%AF%95%E7%B2%BE%E5%8D%8E%E4%B8%8E%E8%84%91%E5%9B%BE%E9%80%9F%E8%AE%B0.html">MySQL面试精华与脑图速记</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/Sysbench%E5%8D%95%E4%BD%93MySQL%E7%A1%AC%E4%BB%B6%E4%B8%8A%E9%99%90%E5%8E%8B%E6%B5%8B.html">Sysbench单体MySQL硬件上限压测</a></li>
-          <li><a href="deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html">my_sql故障排查实战总结</a></li>
-          <li><a href="deep/mysql/%E5%86%99%E5%85%A5%E8%B7%AF%E5%BE%84%E5%AF%B9%E6%AF%94-MySQL%E6%89%B9%E9%87%8Fvs%E7%A3%81%E7%9B%98%E8%BF%BD%E5%8A%A0.html">写入路径对比-MySQL批量vs磁盘追加</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF1-18%E7%BB%93%E8%AE%BA%E6%B1%87%E6%80%BB.html">场景1-18结论汇总</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF1-%E8%BF%9E%E6%8E%A5%E6%B1%A0%E4%B8%8E%E8%B6%85%E5%8D%96%E9%97%AE%E9%A2%98.html">场景1-连接池与超卖问题</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF10-Redis%E7%BC%93%E5%AD%98%E4%B8%8EMySQL%E5%8F%8C%E5%86%99%E4%B8%80%E8%87%B4%E6%80%A7.html">场景10-Redis缓存与MySQL双写一致性</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF11-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E6%B2%BB%E7%90%86.html">场景11-主从延迟治理</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF12-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81.html">场景12-分布式锁</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF13-InnoDB%E5%8F%82%E6%95%B0%E8%B0%83%E4%BC%98.html">场景13-InnoDB参数调优</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html">场景14-慢查询定位与优化闭环</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF15-MySQL%E9%AB%98%E5%8F%AF%E7%94%A8.html">场景15-MySQL高可用</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF16-%E8%BF%9E%E6%8E%A5%E6%B1%A0%E5%8F%82%E6%95%B0%E8%B0%83%E4%BC%98.html">场景16-连接池参数调优</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF17-%E6%95%B0%E6%8D%AE%E5%BD%92%E6%A1%A3%E4%B8%8E%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB.html">场景17-数据归档与冷热分离</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF18-%E9%94%81%E7%AD%89%E5%BE%85%E4%B8%8E%E6%AD%BB%E9%94%81%E7%9B%91%E6%8E%A7%E6%B2%BB%E7%90%86.html">场景18-锁等待与死锁监控治理</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF2-%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E7%BA%A7%E5%88%AB.html">场景2-事务隔离级别</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF3-%E6%82%B2%E8%A7%82%E9%94%81vs%E4%B9%90%E8%A7%82%E9%94%81.html">场景3-悲观锁vs乐观锁</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E8%A1%A5%E5%BC%BA-InnoDB%E9%94%81%E5%AE%8C%E6%95%B4%E4%BD%93%E7%B3%BB.html">场景4-补强-InnoDB锁完整体系</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E9%94%81%E7%9A%84%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5%E4%B8%8E%E9%80%89%E5%9E%8B.html">场景4-锁的工程实践与选型</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E9%97%B4%E9%9A%99%E9%94%81%E4%B8%8ENext-KeyLock.html">场景4-间隙锁与Next-KeyLock</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF5-%E7%B4%A2%E5%BC%95%E5%A4%B1%E6%95%88%E4%B8%8E%E6%85%A2%E6%9F%A5%E8%AF%A2.html">场景5-索引失效与慢查询</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF6-%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB%E4%B8%8E%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F.html">场景6-读写分离与主从延迟</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF7-%E5%88%86%E5%BA%93%E5%88%86%E8%A1%A8.html">场景7-分库分表</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF8-%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5%E4%BC%98%E5%8C%96.html">场景8-批量写入优化</a></li>
-          <li><a href="deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html">场景9-InnoDB并发控制MVCC</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html">数据同步工具对比-mysqldump-DataX-FlinkCDC</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html">补测B1-备份恢复</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html">补测B10-主从延迟告警与从库自动摘除</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB11-%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB%E7%9A%84%E6%9F%A5%E8%AF%A2%E8%B7%AF%E7%94%B1.html">补测B11-冷热分离的查询路由</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB12-%E6%AD%BB%E9%94%81%E5%90%8E%E7%9A%84%E5%BA%94%E7%94%A8%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6.html">补测B12-死锁后的应用重试机制</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html">补测B2-主从一致性校验与修复</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB3-%E7%83%AD%E7%82%B9%E8%A1%8C%E9%94%81%E6%B2%BB%E7%90%86.html">补测B3-热点行锁治理</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html">补测B4-SQL注入与安全治理</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB5-%E8%BF%9E%E6%8E%A5%E8%80%97%E5%B0%BD%E6%B2%BB%E7%90%86.html">补测B5-连接耗尽治理</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html">补测B6-深分页查询优化</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB7-%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E8%BF%87%E6%9C%9F%E4%B8%8E%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%BC%98%E5%8C%96.html">补测B7-统计信息过期与执行计划优化</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html">补测B8-容量规划与压测上限评估</a></li>
-          <li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html">补测B9-连接泄漏与长连接治理</a></li>
-          <li><a href="deep/mysql/%E8%BF%9E%E6%8E%A5%E5%B1%82%E5%8F%82%E6%95%B0%E8%AF%A6%E7%BB%86%E8%BE%A8%E6%9E%90.html">连接层参数详细辨析</a></li>
-        </ul>
-      </div>
-    </section>
-    <section id="redis">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>Redis 底层原理与压测</h2>
-          <p>数据类型底层结构（SDS / ziplist / skiplist 等）、架构演变，以及 11 个 k6 压测场景深挖（Pipeline、哨兵 vs 集群、三种 String 编码、热点 Key…）。</p>
-        </div>
-        <ul class="doc-list">
-          <li><a href="deep/redis/Redis%20%E9%AB%98%E5%B9%B6%E5%8F%91%E7%BC%93%E5%AD%98%E6%9E%B6%E6%9E%84%E5%AE%9E%E6%88%98%E6%89%8B%E5%86%8C.html">Redis 高并发缓存架构实战手册</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/redis/Redis%E5%8D%95%E4%BD%93%E5%B7%A5%E5%85%B7%E7%B1%BB%E4%BD%BF%E7%94%A8%E6%96%87%E6%A1%A3.html">Redis单体工具类使用文档</a></li>
-          <li><a href="deep/redis/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%85%B7%E4%BD%93%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF.html">Redis数据类型具体使用场景</a></li>
-          <li><a href="deep/redis/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%8E%9F%E7%90%86.html">Redis数据类型原理</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html">Redis架构演变过程</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF1-11%E5%8E%8B%E6%B5%8B%E6%80%BB%E7%BB%93%E6%B1%87%E6%80%BB.html">场景1-11压测总结汇总</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html">场景1-Lettuce-Pipeline压测问题排查与优化</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html">场景10-哨兵vs集群写入阶段选型</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF11-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81int-embstr-raw%E5%8E%8B%E6%B5%8B.html">场景11-String三种编码int-embstr-raw压测</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF2-%E5%A4%A7%E7%BB%93%E6%9E%84Hash%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5.html">场景2-大结构Hash批量写入</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF3-%E7%9F%AD%E6%9C%9FTTL%E6%B5%B7%E9%87%8F%E8%BF%87%E6%9C%9Fkey%E6%8C%81%E7%BB%AD%E7%81%8C%E5%85%A5.html">场景3-短期TTL海量过期key持续灌入</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF4-%E5%88%86%E5%B8%83%E5%BC%8F%E4%BF%A1%E5%8F%B7%E9%87%8F%E5%A4%9AWriter%E7%AB%9E%E4%BA%89Pipeline%E6%A7%BD%E4%BD%8D.html">场景4-分布式信号量多Writer竞争Pipeline槽位</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF5-%E8%AF%BB%E5%86%99%E4%BA%89%E6%8A%A2HGETALL-vs-HSCAN%E5%85%A8%E7%BB%B4%E5%BA%A6%E9%AA%8C%E8%AF%81.html">场景5-读写争抢HGETALL-vs-HSCAN全维度验证</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF6-%E9%AB%98%E5%B9%B6%E5%8F%91%E5%A4%9A%E8%BF%9E%E6%8E%A5Pipeline-maxclients%E8%BE%B9%E7%95%8C%E6%8E%A2%E6%B5%8B.html">场景6-高并发多连接Pipeline-maxclients边界探测</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF7-Cluster%E8%B7%A8%E6%A7%BDPipeline%E9%94%99%E8%AF%AF%E8%BD%B0%E7%82%B8.html">场景7-Cluster跨槽Pipeline错误轰炸</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF8-1-%E7%83%AD%E7%82%B9Key%20Pipeline%E8%87%AA%E5%A2%9E.html">场景8-1-热点Key Pipeline自增</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF8-2-Pipeline%20RTT%E6%95%8F%E6%84%9F%E5%BA%A6%E4%B8%8EWAIT.html">场景8-2-Pipeline RTT敏感度与WAIT</a></li>
-          <li><a href="deep/redis/%E5%9C%BA%E6%99%AF9-%E9%9B%86%E5%90%88%E8%BF%90%E7%AE%97%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E9%AA%8C%E8%AF%81.html">场景9-集合运算高并发压测验证</a></li>
-        </ul>
-      </div>
-    </section>
-    <section id="es">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>Elasticsearch 底层与运维</h2>
-          <p>写入全流程、路由机制与 MurmurHash3 分片倾斜、ILM 索引生命周期与冷热分层、Rollover / Reindex / 别名回流全套。</p>
-        </div>
-        <ul class="doc-list">
-          <li><a href="deep/es/ES%20ILM%E7%B4%A2%E5%BC%95%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E7%AE%A1%E7%90%86%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%89%8B%E5%86%8C%EF%BC%88%E5%8E%9F%E7%90%86%2B%E5%8F%82%E6%95%B0%2B%E7%94%9F%E4%BA%A7%E9%85%8D%E7%BD%AE%2B%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%EF%BC%89.html">ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-1.html">ES7.17 写入全流程-1</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html">ES7.17 写入全流程-2</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-1.html">ES_分片ILM_完整终版手册-1</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-2.html">ES_分片ILM_完整终版手册-2</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-3%20-%20%E5%A4%87%E4%BB%BD%E7%89%88.html">ES_分片ILM_完整终版手册-3 - 备份版</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-3.html">ES_分片ILM_完整终版手册-3</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES_%E8%BF%90%E7%BB%B4%E5%91%BD%E4%BB%A4%E9%80%9F%E6%9F%A5%E6%89%8B%E5%86%8C.html">ES_运维命令速查手册</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES%E5%88%86%E7%89%87%2B%E8%B7%AF%E7%94%B1%2BILM%E5%86%B7%E7%83%AD%2BRollover%2BReindex%2B%E5%85%A8%E5%B1%82%E7%BA%A7%E5%9B%9E%E6%B5%81%20%E6%9C%80%E7%BB%88%E5%AE%8C%E6%95%B4%E7%89%88%E6%89%8B%E5%86%8C.html">ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87%2BILM%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2BReindex%E9%87%8D%E6%9E%84%2B%E5%88%AB%E5%90%8D%2BRollover%E6%97%B6%E5%BA%8F%E7%B4%A2%E5%BC%95%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C.html">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87ILM%26Reindex%E5%88%AB%E5%90%8D%E5%AE%8C%E6%95%B4%E6%89%8B%E5%86%8C.html">ES路由分片ILM&Reindex别名完整手册</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2BMurmurHash3%E7%AE%97%E6%B3%95%2B%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E5%85%A8%E5%A5%97%E5%AE%8C%E6%95%B4%E7%89%88%E6%96%87%E6%A1%A3%EF%BC%88%E9%9D%A2%E8%AF%95%2B%E7%94%9F%E4%BA%A7%E8%90%BD%E5%9C%B0%EF%BC%89.html">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2B%E5%88%86%E7%89%87%E5%88%86%E9%85%8D%2B%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2B%E6%95%85%E9%9A%9C%E6%8E%92%E9%9A%9C%20%E5%85%A8%E5%A5%97%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C%EF%BC%88%E9%9D%A2%E8%AF%95%2B%E7%94%9F%E4%BA%A7%E9%80%9A%E7%94%A8%EF%BC%89.html">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ES%E9%9D%A2%E8%AF%95%2B%E8%BF%90%E7%BB%B4%E5%91%BD%E4%BB%A4%E7%8B%AC%E7%AB%8B%E9%80%9F%E6%9F%A5%E6%89%8B%E5%86%8C%EF%BC%88%E5%A2%9E%E8%A1%A5%E9%9B%86%E7%BE%A4%E6%9E%B6%E6%9E%84%E9%9D%A2%E8%AF%95%E9%A2%98%E5%AE%8C%E6%95%B4%E7%89%88%EF%BC%89.html">ES面试+运维命令独立速查手册（增补集群架构面试题完整版）</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/Elasticsearch%20%E5%88%86%E7%89%87%E8%8A%82%E7%82%B9%E5%88%86%E9%85%8D%E7%AE%97%E6%B3%95%20%E8%B6%85%E8%AF%A6%E7%BB%86%E8%AF%A6%E8%A7%A3.html">Elasticsearch 分片节点分配算法 超详细详解</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html">ILM 全面实操手册（修订版）</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E9%92%88%E5%AF%B9%20ES%207.2%20%E7%9A%84%E5%90%88%E5%B9%B6%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html">ILM 全面实操手册（针对 ES 7.2 的合并修订版）</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/es/%E4%B8%80%E3%80%81ES%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E7%BA%BF%E4%B8%8A%E5%BA%94%E6%80%A5%E5%A4%84%E7%90%86%E6%AD%A5%E9%AA%A4%EF%BC%88%E5%8F%AF%E7%9B%B4%E6%8E%A5%E7%85%A7%E7%9D%80%E6%93%8D%E4%BD%9C%EF%BC%89.html">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</a></li>
-        </ul>
-      </div>
-    </section>
-    <section id="bench">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>高并发压测与方法论</h2>
-          <p>协同遗漏 Coordinated Omission、降级本地兜底与限速回放、Java 秒杀库存压测脚本设计、高并发压测执行清单。</p>
-        </div>
-        <ul class="doc-list">
-          <li><a href="deep/bench/Java%E7%A7%92%E6%9D%80%E5%BA%93%E5%AD%98%E5%9C%BA%E6%99%AF%E5%8E%8B%E6%B5%8B%E8%84%9A%E6%9C%AC%E8%AE%BE%E8%AE%A1%E6%B8%85%E5%8D%95.html">Java秒杀库存场景压测脚本设计清单</a></li>
-          <li><a href="deep/bench/%E5%8D%8F%E5%90%8C%E9%81%97%E6%BC%8F-Coordinated-Omission.html">协同遗漏-Coordinated-Omission</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html">测试总结</a></li>
-          <li><a href="deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html">降级设计-本地文件兜底与限速回放</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html">高并发压测执行清单</a></li>
-        </ul>
-      </div>
-    </section>
-    <section id="k8s">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>K8s / 云原生底层</h2>
-          <p>Redis 主从复制与哨兵、Ingress + HPA 弹性、滚动更新、compose vs k8s、K8s 学习路线图。</p>
-        </div>
-        <ul class="doc-list">
-          <li><a href="deep/k8s/K8S-LEARNING-ROADMAP.html">K8S-LEARNING-ROADMAP</a></li>
-          <li><a href="deep/k8s/README.html">K3s 项目总览 README</a></li>
-          <li><a href="deep/k8s/ROLLING-UPDATE.html">ROLLING-UPDATE</a></li>
-          <li><a href="deep/k8s/compose-vs-k8s.html">compose-vs-k8s</a></li>
-          <li><a href="deep/k8s/ingress-hpa.html">ingress-hpa</a></li>
-          <li><a href="deep/k8s/redis-README.html">redis-README</a></li>
-          <li><a href="deep/k8s/redis-replication.html">redis-replication</a></li>
-          <li><a href="deep/k8s/redis-sentinel.html">redis-sentinel</a></li>
-          <li><a href="deep/k8s/spring-cloud-plan.html">spring-cloud-plan</a></li>
-        </ul>
-      </div>
-    </section>
-    <section id="agent">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>AI Agent 底层原理</h2>
-          <p>RAG / MCP / 护栏 / 评测的代码与原理详解，Agent 中间件选型，rdx-agent 工程化落地，phase1-6 阶段 README。</p>
-        </div>
-        <ul class="doc-list">
-          <li><a href="deep/agent/AI-Agent%E6%96%B0%E6%89%8B%E6%95%99%E5%AD%A6.html">AI-Agent新手教学</a></li>
-          <li><a href="deep/agent/Agent%E4%B8%AD%E9%97%B4%E4%BB%B6%E4%BC%98%E5%8C%96%E9%80%89%E5%9E%8B.html">Agent中间件优化选型</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">RAG代码与原理详解</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/agent/README.html">phase1 · 最小 Agent 工程 README</a></li>
-          <li><a href="deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">phase4-护栏代码与原理详解</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">phase5-MCP代码与原理详解</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html">phase6-评测代码与原理详解</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/agent/rdx-agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html">rdx-agent-工程化落地纪要</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html">全链路</a> <span class="badge core">核心</span></li>
-          <li><a href="deep/agent/%E9%A1%B9%E7%9B%AE%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%94%B9%E8%BF%9B%E5%BB%BA%E8%AE%AE.html">项目评估与改进建议</a></li>
-        </ul>
       </div>
     </section>
   </main>
@@ -222,9 +231,41 @@
 
   <script>
     document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon() {
+      th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙";
+    }
+    syncThemeIcon();
+    th.addEventListener("click", function () {
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch (e) {}
+      syncThemeIcon();
+    });
     var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
     t.addEventListener("click", function () { l.classList.toggle("open"); });
-    l.querySelectorAll("a").forEach(function (a) { a.addEventListener("click", function () { l.classList.remove("open"); }); });
+
+    // 深度页 scroll-spy：高亮当前系列
+    var navLinks = document.querySelectorAll("#deepNav a");
+    var groups = document.querySelectorAll(".deep-group");
+    if ("IntersectionObserver" in window && groups.length) {
+      var spy = new IntersectionObserver(function (es) {
+        es.forEach(function (e) {
+          if (e.isIntersecting) {
+            navLinks.forEach(function (a) { a.classList.toggle("active", a.dataset.target === e.target.id); });
+          }
+        });
+      }, { rootMargin: "-20% 0px -70% 0px", threshold: 0 });
+      groups.forEach(function (g) { spy.observe(g); });
+    }
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+      }, { threshold: 0.08 });
+      document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+    } else {
+      document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
+    }
   </script>
 </body>
 </html>
