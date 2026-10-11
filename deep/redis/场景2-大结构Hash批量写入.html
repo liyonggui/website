@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>场景 2 — 大结构 Hash 批量写入 · 小番茄程序猿</title>
 <meta name="description" content="多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemor…"/>
+<meta name="keywords" content="Redis, redis"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/场景2-大结构Hash批量写入.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="场景 2 — 大结构 Hash 批量写入 · 小番茄程序猿" />
 <meta property="og:description" content="多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemor…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景2-大结构Hash批量写入.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 2 — 大结构 Hash 批量写入", "description": "多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemor…", "url": "https://liyonggui.github.io/website/deep/redis/场景2-大结构Hash批量写入.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景2-大结构Hash批量写入.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "Redis, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -1785,6 +1789,19 @@ dmesg<span class="w"> </span><span class="p">|</span><span class="w"> </span>gre
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/redis/Redis 高并发缓存架构实战手册.html"><span class="rel-title">Redis 高并发缓存架构实战手册</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/Redis单体工具类使用文档.html"><span class="rel-title">Redis 单体工具类使用文档</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/Redis数据类型具体使用场景.html"><span class="rel-title">Redis 数据类型具体使用场景</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/Redis数据类型原理.html"><span class="rel-title">Redis 数据类型原理</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/Redis架构演变过程.html"><span class="rel-title">Redis架构演变过程</span><span class="rel-meta">redis 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

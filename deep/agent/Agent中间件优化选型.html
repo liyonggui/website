@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测） · 小番茄程序猿</title>
 <meta name="description" content="原则：带着病历找药。每个中间件都必须对应一个&quot;已实测出的问题&quot;，并说清&quot;治好了没&quot;——不是堆组件。 &gt; 当前栈：Spring AI 1.1.8 + 百炼 MaaS + RAG 向量…"/>
+<meta name="keywords" content="AI Agent, Spring AI, 压测, agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/agent/Agent中间件优化选型.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测） · 小番茄程序猿" />
 <meta property="og:description" content="原则：带着病历找药。每个中间件都必须对应一个&quot;已实测出的问题&quot;，并说清&quot;治好了没&quot;——不是堆组件。 &gt; 当前栈：Spring AI 1.1.8 + 百炼 MaaS + RAG 向量…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/agent/Agent中间件优化选型.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）", "description": "原则：带着病历找药。每个中间件都必须对应一个\"已实测出的问题\"，并说清\"治好了没\"——不是堆组件。 > 当前栈：Spring AI 1.1.8 + 百炼 MaaS + RAG 向量…", "url": "https://liyonggui.github.io/website/deep/agent/Agent中间件优化选型.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/Agent中间件优化选型.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "AI Agent, Spring AI, 压测, agent"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -239,6 +243,19 @@
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/agent/AI-Agent新手教学.html"><span class="rel-title">AI Agent 新手教学（后端工程师·零基础版）</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/RAG代码与原理详解.html"><span class="rel-title">RAG 代码与原理详解（phase2 深读 · 新手向）</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/README.html"><span class="rel-title">phase1-minimal-agent</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/phase4-护栏代码与原理详解.html"><span class="rel-title">phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/phase5-MCP代码与原理详解.html"><span class="rel-title">phase5 MCP 代码与原理详解（server + client · 含失控案例）</span><span class="rel-meta">agent 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

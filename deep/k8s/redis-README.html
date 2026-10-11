@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>单实例 Redis on K3s（学习用） · 小番茄程序猿</title>
 <meta name="description" content="把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…"/>
+<meta name="keywords" content="K8s, 云原生, Redis, k8s"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/k8s/redis-README.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="单实例 Redis on K3s（学习用） · 小番茄程序猿" />
 <meta property="og:description" content="把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/k8s/redis-README.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "单实例 Redis on K3s（学习用）", "description": "把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…", "url": "https://liyonggui.github.io/website/deep/k8s/redis-README.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/k8s/redis-README.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "K8s, 云原生, Redis, k8s"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -145,6 +149,19 @@ kubectl<span class="w"> </span>delete<span class="w"> </span>pod<span class="w">
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/k8s/redis-replication.html"><span class="rel-title">Redis 1主1从（StatefulSet 主从复制）</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/redis-sentinel.html"><span class="rel-title">Redis 1主1从3哨兵（自动故障转移）</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/K8S-LEARNING-ROADMAP.html"><span class="rel-title">K8s 实战学习路线图（已学 + 待学）</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/README.html"><span class="rel-title">k3s 实战：一个可跑通、可炸给你看的单机集群</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/ROLLING-UPDATE.html"><span class="rel-title">service-user 滚动更新练习（K8s 核心概念 · B）</span><span class="rel-meta">k8s 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

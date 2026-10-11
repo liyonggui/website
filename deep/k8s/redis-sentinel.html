@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Redis 1主1从3哨兵（自动故障转移） · 小番茄程序猿</title>
 <meta name="description" content="在「1主1从」之上加 3 个哨兵，补齐最后一块：主库宕机自动选主 + 客户端经哨兵发现当前主库。 这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的…"/>
+<meta name="keywords" content="K8s, 云原生, Redis, k8s"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/k8s/redis-sentinel.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="Redis 1主1从3哨兵（自动故障转移） · 小番茄程序猿" />
 <meta property="og:description" content="在「1主1从」之上加 3 个哨兵，补齐最后一块：主库宕机自动选主 + 客户端经哨兵发现当前主库。 这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/k8s/redis-sentinel.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Redis 1主1从3哨兵（自动故障转移）", "description": "在「1主1从」之上加 3 个哨兵，补齐最后一块：主库宕机自动选主 + 客户端经哨兵发现当前主库。 这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的…", "url": "https://liyonggui.github.io/website/deep/k8s/redis-sentinel.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/k8s/redis-sentinel.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "K8s, 云原生, Redis, k8s"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -168,6 +172,19 @@ kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </sp
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/k8s/redis-README.html"><span class="rel-title">单实例 Redis on K3s（学习用）</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/redis-replication.html"><span class="rel-title">Redis 1主1从（StatefulSet 主从复制）</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/K8S-LEARNING-ROADMAP.html"><span class="rel-title">K8s 实战学习路线图（已学 + 待学）</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/README.html"><span class="rel-title">k3s 实战：一个可跑通、可炸给你看的单机集群</span><span class="rel-meta">k8s 系列</span></a></li>
+        <li><a href="../../deep/k8s/ROLLING-UPDATE.html"><span class="rel-title">service-user 滚动更新练习（K8s 核心概念 · B）</span><span class="rel-meta">k8s 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

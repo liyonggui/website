@@ -177,13 +177,40 @@ def build_rss(records):
     (ROOT / "rss.xml").write_text(rss, encoding="utf-8")
 
 
+STATIC_PAGES = [
+    ("", "1.0"), ("index.html", "1.0"), ("projects.html", "0.9"),
+    ("blog.html", "0.8"), ("deep.html", "0.9"),
+    ("tags.html", "0.5"), ("archives.html", "0.5"), ("search.html", "0.5"),
+]
+
+
+def build_sitemap(records):
+    urls = [(SITE_URL + p, "weekly", pri, "") for p, pri in STATIC_PAGES]
+    for r in records:
+        urls.append((SITE_URL + r["url"], "monthly", "0.6", r["date"]))
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    for loc, freq, pri, lastmod in urls:
+        lm = f"<lastmod>{lastmod}</lastmod>" if lastmod else ""
+        lines.append(
+            f"  <url><loc>{loc}</loc><changefreq>{freq}</changefreq>"
+            f"<priority>{pri}</priority>{lm}</url>"
+        )
+    lines.append("</urlset>")
+    (ROOT / "sitemap.xml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"sitemap.xml：{len(urls)} 个 URL")
+
+
 def main():
     records = build_articles_json()
     build_tags_json(records)
     build_archives_json(records)
     build_search_index(records)
     build_rss(records)
-    print(f"索引生成完成：{len(records)} 篇文章 → data/*.json + rss.xml")
+    build_sitemap(records)
+    print(f"索引生成完成：{len(records)} 篇文章 → data/*.json + rss.xml + sitemap.xml")
 
 
 if __name__ == "__main__":

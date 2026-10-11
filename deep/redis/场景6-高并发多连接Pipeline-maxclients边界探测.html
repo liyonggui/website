@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>场景 6: 高并发多连接 Pipeline — maxclients 边界探测 · 小番茄程序猿</title>
 <meta name="description" content="生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …"/>
+<meta name="keywords" content="Redis, Java 并发, 缓存, redis"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="场景 6: 高并发多连接 Pipeline — maxclients 边界探测 · 小番茄程序猿" />
 <meta property="og:description" content="生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 6: 高并发多连接 Pipeline — maxclients 边界探测", "description": "生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …", "url": "https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "Redis, Java 并发, 缓存, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -854,6 +858,19 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
     </article>
     <aside class="toc-side"></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/redis/Redis 高并发缓存架构实战手册.html"><span class="rel-title">Redis 高并发缓存架构实战手册</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景1-11压测总结汇总.html"><span class="rel-title">Redis 高并发压测全场景总结（场景 1-11）</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html"><span class="rel-title">场景 1 — Lettuce Pipeline 压测问题排查与优化</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景4-分布式信号量多Writer竞争Pipeline槽位.html"><span class="rel-title">场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景7-Cluster跨槽Pipeline错误轰炸.html"><span class="rel-title">场景 7: Cluster 跨槽 Pipeline 错误轰炸</span><span class="rel-meta">redis 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

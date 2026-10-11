@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>高并发写入测试总结 · 小番茄程序猿</title>
 <meta name="description" content="日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka"/>
+<meta name="keywords" content="压测, Java 并发, bench"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/bench/测试总结.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="高并发写入测试总结 · 小番茄程序猿" />
 <meta property="og:description" content="日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/bench/测试总结.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "高并发写入测试总结", "description": "日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka", "url": "https://liyonggui.github.io/website/deep/bench/测试总结.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/bench/测试总结.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "压测, Java 并发, bench"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -514,6 +518,19 @@ CPU 绑定的极限: ~5,000-5,500 QPS (版本 A/B 反复撞)
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/bench/高并发压测执行清单.html"><span class="rel-title">高并发压测执行清单</span><span class="rel-meta">bench 系列</span></a></li>
+        <li><a href="../../deep/bench/Java秒杀库存场景压测脚本设计清单.html"><span class="rel-title">Java 秒杀/库存场景压测脚本设计清单</span><span class="rel-meta">bench 系列</span></a></li>
+        <li><a href="../../deep/bench/协同遗漏-Coordinated-Omission.html"><span class="rel-title">协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言</span><span class="rel-meta">bench 系列</span></a></li>
+        <li><a href="../../deep/bench/降级设计-本地文件兜底与限速回放.html"><span class="rel-title">写入链路降级设计：本地文件兜底 + 限速回放</span><span class="rel-meta">bench 系列</span></a></li>
+        <li><a href="../../deep/redis/场景1-11压测总结汇总.html"><span class="rel-title">Redis 高并发压测全场景总结（场景 1-11）</span><span class="rel-meta">redis 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

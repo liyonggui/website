@@ -6,9 +6,11 @@
 - 自动生成 assets/css/pygments.css（代码高亮，github 浅色风）。
 - blog/ 文章高亮「博客」导航；deep/ 文章高亮「深度」导航。
 """
+import html
+import json
 import os
 import re
-import html
+
 import markdown
 from pygments.formatters import HtmlFormatter
 
@@ -20,6 +22,7 @@ except ImportError:
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ARTICLE_CSS = os.path.join(ROOT, "assets", "css", "article.css")
 PYG_CSS = os.path.join(ROOT, "assets", "css", "pygments.css")
+SITE_BASE = "https://liyonggui.github.io/website/"
 
 TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN">
@@ -28,12 +31,16 @@ TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>__TITLE__ · 小番茄程序猿</title>
 <meta name="description" content="__DESC__"/>
+<meta name="keywords" content="__KEYWORDS__"/>
+<link rel="canonical" href="__CANONICAL__"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="__PREFIX__rss.xml" />
 <link rel="icon" type="image/svg+xml" href="__PREFIX__assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="__TITLE__ · 小番茄程序猿" />
 <meta property="og:description" content="__DESC__" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="__CANONICAL__" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">__JSONLD__</script>
 <link rel="stylesheet" href="__PREFIX__assets/css/style.css"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/article.css"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
@@ -79,6 +86,7 @@ __BODY__
     </article>
     <aside class="toc-side">__TOC__</aside>
   </div>
+__RELATED__
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>
@@ -176,19 +184,25 @@ def depth_prefix(subdir):
     return "../" * (1 + subdir.count("/"))
 
 
-def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=None):
+def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=None,
+               canonical="", keywords="", jsonld="", related_html="", desc=""):
     a = {"home": "", "proj": "", "blog": "", "deep": ""}
     if active in a:
         a[active] = ' class="active"'
     meta = meta or {}
-    desc = str(meta.get("summary") or "").strip() or f"{title} —— 小番茄程序猿的技术文章"
+    if not desc:
+        desc = str(meta.get("summary") or "").strip() or f"{title} —— 小番茄程序猿的技术文章"
     return (TEMPLATE
             .replace("__PREFIX__", prefix)
             .replace("__TITLE__", html.escape(title))
             .replace("__DESC__", html.escape(desc))
+            .replace("__KEYWORDS__", html.escape(keywords, quote=True))
+            .replace("__CANONICAL__", canonical)
+            .replace("__JSONLD__", jsonld)
             .replace("__META__", build_meta_row(meta, title, prefix))
             .replace("__BODY__", body)
             .replace("__TOC__", toc)
+            .replace("__RELATED__", related_html)
             .replace("__BACK_HREF__", back_href)
             .replace("__BACK_LABEL__", back_label)
             .replace("__A_HOME__", a["home"])
@@ -302,7 +316,108 @@ def ensure_pygments_css():
         f.write(css)
 
 
-def process_dir(rel_dir, active, back_label):
+ARTICLE_DIRS = ["blog", "deep/mysql", "deep/redis", "deep/es", "deep/bench", "deep/k8s", "deep/agent"]
+
+
+def default_series(rel_dir):
+    if rel_dir == "blog":
+        return "博客"
+    return rel_dir.split("/")[1]
+
+
+def scan_catalog():
+    """扫描全部 md 的 front matter，构建文章目录（供相关文章推荐使用）。"""
+    entries = []
+    for rel_dir in ARTICLE_DIRS:
+        abs_dir = os.path.join(ROOT, rel_dir)
+        if not os.path.isdir(abs_dir):
+            continue
+        for fn in sorted(os.listdir(abs_dir)):
+            if not fn.endswith(".md"):
+                continue
+            with open(os.path.join(abs_dir, fn), encoding="utf-8") as f:
+                text = f.read()
+            meta, _ = parse_front_matter(text)
+            if str(meta.get("draft", "")).strip().lower() in ("true", "yes", "1"):
+                continue
+            tags = meta.get("tags") or []
+            if isinstance(tags, str):
+                tags = [tags]
+            entries.append({
+                "rel_url": rel_dir + "/" + fn[:-3] + ".html",
+                "title": str(meta.get("title") or fn[:-3]).strip(),
+                "series": str(meta.get("series") or default_series(rel_dir)),
+                "tags": [str(t) for t in tags],
+                "date": str(meta.get("date") or ""),
+            })
+    return entries
+
+
+def find_related(catalog, rel_url, series, tags, limit=5):
+    """相关文章推荐：同系列 +3，每个共同标签 +2；不足时回退同系列，再回退最新文章。"""
+    own_tags = set(tags)
+    scored = []
+    for e in catalog:
+        if e["rel_url"] == rel_url:
+            continue
+        score = 0
+        if e["series"] == series:
+            score += 3
+        score += 2 * len(own_tags & set(e["tags"]))
+        if score > 0:
+            scored.append((score, e["date"], e))
+    if not scored:
+        same = [e for e in catalog if e["series"] == series and e["rel_url"] != rel_url]
+        scored = [(1, e["date"], e) for e in same]
+        if not scored:
+            scored = [(0, e["date"], e) for e in catalog if e["rel_url"] != rel_url]
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [e for _, _, e in scored[:limit]]
+
+
+def build_related_html(related, prefix):
+    if not related:
+        return ""
+    lis = []
+    for e in related:
+        lis.append(
+            f'        <li><a href="{prefix}{e["rel_url"]}">'
+            f'<span class="rel-title">{html.escape(e["title"])}</span>'
+            f'<span class="rel-meta">{html.escape(e["series"])} 系列</span></a></li>'
+        )
+    return (
+        '  <section class="related">\n'
+        '    <div class="wrap">\n'
+        '      <h3>相关文章</h3>\n'
+        '      <ul class="related-list">\n' + "\n".join(lis) + '\n      </ul>\n'
+        '    </div>\n'
+        '  </section>\n'
+    )
+
+
+def build_jsonld(title, desc, rel_url, meta, tags, series):
+    data = {
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        "headline": title,
+        "description": desc,
+        "url": SITE_BASE + rel_url,
+        "mainEntityOfPage": SITE_BASE + rel_url,
+        "author": {"@type": "Person", "name": "小番茄程序猿"},
+        "publisher": {"@type": "Person", "name": "小番茄程序猿"},
+        "image": SITE_BASE + "assets/logo.svg",
+        "inLanguage": "zh-CN",
+    }
+    if meta.get("date"):
+        data["datePublished"] = str(meta["date"])
+    kws = tags + ([series] if series else [])
+    if kws:
+        data["keywords"] = ", ".join(dict.fromkeys(kws))
+    # 转义 < 防止提前闭合 script 标签
+    return json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+
+
+def process_dir(rel_dir, active, back_label, catalog):
     abs_dir = os.path.join(ROOT, rel_dir)
     if not os.path.isdir(abs_dir):
         return 0
@@ -321,7 +436,23 @@ def process_dir(rel_dir, active, back_label):
         body, toc = md_to_html(demote_h1(text))
         out_name = fn[:-3] + ".html"
         out_path = os.path.join(abs_dir, out_name)
-        html_doc = build_html(prefix, title, body, active, back_href, back_label, toc, meta)
+
+        rel_url = rel_dir + "/" + out_name
+        tags = meta.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        tags = [str(t) for t in tags]
+        series = str(meta.get("series") or default_series(rel_dir))
+        desc = str(meta.get("summary") or "").strip() or f"{title} —— 小番茄程序猿的技术文章"
+        related = find_related(catalog, rel_url, series, tags)
+        html_doc = build_html(
+            prefix, title, body, active, back_href, back_label, toc, meta,
+            canonical=SITE_BASE + rel_url,
+            keywords=", ".join(dict.fromkeys(tags + [series])),
+            jsonld=build_jsonld(title, desc, rel_url, meta, tags, series),
+            related_html=build_related_html(related, prefix),
+            desc=desc,
+        )
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(html_doc)
         count += 1
@@ -330,16 +461,17 @@ def process_dir(rel_dir, active, back_label):
 
 def main():
     ensure_pygments_css()
+    catalog = scan_catalog()
     total = 0
     # 博客文章
-    total += process_dir("blog", "blog", "返回博客索引")
+    total += process_dir("blog", "blog", "返回博客索引", catalog)
     # 深度技术各系列
-    total += process_dir("deep/mysql", "deep", "返回深度技术")
-    total += process_dir("deep/redis", "deep", "返回深度技术")
-    total += process_dir("deep/es", "deep", "返回深度技术")
-    total += process_dir("deep/bench", "deep", "返回深度技术")
-    total += process_dir("deep/k8s", "deep", "返回深度技术")
-    total += process_dir("deep/agent", "deep", "返回深度技术")
+    total += process_dir("deep/mysql", "deep", "返回深度技术", catalog)
+    total += process_dir("deep/redis", "deep", "返回深度技术", catalog)
+    total += process_dir("deep/es", "deep", "返回深度技术", catalog)
+    total += process_dir("deep/bench", "deep", "返回深度技术", catalog)
+    total += process_dir("deep/k8s", "deep", "返回深度技术", catalog)
+    total += process_dir("deep/agent", "deep", "返回深度技术", catalog)
     print("生成文章页总数:", total)
     print("pygments.css:", "已存在" if os.path.exists(PYG_CSS) else "已生成")
 

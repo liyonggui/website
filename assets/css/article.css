@@ -224,3 +224,43 @@
   .article-head h1 { font-size: 24px; }
   .prose { font-size: 15px; padding: 8px 18px 48px; }
 }
+
+/* ——— 相关文章推荐 ——— */
+.related {
+  border-top: 1px solid var(--line);
+  padding: var(--s6) 0 var(--s2);
+  max-width: calc(var(--maxw-prose) + 290px);
+  margin: 0 auto;
+}
+.related h3 {
+  font-size: 20px; letter-spacing: -0.02em; margin: 0 0 18px;
+  color: var(--ink); font-weight: 820;
+}
+.related-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.related-list a {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 16px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: border-color 0.15s var(--ease), transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.related-list a:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+}
+.related-list .rel-title {
+  font-size: 14.5px; font-weight: 600; color: var(--ink); line-height: 1.45;
+}
+.related-list a:hover .rel-title { color: var(--accent); }
+.related-list .rel-meta { font-size: 12px; color: var(--ink-faint); }
+@media (max-width: 640px) {
+  .related-list { grid-template-columns: 1fr; }
+}

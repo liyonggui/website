@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距 · 小番茄程序猿</title>
 <meta name="description" content="环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…"/>
+<meta name="keywords" content="Redis, 压测, 博客"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距 · 小番茄程序猿" />
 <meta property="og:description" content="环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距", "description": "环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…", "url": "https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "Redis, 压测, 博客"}</script>
 <link rel="stylesheet" href="../assets/css/style.css"/>
 <link rel="stylesheet" href="../assets/css/article.css"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
@@ -369,6 +373,19 @@
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../deep/redis/场景1-11压测总结汇总.html"><span class="rel-title">Redis 高并发压测全场景总结（场景 1-11）</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html"><span class="rel-title">场景 1 — Lettuce Pipeline 压测问题排查与优化</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../deep/redis/场景10-哨兵vs集群写入阶段选型.html"><span class="rel-title">场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../deep/redis/场景11-String三种编码int-embstr-raw压测.html"><span class="rel-title">场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../deep/redis/场景9-集合运算高并发压测验证.html"><span class="rel-title">场景 9: 集合运算（合并/交集/差集）高并发压测</span><span class="rel-meta">redis 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>场景 1 — Lettuce Pipeline 压测问题排查与优化 · 小番茄程序猿</title>
 <meta name="description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…"/>
+<meta name="keywords" content="Redis, 压测, 缓存, redis"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="场景 1 — Lettuce Pipeline 压测问题排查与优化 · 小番茄程序猿" />
 <meta property="og:description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 1 — Lettuce Pipeline 压测问题排查与优化", "description": "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…", "url": "https://liyonggui.github.io/website/deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "Redis, 压测, 缓存, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -1675,6 +1679,19 @@ io-threads-do-reads<span class="w"> </span>yes
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/redis/Redis 高并发缓存架构实战手册.html"><span class="rel-title">Redis 高并发缓存架构实战手册</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景1-11压测总结汇总.html"><span class="rel-title">Redis 高并发压测全场景总结（场景 1-11）</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景10-哨兵vs集群写入阶段选型.html"><span class="rel-title">场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景11-String三种编码int-embstr-raw压测.html"><span class="rel-title">场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景4-分布式信号量多Writer竞争Pipeline槽位.html"><span class="rel-title">场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</span><span class="rel-meta">redis 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

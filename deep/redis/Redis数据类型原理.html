@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Redis 数据类型原理 · 小番茄程序猿</title>
 <meta name="description" content="从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。 &gt; &gt; 注：本文所有字节数与阈值均为&quot;典型 64-bit Linux + je…"/>
+<meta name="keywords" content="Redis, 源码, redis"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/Redis数据类型原理.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
-<meta property="og:type" content="website" />
+<meta property="og:type" content="article" />
 <meta property="og:title" content="Redis 数据类型原理 · 小番茄程序猿" />
 <meta property="og:description" content="从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。 &gt; &gt; 注：本文所有字节数与阈值均为&quot;典型 64-bit Linux + je…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/Redis数据类型原理.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Redis 数据类型原理", "description": "从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。 > > 注：本文所有字节数与阈值均为\"典型 64-bit Linux + je…", "url": "https://liyonggui.github.io/website/deep/redis/Redis数据类型原理.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/Redis数据类型原理.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "Redis, 源码, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -3932,6 +3936,19 @@ redis-cli<span class="w"> </span>--bigkeys
   </nav>
 </details></aside>
   </div>
+  <section class="related">
+    <div class="wrap">
+      <h3>相关文章</h3>
+      <ul class="related-list">
+        <li><a href="../../deep/redis/Redis 高并发缓存架构实战手册.html"><span class="rel-title">Redis 高并发缓存架构实战手册</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/Redis单体工具类使用文档.html"><span class="rel-title">Redis 单体工具类使用文档</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/Redis数据类型具体使用场景.html"><span class="rel-title">Redis 数据类型具体使用场景</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/Redis架构演变过程.html"><span class="rel-title">Redis架构演变过程</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景1-11压测总结汇总.html"><span class="rel-title">Redis 高并发压测全场景总结（场景 1-11）</span><span class="rel-meta">redis 系列</span></a></li>
+      </ul>
+    </div>
+  </section>
+
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>
