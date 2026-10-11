@@ -1,5 +1,5 @@
 ---
-title: "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）"
+title: "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）"
 summary: "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…"
 date: 2026-08-02
 author: "小番茄程序猿"
@@ -8,12 +8,12 @@ tags:
   - 分库分表
 category: deep
 series: "es"
-slug: "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）"
+slug: "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）"
 reading_time: 18
 featured: false
 draft: false
 ---
-# ES路由机制\+MurmurHash3算法\+分片倾斜全套完整版文档（面试\+生产落地）
+# ES路由机制\+MurmurHash3算法\+分片倾斜全套完整版文档（生产落地）
 
 ## 一、ES写入分片路由核心公式（源码原生）
 
@@ -51,7 +51,7 @@ MurmurHash3：非加密快速哈希算法，优势：运算快、雪崩性极强
 | MurmurHash3\_x86\_32  | 32位int         | **分片路由（唯一用途）**            | 速度快，碰撞无害，满足分片打散即可      |
 | MurmurHash3\_x64\_128 | 128bit（2个long） | cardinality去重聚合、murmur3字段 | 超大哈希空间，极致降低哈希碰撞，保证统计精准 |
 
-### 2\. 高频误区逐一纠正（面试必问）
+### 2\. 高频误区逐一纠正（高频问题）
 
 1. **误区1：分片路由用的是128位哈希**
    纠正：完全错误，路由全程32位哈希，128位和分片路由无关
@@ -282,7 +282,7 @@ GET order_info/_search
 
 ---
 
-## 八、面试一页纸极简背诵答案（直接口述）
+## 八、一页纸极简总结
 
 1. ES分片路由采用**MurmurHash3\_x86\_32 32位哈希**，并非128位；128位哈希仅用于基数去重聚合。
 

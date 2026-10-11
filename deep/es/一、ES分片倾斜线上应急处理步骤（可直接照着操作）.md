@@ -129,7 +129,7 @@ GET _cat/shards/你的索引名?v&s=store:desc
 
 ---
 
-# 二、MurmurHash3 完整知识点汇总（原理、版本、ES源码、场景、碰撞、面试全集）
+# 二、MurmurHash3 完整知识点汇总（原理、版本、ES源码、场景、碰撞、要点全集）
 
 ## 1. 基础概述
 
@@ -169,7 +169,7 @@ MurmurHash3 **本身不是固定128位**，有两个输出规格，ES根据业�
    `server/src/main/java/org/elasticsearch/cluster/routing/Murmur3HashFunction.java`
    底层调用 Lucene `StringHelper.murmurhash3_x86_32`
    
-   ### 设计目的（重点面试）
+   ### 设计目的（重点）
 5. **核心目标：打散数据，避免分片数据倾斜**
    消除自增ID、前缀重复ID的规律性，让数据均匀分布在所有主分片
 6. 不是为消除哈希碰撞，碰撞无害
@@ -232,7 +232,7 @@ MurmurHash3 **本身不是固定128位**，有两个输出规格，ES根据业�
 9. ❌ 误区：MurmurHash用来加密敏感ID
    ✅ 纠正：非加密哈希，可逆推导特征，不能做加密
    
-   ## 9. 面试一句话精简总结
+   ## 9. 一句话精简总结
    
    MurmurHash3分为32位、128位两个版本；ES分片路由采用MurmurHash3_x86_32，核心作用打散数据防止分片倾斜，哈希碰撞无害；cardinality去重等对碰撞敏感场景使用MurmurHash3_x64_128扩大哈希空间降低碰撞概率。
-   需要我整理成**一页纸面试背诵极简版（MurmurHash3+分片倾斜整套）**吗？
+   

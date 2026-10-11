@@ -190,7 +190,7 @@ Auto_Position: 1             # GTID 自动定位
 <li><strong>从库只读</strong>：从库 <code>read_only=ON</code>，防止误写破坏复制</li>
 <li><strong>GTID 复制</strong>：用 <code>MASTER_AUTO_POSITION=1</code> 免去手动记录 binlog 位置，主从切换更简单</li>
 </ol>
-<h2 id="_5">五、面试简述</h2>
+<h2 id="_5">五、要点速览</h2>
 <blockquote>
 <p><strong>读写分离与主从延迟</strong>：搭建 1 主 1 从，主库开 binlog+GTID，从库 <code>mysqldump</code> 拉全量后 <code>MASTER_AUTO_POSITION=1</code> 建立复制。实测写主库后从库约 1~6ms 可见，<code>Replica_IO_Running/SQL_Running</code> 均 Yes；读主库 100% 强一致，读从库为最终一致（延迟窗口内可能读旧值）。读写分离把读压力分流到从库（并发 50 下从库读 QPS 超 1 万），但引入主从延迟——强一致场景读主库，可容忍最终一致场景读从库，并监控 <code>Seconds_Behind_Source</code>。</p>
 </blockquote>
@@ -207,7 +207,7 @@ Auto_Position: 1             # GTID 自动定位
       <li class="lv3"><a href="#3-vs-replicationconsistency">3. 强一致 vs 最终一致（/replication/consistency）</a></li>
       <li class="lv3"><a href="#4-replicationbench">4. 读写分离读吞吐对比（/replication/bench）</a></li>
       <li class="lv2"><a href="#_4">四、生产避坑准则</a></li>
-      <li class="lv2"><a href="#_5">五、面试简述</a></li>
+      <li class="lv2"><a href="#_5">五、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

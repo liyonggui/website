@@ -488,7 +488,7 @@ curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><
 <li>如果你用的是 data_tier（&gt;=7.10），脚本需要改用 data_tier 的 settings 字段。</li>
 </ul>
 <hr />
-<h2 id="3">十四、面试 / 总结要点（3 分钟版）</h2>
+<h2 id="3">十四、总结要点（3 分钟版）</h2>
 <ul>
 <li>ES 使用 MurmurHash3（32-bit）对 routing 字符串的 UTF-8 bytes 做哈希，取模得到 shard id；主分片数量一旦创建便不能随意修改。  </li>
 <li>自定义 routing 导致热点是常见问题；解决方式通常为：路由二次打散 / 新建索引 + Reindex 并 atomic alias 切换（零停机）；rebalance 无法改变文档所属分片（只会搬迁分片到别的节点）。  </li>
@@ -527,7 +527,7 @@ curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><
       <li class="lv2"><a href="#72">十一、快照 / 备份（7.2 实务）</a></li>
       <li class="lv2"><a href="#_5">十二、运维监控与告警（新增建议，便于生产）</a></li>
       <li class="lv2"><a href="#_6">十三、常见操作脚本与修正（示例）</a></li>
-      <li class="lv2"><a href="#3">十四、面试 / 总结要点（3 分钟版）</a></li>
+      <li class="lv2"><a href="#3">十四、总结要点（3 分钟版）</a></li>
       <li class="lv2"><a href="#_7">附：我已具体修改的地方（供审计）</a></li>
     </ul>
   </nav>

@@ -231,7 +231,7 @@
 <li>乐观锁适合<strong>读多写少</strong>；冲突率高时应考虑 <code>atomic</code> 或消息队列削峰。</li>
 <li>无论哪种策略，最终都要配合<strong>唯一约束</strong>（如订单号唯一）兜底防重复。</li>
 </ol>
-<h2 id="_7">五、面试简述</h2>
+<h2 id="_7">五、要点速览</h2>
 <blockquote>
 <p><strong>超卖问题</strong>：高并发下先查后减会超卖。用 <code>UPDATE ... WHERE stock &gt;= n</code> 条件更新，借助 InnoDB 行锁保证原子性，单条 SQL 杜绝超卖且性能最优；对比悲观锁（FOR UPDATE，并发受限）和乐观锁（版本号+重试，适合读多写少）。</p>
 </blockquote>
@@ -250,7 +250,7 @@
       <li class="lv3"><a href="#_4">关键结论</a></li>
       <li class="lv3"><a href="#_5">补充：多行分布式压测（消除单行热点干扰）</a></li>
       <li class="lv2"><a href="#_6">四、生产建议</a></li>
-      <li class="lv2"><a href="#_7">五、面试简述</a></li>
+      <li class="lv2"><a href="#_7">五、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

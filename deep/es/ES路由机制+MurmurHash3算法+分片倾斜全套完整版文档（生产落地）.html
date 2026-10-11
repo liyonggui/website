@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地） · 小番茄程序猿</title>
+<title>ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地） · 小番茄程序猿</title>
 <meta name="description" content="java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…"/>
 <meta name="keywords" content="Elasticsearch, 分库分表, es"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地） · 小番茄程序猿" />
+<meta property="og:title" content="ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地） · 小番茄程序猿" />
 <meta property="og:description" content="java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）", "description": "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…", "url": "https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-02", "keywords": "Elasticsearch, 分库分表, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）", "description": "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…", "url": "https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-02", "keywords": "Elasticsearch, 分库分表, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -51,7 +51,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）</h1>
+    <h1>ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</h1>
 <div class="meta-row"><span class="m-item">2026-08-02</span><span class="m-item">es 系列</span><span class="m-item">约 18 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a></span></div>
   </div>
   <div class="article-layout">
@@ -107,7 +107,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="2_1">2. 高频误区逐一纠正（面试必问）</h3>
+<h3 id="2_1">2. 高频误区逐一纠正（高频问题）</h3>
 <ol>
 <li>
 <p><strong>误区1：分片路由用的是128位哈希</strong>
@@ -329,7 +329,7 @@
 </code></pre></div>
 
 <hr />
-<h2 id="_3">八、面试一页纸极简背诵答案（直接口述）</h2>
+<h2 id="_3">八、一页纸极简总结</h2>
 <ol>
 <li>
 <p>ES分片路由采用<strong>MurmurHash3_x86_32 32位哈希</strong>，并非128位；128位哈希仅用于基数去重聚合。</p>
@@ -533,7 +533,7 @@
       <li class="lv3"><a href="#2">2. 核心前置结论</a></li>
       <li class="lv2"><a href="#murmurhash3">二、MurmurHash3 全网最全知识点汇总（精准避坑）</a></li>
       <li class="lv3"><a href="#1">1. 算法基础介绍</a></li>
-      <li class="lv3"><a href="#2_1">2. 高频误区逐一纠正（面试必问）</a></li>
+      <li class="lv3"><a href="#2_1">2. 高频误区逐一纠正（高频问题）</a></li>
       <li class="lv3"><a href="#3">3. 哈希碰撞通俗案例</a></li>
       <li class="lv3"><a href="#4-128">4. 为什么路由不用128位哈希降低碰撞？</a></li>
       <li class="lv3"><a href="#5-128">5. 什么时候必须用128位哈希？</a></li>
@@ -553,7 +553,7 @@
       <li class="lv3"><a href="#reindexid">Reindex脚本（基于文档内雪花ID自动拆分路由）</a></li>
       <li class="lv3"><a href="#_1">参数说明</a></li>
       <li class="lv2"><a href="#_2">七、分片倾斜线上排查命令（一键复用）</a></li>
-      <li class="lv2"><a href="#_3">八、面试一页纸极简背诵答案（直接口述）</a></li>
+      <li class="lv2"><a href="#_3">八、一页纸极简总结</a></li>
       <li class="lv2"><a href="#es_1">ES 冷热分层完整落地方案（可直接上线）</a></li>
       <li class="lv2"><a href="#_4">一、集群节点角色划分</a></li>
       <li class="lv3"><a href="#1-elasticsearchyml">1. 节点角色配置 elasticsearch.yml</a></li>
@@ -568,7 +568,7 @@
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html"><span class="rel-title">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html"><span class="rel-title">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES_分片ILM_完整终版手册-3.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</span><span class="rel-meta">es 系列</span></a></li>

@@ -120,6 +120,6 @@ replica: server_id=2, read_only=1, version=8.4.9
 6. **只读治理**：从库 `read_only+super_read_only` 双保险，防止误写。
 7. **故障演练常态化**：定期演练切换，验证切换脚本与流程，避免"纸上 HA 真宕机"。
 
-## 七、面试简述
+## 七、要点速览
 
 > **MySQL 高可用**：主从复制 + 读写分离提供**读高可用**（主库故障读切从库，可用性 100%）；**写高可用**需主从切换（STOP REPLICA → RESET REPLICA ALL → 关只读 → 重挂复制 → 应用切新主），常由 MHA/Orchestrator 自动完成（探活/选主/VIP 漂移）。关键点：从库容量要够承接故障读流量、切换前数据追平（Seconds_Behind_Source=0）、半同步复制降低 RPO、VIP 漂移让应用无感、定期故障演练。

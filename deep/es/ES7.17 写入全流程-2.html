@@ -57,7 +57,7 @@
   <div class="article-layout">
     <article class="prose">
 <h2 id="_1">文档说明</h2>
-<p>本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注<strong>使用算法、底层数据结构、磁盘存储格式、源码逻辑</strong>，适配后端面试、源码学习、性能调优使用，所有内容贴合Lucene底层及ES原生源码实现。</p>
+<p>本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注<strong>使用算法、底层数据结构、磁盘存储格式、源码逻辑</strong>，适配后端开发、源码学习、性能调优使用，所有内容贴合Lucene底层及ES原生源码实现。</p>
 <hr />
 <h2 id="_2">目录</h2>
 <ol>
@@ -86,7 +86,7 @@
 <p><a href="https://www.doubao.cn">写入全流程算法执行顺序（背诵精简版）</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">高频面试核心问答（纯算法考点）</a></p>
+<p>高频核心问答（纯考点）</p>
 </li>
 </ol>
 <hr />
@@ -214,7 +214,7 @@
 <p>Posting List：倒排链表，存储每个词条对应的文档ID、分词位置、词频等信息</p>
 </li>
 </ol>
-<h2 id="3_3">3. 词条全局排序（面试必考）</h2>
+<h2 id="3_3">3. 词条全局排序（高频考点）</h2>
 <ul>
 <li>
 <p><strong>排序算法</strong>：快速排序 + 归并排序混合排序</p>
@@ -358,7 +358,7 @@
 </li>
 </ol>
 <hr />
-<h2 id="_6">八、写入全程算法执行顺序（一字不差面试背诵版）</h2>
+<h2 id="_6">八、写入全程算法执行顺序（完整执行顺序版）</h2>
 <ol>
 <li>
 <p>文档<code>_id</code>经过<strong>MurmurHash3哈希算法</strong> 计算分片ID，确定文档归属主分片</p>
@@ -416,7 +416,7 @@
 </li>
 </ol>
 <hr />
-<h2 id="_7">九、核心面试精准问答（纯算法考点，直接背）</h2>
+<h2 id="_7">九、核心算法问答（纯考点）</h2>
 <ol>
 <li>
 <p><strong>Q：ES分片路由用什么哈希算法？</strong>
@@ -471,7 +471,7 @@ A：词条全局排序、构建FST压缩词条词典</p>
       <li class="lv2"><a href="#refresh">四、Refresh 刷新阶段【核心：倒排索引构建+排序算法】</a></li>
       <li class="lv2"><a href="#1_3">1. 分词底层算法</a></li>
       <li class="lv2"><a href="#2_4">2. 倒排索引两大核心结构</a></li>
-      <li class="lv2"><a href="#3_3">3. 词条全局排序（面试必考）</a></li>
+      <li class="lv2"><a href="#3_3">3. 词条全局排序（高频考点）</a></li>
       <li class="lv2"><a href="#4-lucene">4. 词典压缩核心算法（Lucene核心）</a></li>
       <li class="lv2"><a href="#5-posting-list">5. 倒排链表Posting List压缩算法</a></li>
       <li class="lv2"><a href="#flush-segment">五、Flush 阶段：内存Segment → 磁盘持久化【磁盘文件存储算法】</a></li>
@@ -484,8 +484,8 @@ A：词条全局排序、构建FST压缩词条词典</p>
       <li class="lv2"><a href="#3_5">3. 逻辑删除物理清理算法</a></li>
       <li class="lv2"><a href="#4-io">4. 合并IO限流算法</a></li>
       <li class="lv2"><a href="#_5">七、不同字段类型专属存储算法（精准区分）</a></li>
-      <li class="lv2"><a href="#_6">八、写入全程算法执行顺序（一字不差面试背诵版）</a></li>
-      <li class="lv2"><a href="#_7">九、核心面试精准问答（纯算法考点，直接背）</a></li>
+      <li class="lv2"><a href="#_6">八、写入全程算法执行顺序（完整执行顺序版）</a></li>
+      <li class="lv2"><a href="#_7">九、核心算法问答（纯考点）</a></li>
     </ul>
   </nav>
 </details></aside>
@@ -497,8 +497,8 @@ A：词条全局排序、构建FST压缩词条词典</p>
         <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ILM 全面实操手册（针对 ES 7.2 的合并修订版）.html"><span class="rel-title">ILM 全面实操手册（针对 ES 7.2 的合并修订版）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ILM 全面实操手册（修订版）.html"><span class="rel-title">ILM 全面实操手册（修订版）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES面试+运维命令独立速查手册（增补集群架构面试题完整版）.html"><span class="rel-title">ES面试+运维命令独立速查手册（增补集群架构面试题完整版）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html"><span class="rel-title">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES_集群架构与运维命令速查手册.html"><span class="rel-title">ES 集群架构与运维命令速查手册</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html"><span class="rel-title">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）</span><span class="rel-meta">es 系列</span></a></li>
       </ul>
     </div>
   </section>

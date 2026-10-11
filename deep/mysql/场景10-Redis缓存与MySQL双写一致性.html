@@ -195,7 +195,7 @@
 <li><strong>避免缓存穿透/击穿/雪崩</strong>：空值也缓存（防穿透）、互斥重建（防击穿）、过期时间随机（防雪崩）</li>
 <li><strong>强一致场景可缓存旁路 + 事务消息</strong>：缓存与 DB 一致性要求极高时，可用可靠消息最终一致</li>
 </ol>
-<h2 id="_5">五、面试简述</h2>
+<h2 id="_5">五、要点速览</h2>
 <blockquote>
 <p><strong>Redis 缓存 + MySQL 双写一致性</strong>：Cache Aside 模式——读先查缓存未命中查 DB 回填，写先更新 DB 再删缓存。实测：只更新 DB 不删缓存会导致缓存残留旧值（如 DB 6099、缓存仍 5999）；Cache Aside 先更新 DB 再删缓存可保证下次读回填最新值；高并发下需<strong>延迟双删</strong>或 Canal 订阅 binlog 规避"删缓存→读回填"写回旧值的窗口。缓存命中读 QPS 10432、未命中 8410，命中 P99 21ms vs 未命中 62ms。核心：写 DB 后必须删缓存，用延迟双删 + 缓存过期兜底保证最终一致。</p>
 </blockquote>
@@ -213,7 +213,7 @@
       <li class="lv3"><a href="#4-cachedelay-double-delete">4. 延迟双删（/cache/delay-double-delete）</a></li>
       <li class="lv3"><a href="#5-vs-cachebench">5. 缓存命中 vs 未命中吞吐（/cache/bench）</a></li>
       <li class="lv2"><a href="#_4">四、生产避坑准则</a></li>
-      <li class="lv2"><a href="#_5">五、面试简述</a></li>
+      <li class="lv2"><a href="#_5">五、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

@@ -145,7 +145,7 @@
 <li><strong>单条多值 SQL 注意长度</strong>：<code>max_allowed_packet</code> 限制单条 SQL 大小，批量别超限</li>
 <li><strong>大批量导入</strong>：可考虑 <code>LOAD DATA INFILE</code>（比 INSERT 更快），或分片并行写入</li>
 </ol>
-<h2 id="_4">五、面试简述</h2>
+<h2 id="_4">五、要点速览</h2>
 <blockquote>
 <p><strong>批量写入优化</strong>：逐条 INSERT（autocommit）每条一个事务 + 一次网络往返，1 万行耗时 229 秒、仅 43 行/秒；事务内逐条 3606 行/秒（减少提交）；单条多值 INSERT 10204 行/秒（减少 SQL 次数）；<strong>JDBC addBatch + rewriteBatchedStatements</strong> 11049 行/秒，比逐条快 <strong>257 倍</strong>。核心：批量写入减少 fsync 次数与网络往返，<code>rewriteBatchedStatements=true</code> 是关键开关，batchSize 取 500~1000 最佳。</p>
 </blockquote>
@@ -158,7 +158,7 @@
       <li class="lv2"><a href="#_2">二、四种写入方式</a></li>
       <li class="lv2"><a href="#1-batchsize500">三、实测结果（1 万行，batchSize=500）</a></li>
       <li class="lv2"><a href="#_3">四、生产避坑准则</a></li>
-      <li class="lv2"><a href="#_4">五、面试简述</a></li>
+      <li class="lv2"><a href="#_4">五、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

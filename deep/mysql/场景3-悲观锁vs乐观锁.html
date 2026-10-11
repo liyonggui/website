@@ -192,7 +192,7 @@
 - <strong>乐观锁的吞吐优势只在冲突率低时成立</strong>；冲突率 &gt; 一定阈值时，重试风暴反而拖垮系统。
 - <strong>悲观锁的死锁风险</strong>可通过固定加锁顺序、缩短事务时长规避。
 - 生产中最优往往是<strong>原子 UPDATE</strong>（场景1已证明），悲观/乐观锁用于更复杂的读改写逻辑。</p>
-<h2 id="_6">六、面试简述</h2>
+<h2 id="_6">六、要点速览</h2>
 <blockquote>
 <p><strong>悲观锁 vs 乐观锁</strong>：悲观锁 <code>FOR UPDATE</code> 先锁后改，靠 InnoDB 行锁保证一致性，高并发下阻塞排队（实测锁等待 = 持锁时长），可触发死锁（InnoDB 自动回滚一个事务，错误码 1213）；乐观锁用 version CAS，无锁等待吞吐高，但高并发冲突率飙升导致大量失败（实测冲突 4934 次、失败 10000）。选型看冲突率：冲突高用悲观锁/原子 UPDATE，冲突低用乐观锁。</p>
 </blockquote>
@@ -211,7 +211,7 @@
       <li class="lv2"><a href="#lockcompare">四、并发度性能对比（实测 /lock/compare）</a></li>
       <li class="lv3"><a href="#_4">关键结论</a></li>
       <li class="lv2"><a href="#_5">五、选型建议</a></li>
-      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+      <li class="lv2"><a href="#_6">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

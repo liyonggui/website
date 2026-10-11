@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用） · 小番茄程序猿</title>
+<title>ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用） · 小番茄程序猿</title>
 <meta name="description" content="本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…"/>
 <meta name="keywords" content="Elasticsearch, 分库分表, es"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用） · 小番茄程序猿" />
+<meta property="og:title" content="ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用） · 小番茄程序猿" />
 <meta property="og:description" content="本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）", "description": "本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…", "url": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-04", "keywords": "Elasticsearch, 分库分表, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）", "description": "本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…", "url": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-04", "keywords": "Elasticsearch, 分库分表, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -51,13 +51,13 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）</h1>
+    <h1>ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）</h1>
 <div class="meta-row"><span class="m-item">2026-08-04</span><span class="m-item">es 系列</span><span class="m-item">约 17 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
 <h2 id="_1">前言</h2>
-<p>本文打通ES<strong>文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障</strong>全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：<strong>路由数据倾斜（分片内数据不均）、节点分片分配倾斜（分片个数摆放不均）</strong>，全覆盖日常开发、面试、线上运维场景。</p>
+<p>本文打通ES<strong>文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障</strong>全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：<strong>路由数据倾斜（分片内数据不均）、节点分片分配倾斜（分片个数摆放不均）</strong>，全覆盖日常开发、线上运维场景。</p>
 <hr />
 <h2 id="es">一、ES核心路由底层原理（必背）</h2>
 <h2 id="1">1. 路由寻址固定公式（源码不可变）</h2>
@@ -94,7 +94,7 @@
 </li>
 </ul>
 <hr />
-<h2 id="murmurhash3">二、MurmurHash3 哈希算法全解（面试高频）</h2>
+<h2 id="murmurhash3">二、MurmurHash3 哈希算法全解（高频）</h2>
 <h2 id="1_1">1. 两个版本及使用场景</h2>
 <table>
 <thead>
@@ -373,11 +373,11 @@
 </li>
 </ol>
 <hr />
-<h2 id="3_4">八、面试3分钟口述万能总结（直接背诵）</h2>
+<h2 id="3_4">八、3 分钟要点总结</h2>
 <p>ES分片分为路由数据倾斜和节点分配倾斜两类。首先ES路由采用MurmurHash3_32位哈希，核心作用是打散有序ID避免倾斜，哈希碰撞无害；业务为了减少跨分片查询，使用日期、地区做自定义路由，会产生热点分片倾斜，解决方案是路由二次打散。</p>
 <p>然后ES分片分配依靠两大均衡算法，只能均衡节点上分片的摆放个数，解决不了分片内部的数据容量倾斜。同时ES支持原生冷热分层ILM，自动迁移冷热数据节约成本，但冷热分层无法解决热数据热点倾斜。</p>
 <p>另外ES主分片创建后不可修改，所以前期一定要预估3年数据量设置充足分片，宁可多不可少；和MySQL分库分表、Redis集群分片逻辑完全一致，热点分片问题统一通过分片键二次打散解决。</p>
-<h2 id="es_2">ES 路由&amp;分片全套面试极简背诵提纲（纯考点，快速记忆）</h2>
+<h2 id="es_2">ES 路由&amp;分片速记提纲</h2>
 <h2 id="_11">一、路由核心原理</h2>
 <ol>
 <li>分片路由公式：<code>shardId = abs(Murmur3Hash(routing/_id)) % 主分片数</code></li>
@@ -417,7 +417,7 @@
 10. 分片迁移太慢：调高迁入迁出并发、放开恢复带宽限速
 11. 分片个数均衡、单分片容量爆满：路由热点倾斜，做路由打散重建索引
 12. 高峰期IO暴涨：临时关闭集群分片自动均衡</p>
-<div class="codehilite"><pre><span></span><code>## 七、跨中间件通用思想（面试拔高）
+<div class="codehilite"><pre><span></span><code>## 七、跨中间件通用思想（进阶）
 </code></pre></div>
 
 <ol>
@@ -440,7 +440,7 @@
       <li class="lv2"><a href="#1">1. 路由寻址固定公式（源码不可变）</a></li>
       <li class="lv2"><a href="#2">2. 核心硬性规则</a></li>
       <li class="lv2"><a href="#3">3. 路由字符串长度规范（避坑）</a></li>
-      <li class="lv2"><a href="#murmurhash3">二、MurmurHash3 哈希算法全解（面试高频）</a></li>
+      <li class="lv2"><a href="#murmurhash3">二、MurmurHash3 哈希算法全解（高频）</a></li>
       <li class="lv2"><a href="#1_1">1. 两个版本及使用场景</a></li>
       <li class="lv2"><a href="#2_1">2. 哈希碰撞核心答疑</a></li>
       <li class="lv2"><a href="#3_1">3. 高频误区纠正</a></li>
@@ -466,8 +466,8 @@
       <li class="lv2"><a href="#_10">六、线上分片故障一页速查手册（现象→命令→解决方案）</a></li>
       <li class="lv2"><a href="#dsl">高峰期应急常用DSL</a></li>
       <li class="lv2"><a href="#esmysqlrediskafka">七、全技术栈通用分片思想（ES+MySQL+Redis+Kafka）</a></li>
-      <li class="lv2"><a href="#3_4">八、面试3分钟口述万能总结（直接背诵）</a></li>
-      <li class="lv2"><a href="#es_2">ES 路由&amp;amp;分片全套面试极简背诵提纲（纯考点，快速记忆）</a></li>
+      <li class="lv2"><a href="#3_4">八、3 分钟要点总结</a></li>
+      <li class="lv2"><a href="#es_2">ES 路由&amp;amp;分片速记提纲</a></li>
       <li class="lv2"><a href="#_11">一、路由核心原理</a></li>
       <li class="lv2"><a href="#3_5">八、3分钟口述总结（背这个即可应对连环提问）</a></li>
     </ul>
@@ -479,7 +479,7 @@
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html"><span class="rel-title">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html"><span class="rel-title">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES_分片ILM_完整终版手册-3.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</span><span class="rel-meta">es 系列</span></a></li>

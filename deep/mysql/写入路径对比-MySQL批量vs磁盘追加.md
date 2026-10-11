@@ -89,6 +89,6 @@ curl "http://localhost:8080/write-compare/scale?perThreadRows=50000&maxConcurren
 
 `executeBatch()` 在 `rewriteBatchedStatements` 下对成功批次返回 `SUCCESS_NO_INFO (-2)`，导致累加行数为负。修复：判断 `v > 0 || v == SUCCESS_NO_INFO` 视为批次成功，按批次数累加。
 
-## 八、面试简述
+## 八、要点速览
 
 > **MySQL 批量 vs 磁盘追加写入**：同样的数据，MySQL 批量 12 万行/s，磁盘顺序追加 169 万行/s（快 14 倍）。加大并发找拐点：MySQL 并发 8 达峰值（21.5 万行/s），32 时降到 12 万（连接池/锁/刷盘瓶颈）；磁盘低并发即达带宽极限。启示：高吞吐写入优先磁盘追加，落库场景用 batch + 大事务 + rewriteBatchedStatements。

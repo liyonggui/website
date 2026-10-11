@@ -176,7 +176,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/pool/impact?
 <li><strong>连接有效性校验</strong>：<code>connectionTestQuery=SELECT 1</code> 防高并发拿到失效连接。</li>
 <li><strong>多节点多数据源</strong>：分库/读写分离时每个数据源独立调优。</li>
 </ol>
-<h2 id="_5">六、面试简述</h2>
+<h2 id="_5">六、要点速览</h2>
 <blockquote>
 <p><strong>连接池调优（HikariCP）</strong>：<code>maximumPoolSize</code> 不是越大越好，过小高并发排队/超时（实测池2吞吐186、68失败），适中（20）无失败 1776，足够（50）3831（20倍）且延迟极低。调优先定位瓶颈（连接等待/超时 vs MySQL CPU），池大小匹配并发度并 &lt; max_connections，核心是短连接+快事务+少等待，而非堆池大小。<code>connectionTimeout</code> 防挂死、<code>maxLifetime &lt; wait_timeout</code> 防复用失效连接、<code>connectionTestQuery</code> 防拿到失效连接。</p>
 </blockquote>
@@ -190,7 +190,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/pool/impact?
       <li class="lv2"><a href="#_3">三、演示接口</a></li>
       <li class="lv2"><a href="#50-10ms">四、实测结果（并发 50，持有连接 10ms）</a></li>
       <li class="lv2"><a href="#_4">五、调优准则</a></li>
-      <li class="lv2"><a href="#_5">六、面试简述</a></li>
+      <li class="lv2"><a href="#_5">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

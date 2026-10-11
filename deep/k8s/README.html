@@ -276,7 +276,7 @@ sudo<span class="w"> </span>bash<span class="w"> </span><span class="m">90</span
 <ul>
 <li>演练 6 里"从 dbg Pod 连 redis"如果<strong>收紧前后都通</strong>，说明你的 CNI 根本没执行 NetworkPolicy。这不叫失败，这叫你躲过了一次生产事故——很多集群（vanilla flannel）就是这个状态，而所有人都以为有隔离。</li>
 <li>演练 7 我只演示到"删 Pod 数据在 + 物理躺在本地目录"，<strong>没有真删 PVC</strong>。删完 <code>redis-0</code> 会永久 Pending（StatefulSet 不重建 PVC，要人手再造），单机场景下这个操作风险不高但收益也没有，你自己判断。</li>
-<li>演练 3 和 8 是面试里区分度最高的两个，因为它们的答案不能靠背，必须见过现象。</li>
+<li>演练 3 和 8 区分度最高，因为它们的答案不能靠背，必须见过现象。</li>
 <li>本机（k3s v1.36.5 + WSL2，2026-10-07 实跑 1→8）测出五条修正，换环境时按同样方法重验，别直接信：</li>
 <li><strong>演练 3 第一次跑是空跑</strong>，一次重启都没有。根因不在脚本，在 <code>10-configmap.yaml</code>：nginx 写成前缀 <code>location /</code> 时 <code>/nope</code> 也返回 200，探针永远绿。已改成精确匹配 <code>location = /</code>（验证过：<code>/</code>→200，<code>/nope</code>→404）。等待逻辑也改成按 <code>RESTARTS&gt;=2</code> 采样，而不是死睡 25s——实测首次杀掉落在 22~25s，25s 是压线，经常什么都抓不到。</li>
 <li><strong>取证管道原本是结构性空管道</strong>：<code>kubectl describe pod -l app=web</code> 命中多个对象时<strong>整段 <code>Events:</code> 都不打印</strong>（实测 256 行输出里没有这个字段）。演练 3 改成按 Pod 名字 describe，演练 5 改成 <code>kubectl get events --sort-by=.lastTimestamp --field-selector reason=FailedScheduling</code>，两处现在都能打出真实事件行。</li>
@@ -395,7 +395,7 @@ sudo<span class="w"> </span>bash<span class="w"> </span><span class="m">99</span
 
 <p>卸完在 Windows 上执行 <code>wsl --shutdown</code> 把内存真正还回去——这就是我们前面说的"按需启停"形态：不用的时候 vmmem 直接消失。</p>
 <p>下一步按你的目的挑：</p>
-<p>想<strong>动手加深</strong>，把 <code>20-deployment.yaml</code> 换成你真实项目的镜像（改末尾那 5 处），跑通"改代码→CI 出镜像→改 tag→<code>kubectl rollout undo</code> 回滚"这一整条链路，这是最能沉淀成简历素材的一段。想<strong>换个更轻的底座</strong>，同样的 manifests 在 kind 上完全可用（kind 需要的是 docker，也就是你上一轮定的裸 WSL2 + docker-ce，不用额外 VM）。想<strong>整理成面试口径</strong>，我建议把演练 3、5、8 各写成一页"现象→定位→根因→修复→预防"，这三条比"我会写 Deployment YAML"有说服力得多。</p>
+<p>想<strong>动手加深</strong>，把 <code>20-deployment.yaml</code> 换成你真实项目的镜像（改末尾那 5 处），跑通"改代码→CI 出镜像→改 tag→<code>kubectl rollout undo</code> 回滚"这一整条链路，这是最能沉淀成简历素材的一段。想<strong>换个更轻的底座</strong>，同样的 manifests 在 kind 上完全可用（kind 需要的是 docker，也就是你上一轮定的裸 WSL2 + docker-ce，不用额外 VM）。想<strong>整理成复盘文档</strong>，我建议把演练 3、5、8 各写成一页"现象→定位→根因→修复→预防"，这三条比"我会写 Deployment YAML"有说服力得多。</p>
     </article>
     <aside class="toc-side"><details class="toc" open>
   <summary>目录</summary>

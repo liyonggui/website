@@ -100,6 +100,6 @@ trx:   [id=..., state=RUNNING]            ← 事务状态
 | 插入意向锁 | `/innodb-lock/insert-intention` | ✅ |
 | 锁等待诊断 | `/innodb-lock/diagnose` | ✅ |
 
-## 八、面试简述
+## 八、要点速览
 
 > **InnoDB 锁完整体系**：行锁分 S（共享）/X（排他），S/S 兼容、S/X 与 X/X 互斥（实测 X/X、S/X 阻塞 1.5s，S/S 立即）；行锁前加表级意向锁（IS/IX），IX/IX 兼容、S 与 IX 冲突。锁分记录锁、间隙锁、Next-Key Lock：主键等值只锁记录，非唯一索引/范围查询锁间隙防幻读，无索引条件锁全表。普通 SELECT 走 MVCC 快照读不加锁，FOR UPDATE 走当前读加锁（实测快照读读旧值、当前读读最新值）。

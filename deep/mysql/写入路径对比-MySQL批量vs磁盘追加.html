@@ -181,7 +181,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/write-compar
 </ol>
 <h2 id="executebatch">七、踩坑记录（executeBatch 返回负数）</h2>
 <p><code>executeBatch()</code> 在 <code>rewriteBatchedStatements</code> 下对成功批次返回 <code>SUCCESS_NO_INFO (-2)</code>，导致累加行数为负。修复：判断 <code>v &gt; 0 || v == SUCCESS_NO_INFO</code> 视为批次成功，按批次数累加。</p>
-<h2 id="_8">八、面试简述</h2>
+<h2 id="_8">八、要点速览</h2>
 <blockquote>
 <p><strong>MySQL 批量 vs 磁盘追加写入</strong>：同样的数据，MySQL 批量 12 万行/s，磁盘顺序追加 169 万行/s（快 14 倍）。加大并发找拐点：MySQL 并发 8 达峰值（21.5 万行/s），32 时降到 12 万（连接池/锁/刷盘瓶颈）；磁盘低并发即达带宽极限。启示：高吞吐写入优先磁盘追加，落库场景用 batch + 大事务 + rewriteBatchedStatements。</p>
 </blockquote>
@@ -200,7 +200,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/write-compar
       <li class="lv2"><a href="#_6">五、核心结论</a></li>
       <li class="lv2"><a href="#_7">六、工程要点</a></li>
       <li class="lv2"><a href="#executebatch">七、踩坑记录（executeBatch 返回负数）</a></li>
-      <li class="lv2"><a href="#_8">八、面试简述</a></li>
+      <li class="lv2"><a href="#_8">八、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

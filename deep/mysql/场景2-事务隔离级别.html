@@ -245,7 +245,7 @@
 <li><strong>SERIALIZABLE</strong>：全锁保证最高一致，但并发极差，仅限极强一致性且低并发场景。</li>
 <li><strong>高写并发/单行热点</strong>：可用 READ COMMITTED 换取吞吐（实测单行热点下 RC 是 RR 的 4.3 倍），但需接受不可重复读。</li>
 </ol>
-<h2 id="_8">八、面试简述</h2>
+<h2 id="_8">八、要点速览</h2>
 <blockquote>
 <p><strong>隔离级别</strong>：MySQL InnoDB 默认 REPEATABLE READ，用 MVCC 快照读同时解决脏读、不可重复读和普通读的幻读。实测对比四级别：READ UNCOMMITTED 三种异常都发生，READ COMMITTED 阻止脏读但保留不可重复读/幻读，REPEATABLE READ 全阻止，SERIALIZABLE 用锁全阻止但并发最差。核心是理解 MVCC 快照读与当前读（FOR UPDATE）的差异。</p>
 </blockquote>
@@ -268,7 +268,7 @@
       <li class="lv3"><a href="#1-5010000">单行热点（1 行、并发 50、10000 请求）</a></li>
       <li class="lv3"><a href="#_6">结论</a></li>
       <li class="lv2"><a href="#_7">七、生产建议</a></li>
-      <li class="lv2"><a href="#_8">八、面试简述</a></li>
+      <li class="lv2"><a href="#_8">八、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>
@@ -279,7 +279,7 @@
       <ul class="related-list">
         <li><a href="../../deep/mysql/场景9-InnoDB并发控制MVCC.html"><span class="rel-title">场景9：InnoDB 并发控制（MVCC 多版本并发控制）</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL原理篇.html"><span class="rel-title">MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&amp;面试版）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL-事务与锁排查治理手册.html"><span class="rel-title">MySQL（InnoDB）事务与锁排查治理手册</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/KingbaseES-锁与事务排查手册.html"><span class="rel-title">KingbaseES / PostgreSQL 锁与长事务排查手册</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>

@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Elasticsearch 分片节点分配算法 超详细详解 · 小番茄程序猿</title>
-<meta name="description" content="覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。"/>
+<meta name="description" content="覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。"/>
 <meta name="keywords" content="Elasticsearch, 分库分表, es"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="Elasticsearch 分片节点分配算法 超详细详解 · 小番茄程序猿" />
-<meta property="og:description" content="覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。" />
+<meta property="og:description" content="覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Elasticsearch 分片节点分配算法 超详细详解", "description": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。", "url": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-13", "keywords": "Elasticsearch, 分库分表, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Elasticsearch 分片节点分配算法 超详细详解", "description": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。", "url": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-13", "keywords": "Elasticsearch, 分库分表, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -56,7 +56,7 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<p>覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。</p>
+<p>覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。</p>
 <h2 id="_1">一、前置基础概念</h2>
 <h3 id="1">1. 什么是分片分配</h3>
 <p>主分片、副本分片在集群节点之间<strong>选择存放节点、搬迁、新建、恢复</strong>的全过程，由集群内置调度器 <code>AllocationService</code> 统一控制。
@@ -183,7 +183,7 @@
    cluster.routing.allocation.cluster_concurrent_rebalance: 2</code></p>
 <p>高峰期调小防IO打满，低峰期调大加速均衡。</p>
 <hr />
-<h2 id="vs">五、两种倾斜区分：路由倾斜 vs 节点分配倾斜（极易混淆，面试高频）</h2>
+<h2 id="vs">五、两种倾斜区分：路由倾斜 vs 节点分配倾斜（极易混淆，高频）</h2>
 <h2 id="1routing">类型1：<strong>业务Routing分片倾斜（分片内部数据不均）</strong></h2>
 <p>成因：自定义routing热点key（省份、日期、商家），哈希固定一个分片，单分片数据体积巨大
 分配算法<strong>解决不了这类倾斜</strong>，属于上层路由设计问题
@@ -226,7 +226,7 @@
 <li><code>tier requirement mismatch</code>：冷热层级不匹配无法分配</li>
 </ol>
 <hr />
-<h2 id="_10">八、面试极简背诵版总结</h2>
+<h2 id="_10">八、极简总结</h2>
 <ol>
 <li>ES分片分配由AllocationService管控，分<strong>过滤筛选→打分择优→分配搬迁</strong>三步；</li>
 <li>两大核心打分算法：IndexBalance（单索引分片均衡）、ShardBalance（全局总分片均衡），带固定权重；磁盘水位、机架感知、节点角色是前置准入过滤条件；</li>
@@ -494,7 +494,7 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
 <li>业务高峰收小分片搬迁并发，低峰放开均衡提速</li>
 <li>定期监控磁盘水位、分片分布，提前扩容预警</li>
 </ol>
-<p># 四、面试精简总结
+<p># 四、精简总结
 7. 分片分配失衡分两类：<strong>分片摆放数量不均（分配算法可调节解决）、分片内部数据容量倾斜（路由架构问题）</strong>；
 8. 排查优先用 allocation explain 定位未分配真实原因，磁盘水位、主副本同节点、冷热层级、节点分片上限是四大高频诱因；
 9. 可通过均衡权重、搬迁并发、均衡阈值调节收敛速度，高峰期可临时关闭rebalance防IO冲击；
@@ -516,13 +516,13 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
       <li class="lv2"><a href="#_5">三、分片分配完整决策步骤（源码执行顺序）</a></li>
       <li class="lv2"><a href="#_6">四、主分片 &amp;amp; 副本分片分配差异化规则</a></li>
       <li class="lv2"><a href="#1_1">1. 主分片选举规则</a></li>
-      <li class="lv2"><a href="#vs">五、两种倾斜区分：路由倾斜 vs 节点分配倾斜（极易混淆，面试高频）</a></li>
+      <li class="lv2"><a href="#vs">五、两种倾斜区分：路由倾斜 vs 节点分配倾斜（极易混淆，高频）</a></li>
       <li class="lv2"><a href="#1routing">类型1：业务Routing分片倾斜（分片内部数据不均）</a></li>
       <li class="lv2"><a href="#2">类型2：节点分配不均衡（分片个数摆放不均）</a></li>
       <li class="lv2"><a href="#_7">六、冷热分层下的分片分配特殊逻辑（匹配你前面方案）</a></li>
       <li class="lv2"><a href="#_8">七、常见分配异常排查命令</a></li>
       <li class="lv2"><a href="#_9">典型异常举例</a></li>
-      <li class="lv2"><a href="#_10">八、面试极简背诵版总结</a></li>
+      <li class="lv2"><a href="#_10">八、极简总结</a></li>
       <li class="lv2"><a href="#elasticsearch">Elasticsearch 分片分配异常排查&amp;amp;排障步骤手册</a></li>
       <li class="lv2"><a href="#3">前置通用排查入口（所有问题先执行这3条）</a></li>
       <li class="lv3"><a href="#1_2">1、查看集群整体分片状态</a></li>
@@ -561,8 +561,8 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html"><span class="rel-title">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html"><span class="rel-title">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html"><span class="rel-title">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html"><span class="rel-title">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
       </ul>

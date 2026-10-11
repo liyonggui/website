@@ -130,7 +130,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/gov
 <li><strong>WAF/过滤</strong>：网关层过滤 SQL 注入特征关键字。</li>
 <li><strong>审计</strong>：开启 general_log/审计，追踪可疑 SQL。</li>
 </ol>
-<h2 id="_6">六、面试简述</h2>
+<h2 id="_6">六、要点速览</h2>
 <blockquote>
 <p><strong>SQL 注入治理</strong>：字符串拼接 SQL 使恶意入参（如 <code>' OR '1'='1</code>、<code>'--</code>）绕过 WHERE 泄露全表或绕过认证。实测同一载荷拼接 SQL 泄露 100 行、参数化后 0 行。根治用 PreparedStatement 参数化，纵深防御：字段最小化（不用 SELECT *）、敏感脱敏、最小权限、WAF 过滤、输入校验。</p>
 </blockquote>
@@ -144,7 +144,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/gov
       <li class="lv2"><a href="#_3">三、演示接口</a></li>
       <li class="lv2"><a href="#_4">四、实测结果</a></li>
       <li class="lv2"><a href="#_5">五、安全治理方案</a></li>
-      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+      <li class="lv2"><a href="#_6">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

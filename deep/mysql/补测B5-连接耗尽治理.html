@@ -130,7 +130,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn/restore
 <li><strong>监控告警</strong>：<code>Threads_connected/max_connections</code> 使用率超 80% 告警。</li>
 <li><strong>限流降级</strong>：入口限流，超阈值拒绝新请求，保护数据库。</li>
 </ol>
-<h2 id="_5">六、面试简述</h2>
+<h2 id="_5">六、要点速览</h2>
 <blockquote>
 <p><strong>连接耗尽治理</strong>：并发超过 max_connections 时新连接报 Too many connections 雪崩。实测 max_connections=60 时开 200 连接，59 成功 141 失败，使用率超 100%。治理：连接池 ≤ max_connections 预留余量、耗尽杀空闲连接、快速失败、限流降级、监控 Threads_connected 使用率超 80% 告警。</p>
 </blockquote>
@@ -144,7 +144,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn/restore
       <li class="lv2"><a href="#_3">三、演示接口</a></li>
       <li class="lv2"><a href="#max_connections-60">四、实测结果（max_connections 调低到 60）</a></li>
       <li class="lv2"><a href="#_4">五、治理方案</a></li>
-      <li class="lv2"><a href="#_5">六、面试简述</a></li>
+      <li class="lv2"><a href="#_5">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

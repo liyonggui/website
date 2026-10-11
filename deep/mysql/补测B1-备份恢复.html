@@ -216,7 +216,7 @@ PITR恢复: 10000（数据全部找回）
 <li><strong>验证备份有效性</strong>：定期做恢复演练，确保备份可用（防"纸面备份"）。</li>
 <li><strong>生产用 MySQL8.4</strong>：<code>SHOW MASTER STATUS</code> 已改名 <code>SHOW BINARY LOG STATUS</code>，binlog 事件用 <code>SHOW BINLOG EVENTS</code>。</li>
 </ol>
-<h2 id="_7">八、面试简述</h2>
+<h2 id="_7">八、要点速览</h2>
 <blockquote>
 <p><strong>备份恢复（PITR）</strong>：数据安全兜底。全量备份（mysqldump/Xtrabackup）+ binlog 增量 + 时间点恢复，可把误删/误更新恢复到任意时间点。RPO 取决于备份频率与 binlog 保留期（binlog_expire_logs_seconds）。实测误删 3000 行后 PITR 恢复 10000 行全部找回。要点：binlog 必须 ON + ROW 格式、定期备份、恢复演练验证备份有效性。MySQL8.4 中 <code>SHOW MASTER STATUS</code> 改名 <code>SHOW BINARY LOG STATUS</code>。</p>
 </blockquote>
@@ -242,7 +242,7 @@ PITR恢复: 10000（数据全部找回）
       <li class="lv3"><a href="#a">本项目演示的恢复（方案 A 简化版）</a></li>
       <li class="lv3"><a href="#_5">恢复操作注意事项</a></li>
       <li class="lv2"><a href="#_6">七、工程要点</a></li>
-      <li class="lv2"><a href="#_7">八、面试简述</a></li>
+      <li class="lv2"><a href="#_7">八、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

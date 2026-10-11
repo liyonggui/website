@@ -169,7 +169,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/s
 <li><strong>生产定位</strong>：开 <code>slow_query_log</code> + <code>long_query_time</code>，用 <code>pt-query-digest</code>/<code>mysqldumpslow</code> 分析慢日志，结合 <code>performance_schema</code> 定位。</li>
 <li><strong>验证闭环</strong>：优化后必须压测对比，量化收益并回归（防止优化引入新问题）。</li>
 </ol>
-<h2 id="_6">六、面试简述</h2>
+<h2 id="_6">六、要点速览</h2>
 <blockquote>
 <p><strong>慢查询治理闭环</strong>：定位（慢日志 / performance_schema.events_statements_summary_by_digest 聚合 TOP 慢语句）→ 分析（EXPLAIN 看 type 是否 ALL、rows 扫描行数、Extra 是否有 filesort/temporary）→ 优化（加索引、避免 SELECT <em>、覆盖索引、改写 SQL）→ 验证（压测对比）。实测全表扫描型慢查询优化后 QPS 从 46 提到 10695（约 232 倍），定位信号是 </em><em>avgMs 大 + rows_examined 巨大</em>*。EXPLAIN 的 type=ALL + rows 巨大是该优化最强信号。</p>
 </blockquote>
@@ -187,7 +187,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/s
       <li class="lv3"><a href="#3-50">3. 优化前后吞吐对比（并发 50）</a></li>
       <li class="lv3"><a href="#4-diagnose">4. 定位（diagnose）</a></li>
       <li class="lv2"><a href="#_5">五、优化准则</a></li>
-      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+      <li class="lv2"><a href="#_6">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

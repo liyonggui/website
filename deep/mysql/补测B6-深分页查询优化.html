@@ -122,7 +122,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/status"
 </ol>
 <h2 id="bench">六、踩坑记录（bench 缓存失真）</h2>
 <p>最初用 20 万行数据 bench 对比，因数据全在 InnoDB buffer pool 缓存，深分页扫描也在内存完成，平均耗时被稀释到个位数 ms，深分页/游标差异失真。<strong>改用 50 万行 + 大 offset（400000）深翻后差异显著</strong>（深分页 149ms vs 游标 15ms）。</p>
-<h2 id="_5">七、面试简述</h2>
+<h2 id="_5">七、要点速览</h2>
 <blockquote>
 <p><strong>深分页优化</strong>：<code>LIMIT 大offset</code> 扫描并丢弃大量行，offset 越大越慢。实测 50 万行：深分页 offset=400000 耗时 149ms，游标分页 <code>WHERE id&gt;last_id</code> 仅 15ms，快约 31 倍。优化：游标分页（keyset 走索引）、延迟关联（先取 id 再回表）、覆盖索引、禁止深翻页。注意：小数据量+缓存会掩盖差异，需用大数据量深 offset 验证。</p>
 </blockquote>
@@ -137,7 +137,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/status"
       <li class="lv2"><a href="#50">四、实测结果（50万行）</a></li>
       <li class="lv2"><a href="#_4">五、优化方案</a></li>
       <li class="lv2"><a href="#bench">六、踩坑记录（bench 缓存失真）</a></li>
-      <li class="lv2"><a href="#_5">七、面试简述</a></li>
+      <li class="lv2"><a href="#_5">七、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

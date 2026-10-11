@@ -170,7 +170,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tunin
 <li><strong>参数变更走 my.cnf + 重启</strong>：生产环境 <code>SET GLOBAL</code> 只改运行值、重启即失效，需写进配置文件持久化。</li>
 <li><strong>先压测后上线</strong>：不同负载（读多/写多/混合）、不同硬件下最佳参数不同，务必在目标环境压测验证。</li>
 </ol>
-<h2 id="_6">六、面试简述</h2>
+<h2 id="_6">六、要点速览</h2>
 <blockquote>
 <p><strong>InnoDB 调优核心是「性能 vs 持久性」权衡</strong>。<code>innodb_flush_log_at_trx_commit</code>：1 每次提交 fsync 刷 redo（最安全最慢）、2 写 OS 缓存每秒刷、0 后台每秒刷（最快最多丢 1s）；<code>sync_binlog</code> 同理控制 binlog 刷盘。账务类保 <code>(1,1)</code> 强持久，日志类可降 <code>(2,0)/(0,0)</code> 换吞吐。<code>innodb_buffer_pool_size</code> 设 60%~75% 内存提升读命中；开启 binlog 的复制主库注意 sync_binlog 对写的影响。参数可用 <code>SET GLOBAL</code> 动态调，但生产需写 my.cnf 重启持久化，并在目标环境压测确定最佳值。</p>
 </blockquote>
@@ -184,7 +184,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tunin
       <li class="lv2"><a href="#_3">三、动态调参演示接口</a></li>
       <li class="lv2"><a href="#_4">四、实测结果与趋势</a></li>
       <li class="lv2"><a href="#_5">五、调优准则</a></li>
-      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+      <li class="lv2"><a href="#_6">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

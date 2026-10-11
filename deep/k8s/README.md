@@ -197,7 +197,7 @@ sudo bash 90-fault-drills.sh 1
 
 - 演练 6 里"从 dbg Pod 连 redis"如果**收紧前后都通**，说明你的 CNI 根本没执行 NetworkPolicy。这不叫失败，这叫你躲过了一次生产事故——很多集群（vanilla flannel）就是这个状态，而所有人都以为有隔离。
 - 演练 7 我只演示到"删 Pod 数据在 + 物理躺在本地目录"，**没有真删 PVC**。删完 `redis-0` 会永久 Pending（StatefulSet 不重建 PVC，要人手再造），单机场景下这个操作风险不高但收益也没有，你自己判断。
-- 演练 3 和 8 是面试里区分度最高的两个，因为它们的答案不能靠背，必须见过现象。
+- 演练 3 和 8 区分度最高，因为它们的答案不能靠背，必须见过现象。
 - 本机（k3s v1.36.5 + WSL2，2026-10-07 实跑 1→8）测出五条修正，换环境时按同样方法重验，别直接信：
   1. **演练 3 第一次跑是空跑**，一次重启都没有。根因不在脚本，在 `10-configmap.yaml`：nginx 写成前缀 `location /` 时 `/nope` 也返回 200，探针永远绿。已改成精确匹配 `location = /`（验证过：`/`→200，`/nope`→404）。等待逻辑也改成按 `RESTARTS>=2` 采样，而不是死睡 25s——实测首次杀掉落在 22~25s，25s 是压线，经常什么都抓不到。
   2. **取证管道原本是结构性空管道**：`kubectl describe pod -l app=web` 命中多个对象时**整段 `Events:` 都不打印**（实测 256 行输出里没有这个字段）。演练 3 改成按 Pod 名字 describe，演练 5 改成 `kubectl get events --sort-by=.lastTimestamp --field-selector reason=FailedScheduling`，两处现在都能打出真实事件行。
@@ -255,5 +255,5 @@ sudo bash 99-cleanup.sh all    # 连 k3s 一起卸（官方卸载脚本，不要
 
 下一步按你的目的挑：
 
-想**动手加深**，把 `20-deployment.yaml` 换成你真实项目的镜像（改末尾那 5 处），跑通"改代码→CI 出镜像→改 tag→`kubectl rollout undo` 回滚"这一整条链路，这是最能沉淀成简历素材的一段。想**换个更轻的底座**，同样的 manifests 在 kind 上完全可用（kind 需要的是 docker，也就是你上一轮定的裸 WSL2 + docker-ce，不用额外 VM）。想**整理成面试口径**，我建议把演练 3、5、8 各写成一页"现象→定位→根因→修复→预防"，这三条比"我会写 Deployment YAML"有说服力得多。
+想**动手加深**，把 `20-deployment.yaml` 换成你真实项目的镜像（改末尾那 5 处），跑通"改代码→CI 出镜像→改 tag→`kubectl rollout undo` 回滚"这一整条链路，这是最能沉淀成简历素材的一段。想**换个更轻的底座**，同样的 manifests 在 kind 上完全可用（kind 需要的是 docker，也就是你上一轮定的裸 WSL2 + docker-ce，不用额外 VM）。想**整理成复盘文档**，我建议把演练 3、5、8 各写成一页"现象→定位→根因→修复→预防"，这三条比"我会写 Deployment YAML"有说服力得多。
 

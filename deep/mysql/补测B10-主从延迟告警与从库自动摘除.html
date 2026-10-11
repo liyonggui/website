@@ -154,7 +154,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/check?th
 </ol>
 <h2 id="_5">六、踩坑记录（延迟不显示）</h2>
 <p>最初 simulate 只设 <code>SOURCE_DELAY</code> 但无写流量，<code>Seconds_Behind_Source=0</code>（无事件待应用）。<strong>需往主库写数据制造复制流量</strong>，并等待延迟累计，延迟才真实体现（实测设置10s、等待约7s后延迟显示7s）。</p>
-<h2 id="_6">七、面试简述</h2>
+<h2 id="_6">七、要点速览</h2>
 <blockquote>
 <p><strong>主从延迟告警与从库自动摘除</strong>：读写分离下从库延迟会导致读过期数据。实测模拟延迟10s，<code>Seconds_Behind_Source</code> 累计到7s，超过阈值5s后自动摘除从库（读全部回主库），恢复后自动重新挂载。要点：监控 <code>Seconds_Behind_Source</code>、超阈值告警+摘除、恢复自动挂载；注意延迟只在有复制流量时体现。</p>
 </blockquote>
@@ -169,7 +169,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/check?th
       <li class="lv2"><a href="#10s5s">四、实测结果（模拟延迟10s，阈值5s）</a></li>
       <li class="lv2"><a href="#_4">五、工程要点</a></li>
       <li class="lv2"><a href="#_5">六、踩坑记录（延迟不显示）</a></li>
-      <li class="lv2"><a href="#_6">七、面试简述</a></li>
+      <li class="lv2"><a href="#_6">七、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

@@ -201,7 +201,7 @@
 <li><strong>分片数量预规划</strong>：扩容困难（rehash），上线前评估未来数据量，预留分片数</li>
 <li><strong>禁止 ID 取模/时间分片</strong>：热点数据分散、锁冲突不解决（详见场景4文档）</li>
 </ol>
-<h2 id="_5">五、面试简述</h2>
+<h2 id="_5">五、要点速览</h2>
 <blockquote>
 <p><strong>分库分表</strong>：按路由键（如 user_id % N）把单表数据物理拆分到多个分表，缩小索引范围、缩短锁持有时间、拆分锁竞争区间。实测 8 万行均匀分布到 4 个分表，精确路由查询只扫单表（QPS 790），全分片扫描遍历所有分表（QPS 166，快 4.8 倍）；跨分片 COUNT/SUM 需分表分别算再合并。核心：路由键必须带、精确路由优先、避免跨分片查询/事务，否则分片反而增加复杂度。</p>
 </blockquote>
@@ -350,7 +350,7 @@
 <li><strong>多数据源路由</strong>：应用层需按路由键选数据源 + 选表，路由逻辑要集中封装</li>
 <li><strong>扩容代价大</strong>：分库分表后扩容需 rehash 迁移，上线前预留足够分片数</li>
 </ol>
-<h2 id="65">6.5 面试简述（分库分表补强）</h2>
+<h2 id="65">6.5 要点速览（分库分表补强）</h2>
 <blockquote>
 <p><strong>分库分表</strong>：单表拆到 2 个独立 MySQL 实例（分库），每库再分 4 表（分表），两级路由（<code>user_id%4</code> 分表、<code>user_id/4%2</code> 分库）。实测 8 万行均匀分布到 8 个物理分片；精确路由只在 1 库 1 表查询（QPS 8624），跨库全扫广播 2 库 8 表（QPS 4222，快 2 倍）。跨库聚合需分别连每个分库再合并。分库分表把 IO/连接/锁竞争拆到多个实例，是终极方案，但跨库事务、聚合、扩容成本高，必须路由键精确、两级键互补。</p>
 </blockquote>
@@ -367,7 +367,7 @@
       <li class="lv3"><a href="#3-shardaggregate">3. 跨分片聚合（/shard/aggregate）</a></li>
       <li class="lv3"><a href="#4-shardbench">4. 并发吞吐对比（/shard/bench）</a></li>
       <li class="lv2"><a href="#_4">四、生产避坑准则</a></li>
-      <li class="lv2"><a href="#_5">五、面试简述</a></li>
+      <li class="lv2"><a href="#_5">五、要点速览</a></li>
       <li class="lv2"><a href="#_6">六、分库 + 分表完整结合（补强）</a></li>
       <li class="lv2"><a href="#61">6.1 背景</a></li>
       <li class="lv2"><a href="#62">6.2 两级路由规则</a></li>
@@ -377,7 +377,7 @@
       <li class="lv3"><a href="#3-dbshardaggregate">3. 跨库聚合（/dbshard/aggregate）</a></li>
       <li class="lv3"><a href="#4-dbshardbench">4. 并发吞吐对比（/dbshard/bench）</a></li>
       <li class="lv2"><a href="#64">6.4 分库分表生产要点</a></li>
-      <li class="lv2"><a href="#65">6.5 面试简述（分库分表补强）</a></li>
+      <li class="lv2"><a href="#65">6.5 要点速览（分库分表补强）</a></li>
     </ul>
   </nav>
 </details></aside>

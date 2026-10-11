@@ -251,7 +251,7 @@ trx:   [id=..., state=RUNNING]            ← 事务状态
 </tr>
 </tbody>
 </table>
-<h2 id="_2">八、面试简述</h2>
+<h2 id="_2">八、要点速览</h2>
 <blockquote>
 <p><strong>InnoDB 锁完整体系</strong>：行锁分 S（共享）/X（排他），S/S 兼容、S/X 与 X/X 互斥（实测 X/X、S/X 阻塞 1.5s，S/S 立即）；行锁前加表级意向锁（IS/IX），IX/IX 兼容、S 与 IX 冲突。锁分记录锁、间隙锁、Next-Key Lock：主键等值只锁记录，非唯一索引/范围查询锁间隙防幻读，无索引条件锁全表。普通 SELECT 走 MVCC 快照读不加锁，FOR UPDATE 走当前读加锁（实测快照读读旧值、当前读读最新值）。</p>
 </blockquote>
@@ -267,7 +267,7 @@ trx:   [id=..., state=RUNNING]            ← 事务状态
       <li class="lv2"><a href="#innodb-lockdiagnose">五、锁等待诊断（/innodb-lock/diagnose）</a></li>
       <li class="lv2"><a href="#isix">六、意向锁（IS/IX）兼容矩阵（理论）</a></li>
       <li class="lv2"><a href="#_1">七、完整锁技术点清单</a></li>
-      <li class="lv2"><a href="#_2">八、面试简述</a></li>
+      <li class="lv2"><a href="#_2">八、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

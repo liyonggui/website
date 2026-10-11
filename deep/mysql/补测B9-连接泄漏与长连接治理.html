@@ -139,7 +139,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/co
 <li><strong>快速失败</strong>：连接池 <code>connectionTimeout</code> 快速失败，不无限等待。</li>
 <li><strong>代码审查</strong>：排查所有获取连接未释放的路径（异常分支尤其容易漏）。</li>
 </ol>
-<h2 id="_6">六、面试简述</h2>
+<h2 id="_6">六、要点速览</h2>
 <blockquote>
 <p><strong>连接泄漏治理</strong>：获取连接不释放会慢性耗尽连接池，最终 Too many connections 雪崩。实测复用（try-with-resources）50 次连接数 0 增长，泄漏 50 个连接数 +50。治理：try-with-resources 保证释放、连接池设 max-lifetime/leakDetectionThreshold、监控 Threads_connected 使用率超 80% 告警、快速失败。</p>
 </blockquote>
@@ -153,7 +153,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/co
       <li class="lv2"><a href="#_3">三、演示接口</a></li>
       <li class="lv2"><a href="#_4">四、实测结果</a></li>
       <li class="lv2"><a href="#_5">五、治理方案</a></li>
-      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+      <li class="lv2"><a href="#_6">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

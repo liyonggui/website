@@ -450,7 +450,7 @@
 <li><strong>避免 IS NOT NULL 大范围</strong>：非空字段筛选优先用等值/范围，而非 IS NOT NULL</li>
 <li><strong>用 EXPLAIN 兜底</strong>：上线前检查 <code>type</code> 是否为 <code>ALL</code>、<code>key</code> 是否为 null</li>
 </ol>
-<h2 id="_3">五、面试简述</h2>
+<h2 id="_3">五、要点速览</h2>
 <blockquote>
 <p><strong>索引失效九大场景</strong>：① 函数操作（<code>LEFT(name)</code> 包裹索引列）；② 隐式类型转换（VARCHAR 字段用数字比较）；③ like 前导通配符（<code>LIKE '%xx'</code>）；④ or 连接（部分条件无法走索引时整体失效）；⑤ 联合索引不满足最左前缀；⑥ 联合索引范围条件之后的列失效；⑦ 不等值判断（<code>!=</code>/<code>&lt;&gt;</code>/<code>NOT IN</code>/<code>NOT LIKE</code>）；⑧ 索引列算术运算（<code>id+1&gt;2</code>）；⑨ <code>IS NOT NULL</code>。实测 20 万行数据下，失效时全表扫描（type=ALL）单次约 50-200ms，生效时走索引（type=ref/range）约 0-1ms，相差约百倍；并发 50 下 QPS 从 21810 降到 8643、P99 从 22ms 升到 57ms。生产用 EXPLAIN 检查 <code>type</code>/<code>key</code>，杜绝全表扫描。</p>
 </blockquote>
@@ -472,7 +472,7 @@
       <li class="lv3"><a href="#9-is-not-null-index-invalidis-not-null">9. IS NOT NULL 判断导致索引失效（/index-invalid/is-not-null）</a></li>
       <li class="lv2"><a href="#vs-index-invalidbench">三、并发压测：索引失效 vs 生效（/index-invalid/bench）</a></li>
       <li class="lv2"><a href="#_2">四、生产避坑准则</a></li>
-      <li class="lv2"><a href="#_3">五、面试简述</a></li>
+      <li class="lv2"><a href="#_3">五、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>
@@ -483,7 +483,7 @@
       <ul class="related-list">
         <li><a href="../../deep/mysql/场景12-分布式锁.html"><span class="rel-title">场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL原理篇.html"><span class="rel-title">MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&amp;面试版）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/连接层参数详细辨析.html"><span class="rel-title">MySQL 连接层参数详细辨析</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测B9：连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>

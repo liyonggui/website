@@ -21,7 +21,7 @@ draft: false
 > 一句话：**把"工具"从 Agent 代码里搬进协议里**——server 声明能力，client 运行时发现，两端解耦。
 
 ## 0. 为什么是独立服务（不是内嵌后端）
-后端框架 是 Spring Boot **3.2.10**，Spring AI（含 MCP starter）要求 **3.4+/1.1.x**——版本硬冲突。独立 MCP Server 用 RestClient 代理后端 REST，边界干净，也是"适配器模式"的活例。面试问"为什么不塞进老后端"，这就是答案。
+后端框架 是 Spring Boot **3.2.10**，Spring AI（含 MCP starter）要求 **3.4+/1.1.x**——版本硬冲突。独立 MCP Server 用 RestClient 代理后端 REST，边界干净，也是"适配器模式"的活例。有人问"为什么不塞进老后端"，这就是答案。
 
 ## 1. 文件总览
 

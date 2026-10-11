@@ -629,23 +629,23 @@
         "source": "deep/es/ILM 全面实操手册（修订版）.md"
       },
       {
-        "title": "ES面试+运维命令独立速查手册（增补集群架构面试题完整版）",
-        "summary": "本文档拆分自完整版ES手册，分为三大模块：集群架构高频面试题（新增）+ 核心业务面试题 + 全量运维命令 + 批量运维脚本，所有答案为面试满分标准答案，命令可直接复制上线使用，适合…",
+        "title": "ES 集群架构与运维命令速查手册",
+        "summary": "本文档拆分自完整版ES手册，分为三大模块：集群架构高频问题（新增）+ 核心业务高频问题 + 全量运维命令 + 批量运维脚本，命令可直接复制上线使用，适合…",
         "date": "2026-08-05",
         "tags": [
           "Elasticsearch"
         ],
         "category": "deep",
         "series": "es",
-        "slug": "ES面试+运维命令独立速查手册（增补集群架构面试题完整版）",
+        "slug": "ES 集群架构与运维命令速查手册",
         "reading_time": 24,
         "featured": false,
         "draft": false,
-        "url": "deep/es/ES面试+运维命令独立速查手册（增补集群架构面试题完整版）.html",
-        "source": "deep/es/ES面试+运维命令独立速查手册（增补集群架构面试题完整版）.md"
+        "url": "deep/es/ES_集群架构与运维命令速查手册.html",
+        "source": "deep/es/ES_集群架构与运维命令速查手册.md"
       },
       {
-        "title": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）",
+        "title": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）",
         "summary": "本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…",
         "date": "2026-08-04",
         "tags": [
@@ -654,15 +654,15 @@
         ],
         "category": "deep",
         "series": "es",
-        "slug": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）",
+        "slug": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）",
         "reading_time": 17,
         "featured": false,
         "draft": false,
-        "url": "deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html",
-        "source": "deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.md"
+        "url": "deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html",
+        "source": "deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.md"
       },
       {
-        "title": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）",
+        "title": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）",
         "summary": "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…",
         "date": "2026-08-02",
         "tags": [
@@ -671,12 +671,12 @@
         ],
         "category": "deep",
         "series": "es",
-        "slug": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）",
+        "slug": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）",
         "reading_time": 18,
         "featured": false,
         "draft": false,
-        "url": "deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html",
-        "source": "deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.md"
+        "url": "deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html",
+        "source": "deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.md"
       },
       {
         "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册",
@@ -733,7 +733,7 @@
       },
       {
         "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档",
-        "summary": "（全文无省略、无占位符，可直接复制保存为 .md 文件，生产+面试完整使用）",
+        "summary": "（生产即用）",
         "date": "2026-07-27",
         "tags": [
           "Elasticsearch",
@@ -787,7 +787,7 @@
       },
       {
         "title": "Elasticsearch 分片节点分配算法 超详细详解",
-        "summary": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。",
+        "summary": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。",
         "date": "2026-07-13",
         "tags": [
           "Elasticsearch",
@@ -1008,7 +1008,7 @@
       },
       {
         "title": "Redis 高并发压测全场景总结（场景 1-11）",
-        "summary": "本文件汇总 docs/ 下 11 个压测场景的核心结论与简略压测过程，用于快速回顾与面试准备。完整细节见各场景原始文档。",
+        "summary": "本文件汇总 docs/ 下 11 个压测场景的核心结论与简略压测过程，用于快速回顾。完整细节见各场景原始文档。",
         "date": "2026-06-08",
         "tags": [
           "Redis",
@@ -1721,20 +1721,20 @@
         "source": "deep/mysql/Sysbench单体MySQL硬件上限压测.md"
       },
       {
-        "title": "MySQL 面试精华 & 脑图速记",
-        "summary": "基于《MySQL四层架构与监控汇总》提取的面试精华版。用于快速记忆核心考点。 > 面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…",
+        "title": "MySQL 核心要点 & 脑图速记",
+        "summary": "基于《MySQL四层架构与监控汇总》提取的精华版。用于快速记忆核心考点。 > 重点覆盖：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…",
         "date": "2026-03-06",
         "tags": [
           "MySQL"
         ],
         "category": "deep",
         "series": "mysql",
-        "slug": "MySQL面试精华与脑图速记",
+        "slug": "MySQL 核心要点与脑图速记",
         "reading_time": 17,
         "featured": false,
         "draft": false,
-        "url": "deep/mysql/MySQL面试精华与脑图速记.html",
-        "source": "deep/mysql/MySQL面试精华与脑图速记.md"
+        "url": "deep/mysql/MySQL核心要点与脑图速记.html",
+        "source": "deep/mysql/MySQL核心要点与脑图速记.md"
       },
       {
         "title": "MySQL 四层架构、执行顺序、监控与 BufferPool 汇总",
@@ -1773,7 +1773,7 @@
         "source": "deep/mysql/MySQL原理篇.md"
       },
       {
-        "title": "MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）",
+        "title": "MySQL事务隔离、锁机制、索引差异 核心汇总文档",
         "summary": "本文为《MySQL事务隔离、锁机制、索引差异 核心汇总文档》与《间隙锁、临键锁 区间详解》两份文档的合并精简版，只保留结论，重复内容已去重整合。覆盖：事务隔离/MVCC、InnoD…",
         "date": "2026-02-24",
         "tags": [
@@ -1784,12 +1784,12 @@
         ],
         "category": "deep",
         "series": "mysql",
-        "slug": "MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）",
+        "slug": "MySQL事务隔离、锁机制、索引差异 核心汇总文档",
         "reading_time": 25,
         "featured": false,
         "draft": false,
-        "url": "deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html",
-        "source": "deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.md"
+        "url": "deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.html",
+        "source": "deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.md"
       },
       {
         "title": "MySQL（InnoDB）事务与锁排查治理手册",

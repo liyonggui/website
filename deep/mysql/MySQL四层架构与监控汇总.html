@@ -526,7 +526,7 @@ A：文件系统层。很多人只看 MySQL 内部指标，忽略磁盘 IO；磁
 <li>InnoDB 存储引擎层：按索引定位记录；加行锁；生成 undo 版本；修改内存 Buffer Pool 页变成脏页；写 redo log buffer；写 change-buffer。（binlog 是 SQL 服务层产生，在 commit 阶段写入）</li>
 <li>文件系统层：redo log 按配置刷盘；脏页后续异步刷 ibd；binlog 刷盘。数据逐层向上返回成功。</li>
 </ol>
-<h3 id="34">3.4 重要关键点（面试高频）</h3>
+<h3 id="34">3.4 重要关键点（高频）</h3>
 <ol>
 <li>
 <p><strong>binlog 属于【SQL服务层】；redo/undo 属于【存储引擎层】！</strong></p>
@@ -618,7 +618,7 @@ D2 --&gt; B1 --&gt; B --&gt; C2[InnoDB层 Phase2 Commit&lt;br/&gt;redo标记改�
 C2 --&gt; A --&gt; Resp[返回commit成功给客户端]
 </code></pre></div>
 
-<h3 id="44">4.4 崩溃恢复逻辑（关键面试点）</h3>
+<h3 id="44">4.4 崩溃恢复逻辑（关键点）</h3>
 <p>数据库在 Phase1 完成、Phase2 还没做完时断电崩溃，重启读 redo log：</p>
 <ol>
 <li>redo 状态为 <strong>COMMIT</strong> → 事务已完整，直接提交。</li>
@@ -774,7 +774,7 @@ C2 --&gt; A --&gt; Resp[返回commit成功给客户端]
 </blockquote>
 <p><strong>③ 刷脏完成之后：</strong>
 脏页写入 ibd；内存页与磁盘一致，变干净页；从 Flush 链表移除；仍留在 LRU 链表继续提供查询，不直接回收。</p>
-<h3 id="56">5.6 关键区分（面试高频）</h3>
+<h3 id="56">5.6 关键区分（高频）</h3>
 <ol>
 <li><strong>redo log 和脏页区别</strong>：</li>
 <li>redo log：记录修改操作，日志文件，崩溃恢复用，循环文件；prepare 阶段刷盘。</li>
@@ -875,7 +875,7 @@ Innodb_log_waits                   -- redo log空间不足等待，出现代表�
 </tr>
 </tbody>
 </table>
-<h3 id="66">6.6 延伸面试点：覆盖索引为什么快</h3>
+<h3 id="66">6.6 延伸点：覆盖索引为什么快</h3>
 <blockquote>
 <p><code>select id,name from t where name='xxx'</code> 二级索引页就包含全部所需字段，<strong>不需要回表读聚簇索引数据页</strong>，不加载含一大堆普通字段的数据页，减少磁盘 IO，也减少 BufferPool 内存占用。</p>
 <p>不用覆盖索引则要回表，把整行聚簇索引页加载进 BP，大量无关无索引字段一并载入，占用内存。</p>
@@ -892,7 +892,7 @@ Innodb_log_waits                   -- redo log空间不足等待，出现代表�
 <hr />
 <h2 id="_4">七、长连接与僵尸半开连接治理</h2>
 <blockquote>
-<p>适用：Java + MySQL 生产环境，HikariCP 连接池。包含长短连接对比、参数配置、故障原理、风险、防护方案、面试要点。</p>
+<p>适用：Java + MySQL 生产环境，HikariCP 连接池。包含长短连接对比、参数配置、故障原理、风险、防护方案。</p>
 </blockquote>
 <h3 id="71-vs">7.1 基础概念：长连接 vs 短连接</h3>
 <p><strong>短连接</strong>：每次业务请求建立 TCP 连接 → 执行 SQL → 客户端主动 close 关闭。PHP 默认模式；Java 不用连接池直接建连接也属短连接。</p>
@@ -1425,7 +1425,7 @@ net.ipv4.tcp_keepalive_probes = 3     # 重试3次无应答关闭socket
 <span class="n">KILL</span><span class="w"> </span><span class="err">会话</span><span class="n">ID</span><span class="p">;</span>
 </code></pre></div>
 
-<h3 id="710">7.10 高频面试问答</h3>
+<h3 id="710">7.10 高频问答</h3>
 <p><strong>Q1：为什么长连接池会报 <code>Communications link failure</code>？</strong></p>
 <blockquote>
 <p>MySQL 服务端 <code>wait_timeout</code> 关闭空闲连接，但连接池不知道，继续复用这条僵死连接执行 SQL。
@@ -1548,12 +1548,12 @@ net.ipv4.tcp_keepalive_probes = 3     # 重试3次无应答关闭socket
       <li class="lv3"><a href="#31-sql">3.1 正向执行（客户端发起 SQL）</a></li>
       <li class="lv3"><a href="#32">3.2 返回结果：反向回传</a></li>
       <li class="lv3"><a href="#33-sql-update">3.3 写 SQL 完整流程（update）</a></li>
-      <li class="lv3"><a href="#34">3.4 重要关键点（面试高频）</a></li>
+      <li class="lv3"><a href="#34">3.4 重要关键点（高频）</a></li>
       <li class="lv2"><a href="#2-pc">四、两阶段提交（2-PC）</a></li>
       <li class="lv3"><a href="#41-phase1-prepare-innodb">4.1 Phase1 Prepare（准备阶段）👉 InnoDB 存储引擎层</a></li>
       <li class="lv3"><a href="#42-phase2-commit-sql-binlog-innodb">4.2 Phase2 Commit（提交阶段）👉 SQL 服务层先写 binlog，再通知 InnoDB 提交</a></li>
       <li class="lv3"><a href="#43">4.3 四层完整路径标注</a></li>
-      <li class="lv3"><a href="#44">4.4 崩溃恢复逻辑（关键面试点）</a></li>
+      <li class="lv3"><a href="#44">4.4 崩溃恢复逻辑（关键点）</a></li>
       <li class="lv3"><a href="#45">4.5 参数对应四层</a></li>
       <li class="lv3"><a href="#46">4.6 高频易错点</a></li>
       <li class="lv3"><a href="#47-update">4.7 串联整套四层+两阶段完整流程（update 语句）</a></li>
@@ -1563,7 +1563,7 @@ net.ipv4.tcp_keepalive_probes = 3     # 重试3次无应答关闭socket
       <li class="lv3"><a href="#53-bufferpool">5.3 BufferPool 什么时候清理/淘汰页</a></li>
       <li class="lv3"><a href="#54">5.4 脏页是什么</a></li>
       <li class="lv3"><a href="#55">5.5 脏页完整生命周期：产生 → 存在 → 刷盘清理</a></li>
-      <li class="lv3"><a href="#56">5.6 关键区分（面试高频）</a></li>
+      <li class="lv3"><a href="#56">5.6 关键区分（高频）</a></li>
       <li class="lv3"><a href="#57">5.7 相关监控指标</a></li>
       <li class="lv3"><a href="#58">5.8 极简背诵总结</a></li>
       <li class="lv2"><a href="#bufferpool_1">六、BufferPool 与无索引字段</a></li>
@@ -1572,7 +1572,7 @@ net.ipv4.tcp_keepalive_probes = 3     # 重试3次无应答关闭socket
       <li class="lv3"><a href="#63-bufferpool">6.3 二级索引页进 BufferPool 吗？</a></li>
       <li class="lv3"><a href="#64">6.4 通俗总结</a></li>
       <li class="lv3"><a href="#65">6.5 举例场景对比</a></li>
-      <li class="lv3"><a href="#66">6.6 延伸面试点：覆盖索引为什么快</a></li>
+      <li class="lv3"><a href="#66">6.6 延伸点：覆盖索引为什么快</a></li>
       <li class="lv3"><a href="#67">6.7 小结与要点速查</a></li>
       <li class="lv2"><a href="#_4">七、长连接与僵尸半开连接治理</a></li>
       <li class="lv3"><a href="#71-vs">7.1 基础概念：长连接 vs 短连接</a></li>
@@ -1584,7 +1584,7 @@ net.ipv4.tcp_keepalive_probes = 3     # 重试3次无应答关闭socket
       <li class="lv3"><a href="#77">7.7 僵尸连接全部清理手段对比</a></li>
       <li class="lv3"><a href="#78-nacos">7.8 Nacos 健康检查边界</a></li>
       <li class="lv3"><a href="#79">7.9 生产完整落地方案（降低半开僵尸连接影响）</a></li>
-      <li class="lv3"><a href="#710">7.10 高频面试问答</a></li>
+      <li class="lv3"><a href="#710">7.10 高频问答</a></li>
       <li class="lv3"><a href="#711-sql">7.11 实用清单（监控 / 排查 SQL）</a></li>
       <li class="lv3"><a href="#712-hikari">7.12 Hikari 推荐生产参数（示例，需按实际业务校准）</a></li>
       <li class="lv3"><a href="#713">7.13 场景建议（决策树）</a></li>

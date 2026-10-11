@@ -77,6 +77,6 @@ curl "http://localhost:8080/innodb-tuning/reset"
 5. **参数变更走 my.cnf + 重启**：生产环境 `SET GLOBAL` 只改运行值、重启即失效，需写进配置文件持久化。
 6. **先压测后上线**：不同负载（读多/写多/混合）、不同硬件下最佳参数不同，务必在目标环境压测验证。
 
-## 六、面试简述
+## 六、要点速览
 
 > **InnoDB 调优核心是「性能 vs 持久性」权衡**。`innodb_flush_log_at_trx_commit`：1 每次提交 fsync 刷 redo（最安全最慢）、2 写 OS 缓存每秒刷、0 后台每秒刷（最快最多丢 1s）；`sync_binlog` 同理控制 binlog 刷盘。账务类保 `(1,1)` 强持久，日志类可降 `(2,0)/(0,0)` 换吞吐。`innodb_buffer_pool_size` 设 60%~75% 内存提升读命中；开启 binlog 的复制主库注意 sync_binlog 对写的影响。参数可用 `SET GLOBAL` 动态调，但生产需写 my.cnf 重启持久化，并在目标环境压测确定最佳值。

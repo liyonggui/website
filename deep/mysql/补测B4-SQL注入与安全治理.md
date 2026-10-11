@@ -72,6 +72,6 @@ curl "http://localhost:8080/sql-safe/governance"
 6. **WAF/过滤**：网关层过滤 SQL 注入特征关键字。
 7. **审计**：开启 general_log/审计，追踪可疑 SQL。
 
-## 六、面试简述
+## 六、要点速览
 
 > **SQL 注入治理**：字符串拼接 SQL 使恶意入参（如 `' OR '1'='1`、`'--`）绕过 WHERE 泄露全表或绕过认证。实测同一载荷拼接 SQL 泄露 100 行、参数化后 0 行。根治用 PreparedStatement 参数化，纵深防御：字段最小化（不用 SELECT *）、敏感脱敏、最小权限、WAF 过滤、输入校验。

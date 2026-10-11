@@ -383,7 +383,7 @@ MySQL 已交给操作系统，监控磁盘 IO、文件读写、刷盘、double-w
 3. InnoDB 存储引擎层：按索引定位记录；加行锁；生成 undo 版本；修改内存 Buffer Pool 页变成脏页；写 redo log buffer；写 change-buffer。（binlog 是 SQL 服务层产生，在 commit 阶段写入）
 4. 文件系统层：redo log 按配置刷盘；脏页后续异步刷 ibd；binlog 刷盘。数据逐层向上返回成功。
 
-### 3.4 重要关键点（面试高频）
+### 3.4 重要关键点（高频）
 
 1. **binlog 属于【SQL服务层】；redo/undo 属于【存储引擎层】！**
 
@@ -470,7 +470,7 @@ D2 --> B1 --> B --> C2[InnoDB层 Phase2 Commit<br/>redo标记改为COMMIT]
 C2 --> A --> Resp[返回commit成功给客户端]
 ```
 
-### 4.4 崩溃恢复逻辑（关键面试点）
+### 4.4 崩溃恢复逻辑（关键点）
 
 数据库在 Phase1 完成、Phase2 还没做完时断电崩溃，重启读 redo log：
 
@@ -603,7 +603,7 @@ LRU 链表分两部分：
 **③ 刷脏完成之后：**
 脏页写入 ibd；内存页与磁盘一致，变干净页；从 Flush 链表移除；仍留在 LRU 链表继续提供查询，不直接回收。
 
-### 5.6 关键区分（面试高频）
+### 5.6 关键区分（高频）
 
 1. **redo log 和脏页区别**：
    - redo log：记录修改操作，日志文件，崩溃恢复用，循环文件；prepare 阶段刷盘。
@@ -693,7 +693,7 @@ InnoDB 的页（page）是 Buffer Pool 的最小单位，默认页大小为 **16
 | `select name from t where name='a'` | 二级索引页              | ❌ 二级索引页无 age/address；不回表则不会加载聚簇页                  |
 | `select age from t where name='a'`  | 二级索引页 + 回表聚簇数据页    | ✅ age 进入内存                                        |
 
-### 6.6 延伸面试点：覆盖索引为什么快
+### 6.6 延伸点：覆盖索引为什么快
 
 > `select id,name from t where name='xxx'` 二级索引页就包含全部所需字段，**不需要回表读聚簇索引数据页**，不加载含一大堆普通字段的数据页，减少磁盘 IO，也减少 BufferPool 内存占用。
 
@@ -713,7 +713,7 @@ InnoDB 的页（page）是 Buffer Pool 的最小单位，默认页大小为 **16
 
 ## 七、长连接与僵尸半开连接治理
 
-> 适用：Java + MySQL 生产环境，HikariCP 连接池。包含长短连接对比、参数配置、故障原理、风险、防护方案、面试要点。
+> 适用：Java + MySQL 生产环境，HikariCP 连接池。包含长短连接对比、参数配置、故障原理、风险、防护方案。
 
 ### 7.1 基础概念：长连接 vs 短连接
 
@@ -969,7 +969,7 @@ SELECT id,host,time FROM information_schema.processlist WHERE command='Sleep' AN
 KILL 会话ID;
 ```
 
-### 7.10 高频面试问答
+### 7.10 高频问答
 
 **Q1：为什么长连接池会报 `Communications link failure`？**
 

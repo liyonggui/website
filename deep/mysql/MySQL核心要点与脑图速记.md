@@ -1,28 +1,28 @@
 ---
-title: "MySQL 面试精华 & 脑图速记"
-summary: "基于《MySQL四层架构与监控汇总》提取的面试精华版。用于快速记忆核心考点。 > 面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…"
+title: "MySQL 核心要点 & 脑图速记"
+summary: "基于《MySQL四层架构与监控汇总》提取的精华版。用于快速记忆核心考点。 > 重点覆盖：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…"
 date: 2026-03-06
 author: "小番茄程序猿"
 tags:
   - MySQL
 category: deep
 series: "mysql"
-slug: "MySQL面试精华与脑图速记"
+slug: "MySQL 核心要点与脑图速记"
 reading_time: 17
 featured: false
 draft: false
 ---
-# MySQL 面试精华 & 脑图速记
+# MySQL 核心要点 & 脑图速记
 
-> 基于《MySQL四层架构与监控汇总》提取的**面试精华版**。用于快速记忆核心考点。
-> 面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接、监控排查。
+> 基于《MySQL四层架构与监控汇总》提取的**精华版**。用于快速记忆核心考点。
+> 重点覆盖：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接、监控排查。
 
 ---
 
 ## 脑图（快速记忆框架）
 
 ```
-MySQL 面试精华
+MySQL 核心要点
 │
 ├─ ① 四层架构
 │    连接层→SQL层→InnoDB→文件系统
@@ -218,7 +218,7 @@ BufferPool(按页16KB加载/驱逐)
 - 云环境靠**应用层心跳 + wait_timeout**，OS keepalive 会被 NAT/防火墙丢弃。
 - **不要用 autoReconnect** 掩盖真实断连问题。
 
-### 高频面试 Q&A
+### 高频 Q&A
 - **为什么报 Communications link failure？** wait_timeout 关闭空闲连接，连接池不知道继续复用。→ idleTimeout < wait_timeout + 心跳。
 - **kill-9 会残留僵尸连接吗？** 不会（发 RST）；断电断网才会。
 - **Hikari 心跳能清僵尸连接吗？** 不能，进程死了 JVM 停；靠 OS keepalive 或 wait_timeout。
@@ -275,7 +275,7 @@ JOIN innodb_trx r ON w.requesting_trx_id=r.trx_id;
 - **批量提速核心**：把多条写合并成一条 SQL/一次提交，减少解析、网络、fsync 次数。
 - **生产写入选型**：常规业务用 JDBC 批量（rewriteBatchedStatements）；高并发用 MQ 异步落库；数据迁移/数仓才用 LOAD DATA 或 DataX。
 
-### 高频面试 Q&A
+### 高频 Q&A
 - **LOAD DATA INFILE 生产常用吗？** 不常用。需服务端本地文件 + secure-file-priv，绕过业务校验，需 DBA 介入；是"批量装载专用工具"。
 - **纯写为什么比读慢？** 写要落盘/刷 redo、页分裂、索引维护；读只需查缓存页。
 - **拐点后吞吐为什么下降？** CPU/锁/刷盘/网络饱和，延迟加剧导致有效吞吐回落。
@@ -298,13 +298,13 @@ Flink CDC = 实时 binlog 增量同步（实时抄数据，秒级延迟）
 - **Flink CDC**：伪装从库解析 binlog（Debezium 内核），秒级实时、精确一次，需 ROW 格式 + GTID。
 - **数据一致性分级**：mysqldump 全量一致性快照；DataX 批式（配合时间戳增量）；Flink CDC 流式精确一次。
 
-### 高频面试 Q&A
+### 高频 Q&A
 - **三个工具怎么选？** 备份兜底用 mysqldump；跨库/数仓离线批量用 DataX；实时数仓/实时同步用 Flink CDC。
 - **Flink CDC 依赖什么？** binlog（ROW 格式 + GTID），否则无法捕获行级变更。
 - **mysqldump 大表会锁库吗？** InnoDB + `--single-transaction` 不锁；MyISAM 会锁表。
 
 ---
 
-## 面试一句话总结
+## 一句话总结
 
 > **四层全可监控**；**binlog 归 Server、redo/undo 归 InnoDB**；**2PC 保 redo/binlog 一致**；**BP 按页缓存**；**commit 刷 redo 不刷脏页**；**僵尸连接靠 wait_timeout 兜底**；**累计指标用 delta**；**单机读上限 2.7万QPS 拐点并发32**；**写比读慢**；**批量管道提升写入 400x**；**备份用 mysqldump、离线搬数用 DataX、实时同步用 Flink CDC**。

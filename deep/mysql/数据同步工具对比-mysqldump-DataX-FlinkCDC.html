@@ -202,7 +202,7 @@
 <blockquote>
 <p><strong>mysqldump</strong> = 备份全量（动它保底）；<strong>DataX</strong> = 离线批量异构同步（搬数据）；<strong>Flink CDC</strong> = 实时 binlog 增量同步（实时抄数据）。</p>
 </blockquote>
-<h2 id="_5">八、面试简述</h2>
+<h2 id="_5">八、要点速览</h2>
 <blockquote>
 <p>三种数据同步/迁移工具：<strong>mysqldump</strong> 是 MySQL 自带的全量逻辑备份，离线、单机，用于日常备份与全量迁移；<strong>DataX</strong> 是阿里异构批量同步框架，离线、并发分片、吞吐高，用于数仓 ETL 和异构库迁移；<strong>Flink CDC</strong> 是基于 binlog 的实时增量同步，秒级延迟、精确一次，用于实时数仓和实时同步。选型：备份用 mysqldump，离线搬数用 DataX，实时同步用 Flink CDC。</p>
 </blockquote>
@@ -218,7 +218,7 @@
       <li class="lv2"><a href="#_2">五、三者核心对比</a></li>
       <li class="lv2"><a href="#_3">六、生产选型建议</a></li>
       <li class="lv2"><a href="#_4">七、一句话记忆</a></li>
-      <li class="lv2"><a href="#_5">八、面试简述</a></li>
+      <li class="lv2"><a href="#_5">八、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

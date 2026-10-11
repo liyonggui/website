@@ -177,7 +177,7 @@
 - 无跨语句持锁窗口，锁等待最小
 - 实测单次执行约 7ms</p>
 <p>对比：悲观锁需要 <code>BEGIN + SELECT FOR UPDATE + UPDATE + COMMIT</code> 多语句持锁，锁窗口大。</p>
-<h2 id="_4">六、面试简述</h2>
+<h2 id="_4">六、要点速览</h2>
 <blockquote>
 <p><strong>锁的工程实践</strong>：高并发选锁看冲突率——冲突高用原子 UPDATE（WHERE条件，无锁等待），冲突少用乐观锁，多语句读改写用悲观锁。规避锁的常用手段：原子操作、缩小锁范围（主键等值）、拆分热点行、读写分离、降级隔离级别（READ COMMITTED 半一致性读只锁匹配行，实测锁范围从 Next-Key 降为记录锁）。开发注意：固定加锁顺序防死锁、缩短事务、捕获 1213 重试、避免无索引 UPDATE 锁全表。</p>
 </blockquote>
@@ -197,7 +197,7 @@
       <li class="lv3"><a href="#5">5. 索引设计</a></li>
       <li class="lv3"><a href="#6">6. 诊断工具</a></li>
       <li class="lv2"><a href="#lock-practiceatomic">五、原子操作规避锁（实测 /lock-practice/atomic）</a></li>
-      <li class="lv2"><a href="#_4">六、面试简述</a></li>
+      <li class="lv2"><a href="#_4">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

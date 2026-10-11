@@ -185,7 +185,7 @@
 <li><strong>RR vs RC 选型</strong>：可重复读需要 RR；高并发读写混合优先 RC（不长期持 ReadView，undo 回收及时）</li>
 <li><strong>MVCC 不解决写冲突</strong>：多事务并发写同一行仍需锁，MVCC 只解决读与写的互斥</li>
 </ol>
-<h2 id="_4">五、面试简述</h2>
+<h2 id="_4">五、要点速览</h2>
 <blockquote>
 <p><strong>InnoDB 并发控制（MVCC）</strong>：通过 undo 版本链 + ReadView 可见性规则，让快照读（普通 SELECT）不加锁即可实现一致性与可重复读。实测：RR 下 A 快照读后 B 提交更新，A 再次快照读仍读旧版本（版本链保留旧版本）；快照读读旧值、FOR UPDATE 当前读读新值；RR 复用第一个 ReadView（可重复读）、RC 每次新建（不可重复读）；A 快照读期间 B 的 UPDATE 不被阻塞（8ms，读写不互斥）；B 未提交时 A 读不到其修改（避免脏读）。MVCC 是高并发读写的基石，读写互不阻塞。</p>
 </blockquote>
@@ -203,7 +203,7 @@
       <li class="lv3"><a href="#4-mvccread-write-no-block">4. 读写不互斥（/mvcc/read-write-no-block）</a></li>
       <li class="lv3"><a href="#5-mvccvisibility">5. 可见性规则（/mvcc/visibility）</a></li>
       <li class="lv2"><a href="#_3">四、生产避坑准则</a></li>
-      <li class="lv2"><a href="#_4">五、面试简述</a></li>
+      <li class="lv2"><a href="#_4">五、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>
@@ -215,7 +215,7 @@
         <li><a href="../../deep/mysql/场景2-事务隔离级别.html"><span class="rel-title">场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/场景1-18结论汇总.html"><span class="rel-title">MySQL 高并发场景 1-18 结论汇总（只要结论）</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL原理篇.html"><span class="rel-title">MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&amp;面试版）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL-事务与锁排查治理手册.html"><span class="rel-title">MySQL（InnoDB）事务与锁排查治理手册</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>

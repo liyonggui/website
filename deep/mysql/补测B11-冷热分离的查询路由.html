@@ -121,7 +121,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/hotcold/benc
 </ol>
 <h2 id="_5">六、踩坑记录（性能对比失真）</h2>
 <p>小数据量（9000行）全在 buffer_pool 缓存，全表 COUNT 也快，路由/全表差异失真。<strong>需大数据量（10.8万行）</strong>才体现路由优势。且路由查询用 <code>DATE(create_time)</code> 会索引失效，改为范围查询后走索引更快。</p>
-<h2 id="_6">七、面试简述</h2>
+<h2 id="_6">七、要点速览</h2>
 <blockquote>
 <p><strong>冷热分离查询路由</strong>：按业务时间把热数据路由到热表、历史冷数据路由到归档表，避免查全量大表。实测10.8万行：路由查询0.9ms vs 全表2.1ms（快2.1倍）。要点：按 create_time 分界路由、建索引、范围查询避免索引失效、大数据量才体现优势。</p>
 </blockquote>
@@ -136,7 +136,7 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/hotcold/benc
       <li class="lv2"><a href="#108">四、实测结果（10.8万行）</a></li>
       <li class="lv2"><a href="#_4">五、工程要点</a></li>
       <li class="lv2"><a href="#_5">六、踩坑记录（性能对比失真）</a></li>
-      <li class="lv2"><a href="#_6">七、面试简述</a></li>
+      <li class="lv2"><a href="#_6">七、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

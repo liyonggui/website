@@ -114,7 +114,7 @@ innodb_deadlocks         = 有死锁记录（SHOW ENGINE INNODB STATUS 检测）
 <li><strong>控制并发</strong>：热点行削峰，队列/乐观锁代替悲观锁。</li>
 <li><strong>超时兜底</strong>：调小 <code>innodb_lock_wait_timeout</code>，快速失败避免长等待。</li>
 </ol>
-<h2 id="_6">六、面试简述</h2>
+<h2 id="_6">六、要点速览</h2>
 <blockquote>
 <p><strong>锁等待与死锁治理</strong>：锁等待=并发争用串行化（A 持锁 B 等待），死锁=事务互相持有对方所需锁、InnoDB 自动检测回滚一个（错误码 1213，需应用重试）。监控用 <code>performance_schema.data_locks</code> + <code>sys.innodb_lock_waits</code> 定位阻塞者/被阻塞者。治理核心：减小锁粒度（主键/唯一索引命中）、缩短事务、固定加锁顺序（防死锁）、控制并发、<code>innodb_lock_wait_timeout</code> 超时兜底。</p>
 </blockquote>
@@ -132,7 +132,7 @@ innodb_deadlocks         = 有死锁记录（SHOW ENGINE INNODB STATUS 检测）
       <li class="lv3"><a href="#3">3. 制造死锁</a></li>
       <li class="lv3"><a href="#4">4. 监控诊断</a></li>
       <li class="lv2"><a href="#_5">五、治理方案</a></li>
-      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+      <li class="lv2"><a href="#_6">六、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

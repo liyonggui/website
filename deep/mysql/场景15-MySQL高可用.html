@@ -226,7 +226,7 @@ replica: server_id=2, read_only=1, version=8.4.9
 <li><strong>只读治理</strong>：从库 <code>read_only+super_read_only</code> 双保险，防止误写。</li>
 <li><strong>故障演练常态化</strong>：定期演练切换，验证切换脚本与流程，避免"纸上 HA 真宕机"。</li>
 </ol>
-<h2 id="_7">七、面试简述</h2>
+<h2 id="_7">七、要点速览</h2>
 <blockquote>
 <p><strong>MySQL 高可用</strong>：主从复制 + 读写分离提供<strong>读高可用</strong>（主库故障读切从库，可用性 100%）；<strong>写高可用</strong>需主从切换（STOP REPLICA → RESET REPLICA ALL → 关只读 → 重挂复制 → 应用切新主），常由 MHA/Orchestrator 自动完成（探活/选主/VIP 漂移）。关键点：从库容量要够承接故障读流量、切换前数据追平（Seconds_Behind_Source=0）、半同步复制降低 RPO、VIP 漂移让应用无感、定期故障演练。</p>
 </blockquote>
@@ -245,7 +245,7 @@ replica: server_id=2, read_only=1, version=8.4.9
       <li class="lv2"><a href="#_4">四、主从切换流程（写高可用）</a></li>
       <li class="lv2"><a href="#_5">五、生产环境故障转移中间件对比</a></li>
       <li class="lv2"><a href="#_6">六、高可用工程要点</a></li>
-      <li class="lv2"><a href="#_7">七、面试简述</a></li>
+      <li class="lv2"><a href="#_7">七、要点速览</a></li>
     </ul>
   </nav>
 </details></aside>

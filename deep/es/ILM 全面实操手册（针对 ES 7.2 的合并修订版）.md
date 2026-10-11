@@ -496,7 +496,7 @@ done < warm_indices.txt
 
 ---
 
-## 十四、面试 / 总结要点（3 分钟版）
+## 十四、总结要点（3 分钟版）
 
 - ES 使用 MurmurHash3（32-bit）对 routing 字符串的 UTF-8 bytes 做哈希，取模得到 shard id；主分片数量一旦创建便不能随意修改。  
 - 自定义 routing 导致热点是常见问题；解决方式通常为：路由二次打散 / 新建索引 + Reindex 并 atomic alias 切换（零停机）；rebalance 无法改变文档所属分片（只会搬迁分片到别的节点）。  

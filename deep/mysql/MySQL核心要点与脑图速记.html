@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>MySQL 面试精华 &amp; 脑图速记 · 小番茄程序猿</title>
-<meta name="description" content="基于《MySQL四层架构与监控汇总》提取的面试精华版。用于快速记忆核心考点。 &gt; 面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…"/>
+<title>MySQL 核心要点 &amp; 脑图速记 · 小番茄程序猿</title>
+<meta name="description" content="基于《MySQL四层架构与监控汇总》提取的精华版。用于快速记忆核心考点。 &gt; 重点覆盖：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…"/>
 <meta name="keywords" content="MySQL, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/MySQL面试精华与脑图速记.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/MySQL核心要点与脑图速记.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="MySQL 面试精华 &amp; 脑图速记 · 小番茄程序猿" />
-<meta property="og:description" content="基于《MySQL四层架构与监控汇总》提取的面试精华版。用于快速记忆核心考点。 &gt; 面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/MySQL面试精华与脑图速记.html" />
+<meta property="og:title" content="MySQL 核心要点 &amp; 脑图速记 · 小番茄程序猿" />
+<meta property="og:description" content="基于《MySQL四层架构与监控汇总》提取的精华版。用于快速记忆核心考点。 &gt; 重点覆盖：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/MySQL核心要点与脑图速记.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL 面试精华 & 脑图速记", "description": "基于《MySQL四层架构与监控汇总》提取的面试精华版。用于快速记忆核心考点。 > 面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL面试精华与脑图速记.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL面试精华与脑图速记.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-06", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL 核心要点 & 脑图速记", "description": "基于《MySQL四层架构与监控汇总》提取的精华版。用于快速记忆核心考点。 > 重点覆盖：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL核心要点与脑图速记.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL核心要点与脑图速记.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-06", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -51,18 +51,18 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>MySQL 面试精华 &amp; 脑图速记</h1>
+    <h1>MySQL 核心要点 &amp; 脑图速记</h1>
 <div class="meta-row"><span class="m-item">2026-03-06</span><span class="m-item">mysql 系列</span><span class="m-item">约 17 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
 <blockquote>
-<p>基于《MySQL四层架构与监控汇总》提取的<strong>面试精华版</strong>。用于快速记忆核心考点。
-面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接、监控排查。</p>
+<p>基于《MySQL四层架构与监控汇总》提取的<strong>精华版</strong>。用于快速记忆核心考点。
+重点覆盖：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接、监控排查。</p>
 </blockquote>
 <hr />
 <h2 id="_1">脑图（快速记忆框架）</h2>
-<div class="codehilite"><pre><span></span><code>MySQL 面试精华
+<div class="codehilite"><pre><span></span><code>MySQL 核心要点
 │
 ├─ ① 四层架构
 │    连接层→SQL层→InnoDB→文件系统
@@ -293,7 +293,7 @@ BP命中低/锁等待/log_waits&gt;0 → InnoDB层
 <li>云环境靠<strong>应用层心跳 + wait_timeout</strong>，OS keepalive 会被 NAT/防火墙丢弃。</li>
 <li><strong>不要用 autoReconnect</strong> 掩盖真实断连问题。</li>
 </ul>
-<h3 id="qa">高频面试 Q&amp;A</h3>
+<h3 id="qa">高频 Q&amp;A</h3>
 <ul>
 <li><strong>为什么报 Communications link failure？</strong> wait_timeout 关闭空闲连接，连接池不知道继续复用。→ idleTimeout &lt; wait_timeout + 心跳。</li>
 <li><strong>kill-9 会残留僵尸连接吗？</strong> 不会（发 RST）；断电断网才会。</li>
@@ -349,7 +349,7 @@ BP命中低/锁等待/log_waits&gt;0 → InnoDB层
 <li><strong>批量提速核心</strong>：把多条写合并成一条 SQL/一次提交，减少解析、网络、fsync 次数。</li>
 <li><strong>生产写入选型</strong>：常规业务用 JDBC 批量（rewriteBatchedStatements）；高并发用 MQ 异步落库；数据迁移/数仓才用 LOAD DATA 或 DataX。</li>
 </ul>
-<h3 id="qa_1">高频面试 Q&amp;A</h3>
+<h3 id="qa_1">高频 Q&amp;A</h3>
 <ul>
 <li><strong>LOAD DATA INFILE 生产常用吗？</strong> 不常用。需服务端本地文件 + secure-file-priv，绕过业务校验，需 DBA 介入；是"批量装载专用工具"。</li>
 <li><strong>纯写为什么比读慢？</strong> 写要落盘/刷 redo、页分裂、索引维护；读只需查缓存页。</li>
@@ -371,14 +371,14 @@ Flink CDC = 实时 binlog 增量同步（实时抄数据，秒级延迟）
 <li><strong>Flink CDC</strong>：伪装从库解析 binlog（Debezium 内核），秒级实时、精确一次，需 ROW 格式 + GTID。</li>
 <li><strong>数据一致性分级</strong>：mysqldump 全量一致性快照；DataX 批式（配合时间戳增量）；Flink CDC 流式精确一次。</li>
 </ul>
-<h3 id="qa_2">高频面试 Q&amp;A</h3>
+<h3 id="qa_2">高频 Q&amp;A</h3>
 <ul>
 <li><strong>三个工具怎么选？</strong> 备份兜底用 mysqldump；跨库/数仓离线批量用 DataX；实时数仓/实时同步用 Flink CDC。</li>
 <li><strong>Flink CDC 依赖什么？</strong> binlog（ROW 格式 + GTID），否则无法捕获行级变更。</li>
 <li><strong>mysqldump 大表会锁库吗？</strong> InnoDB + <code>--single-transaction</code> 不锁；MyISAM 会锁表。</li>
 </ul>
 <hr />
-<h2 id="_20">面试一句话总结</h2>
+<h2 id="_20">一句话总结</h2>
 <blockquote>
 <p><strong>四层全可监控</strong>；<strong>binlog 归 Server、redo/undo 归 InnoDB</strong>；<strong>2PC 保 redo/binlog 一致</strong>；<strong>BP 按页缓存</strong>；<strong>commit 刷 redo 不刷脏页</strong>；<strong>僵尸连接靠 wait_timeout 兜底</strong>；<strong>累计指标用 delta</strong>；<strong>单机读上限 2.7万QPS 拐点并发32</strong>；<strong>写比读慢</strong>；<strong>批量管道提升写入 400x</strong>；<strong>备份用 mysqldump、离线搬数用 DataX、实时同步用 Flink CDC</strong>。</p>
 </blockquote>
@@ -407,19 +407,19 @@ Flink CDC = 实时 binlog 增量同步（实时抄数据，秒级延迟）
       <li class="lv2"><a href="#6">⑥ 长连接 / 僵尸半开连接（实务）</a></li>
       <li class="lv3"><a href="#_12">脑图</a></li>
       <li class="lv3"><a href="#_13">精华速记</a></li>
-      <li class="lv3"><a href="#qa">高频面试 Q&amp;amp;A</a></li>
+      <li class="lv3"><a href="#qa">高频 Q&amp;amp;A</a></li>
       <li class="lv2"><a href="#7">⑦ 监控 / 排查速查</a></li>
       <li class="lv3"><a href="#_14">脑图</a></li>
       <li class="lv3"><a href="#_15">精华速记</a></li>
       <li class="lv2"><a href="#8-mysql-sysbench">⑧ 单体 MySQL 硬件上限 &amp;amp; 写入提速（Sysbench 压测）</a></li>
       <li class="lv3"><a href="#_16">脑图</a></li>
       <li class="lv3"><a href="#_17">精华速记</a></li>
-      <li class="lv3"><a href="#qa_1">高频面试 Q&amp;amp;A</a></li>
+      <li class="lv3"><a href="#qa_1">高频 Q&amp;amp;A</a></li>
       <li class="lv2"><a href="#9-mysqldump-datax-flink-cdc">⑨ 数据同步工具对比：mysqldump / DataX / Flink CDC</a></li>
       <li class="lv3"><a href="#_18">脑图</a></li>
       <li class="lv3"><a href="#_19">精华速记</a></li>
-      <li class="lv3"><a href="#qa_2">高频面试 Q&amp;amp;A</a></li>
-      <li class="lv2"><a href="#_20">面试一句话总结</a></li>
+      <li class="lv3"><a href="#qa_2">高频 Q&amp;amp;A</a></li>
+      <li class="lv2"><a href="#_20">一句话总结</a></li>
     </ul>
   </nav>
 </details></aside>

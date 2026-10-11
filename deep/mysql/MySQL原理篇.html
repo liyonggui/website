@@ -58,7 +58,7 @@
     <article class="prose">
 <blockquote>
 <p>本篇系统梳理 MySQL 底层原理，覆盖<strong>八大板块</strong>：整体架构、InnoDB 存储引擎、索引原理、事务与隔离、锁机制、复制与高可用、生产环境问题排查、生产环境参数调优。
-侧重<strong>原理深度 + 实战落地</strong>，用于理解 MySQL 底层工作方式 + 面试背诵 + 生产排查与调优依据。
+侧重<strong>原理深度 + 实战落地</strong>，用于理解 MySQL 底层工作方式 + 生产排查与调优依据。
 各板块与项目场景文档（场景1-18、补测B1-12）相互呼应，本文从原理层面统一解释。</p>
 </blockquote>
 <hr />
@@ -225,7 +225,7 @@
 <li><strong>脏页刷盘</strong>：后台线程异步把脏页写回磁盘（与 WAL 配合）。</li>
 <li><strong>调优</strong>：<code>innodb_buffer_pool_size</code> 建议物理内存 60%-75%（见 <code>补测B8-容量规划</code>）。</li>
 </ul>
-<h3 id="23-innodb">2.3 InnoDB 三大优化组件（面试高频）</h3>
+<h3 id="23-innodb">2.3 InnoDB 三大优化组件（高频）</h3>
 <table>
 <thead>
 <tr>
@@ -1196,7 +1196,7 @@ log_replica_updates = ON             # 从库级联复制
 <blockquote>
 <p>关联 <code>补测B10-主从延迟</code>、<code>场景15-高可用</code>。</p>
 </blockquote>
-<h3 id="86">8.6 调优原则（面试加分）</h3>
+<h3 id="86">8.6 调优原则（加分项）</h3>
 <ol>
 <li><strong>监控先行</strong>：调参前先看当前值、监控指标（命中率、IO、连接）。</li>
 <li><strong>一次一改</strong>：每次只改一个参数，便于验证效果。</li>
@@ -1279,7 +1279,7 @@ log_replica_updates = ON             # 从库级联复制
       <li class="lv2"><a href="#innodb">二、InnoDB 存储引擎原理</a></li>
       <li class="lv3"><a href="#21">2.1 存储结构：页 → 区 → 段 → 表空间</a></li>
       <li class="lv3"><a href="#22-buffer-pool">2.2 Buffer Pool（缓冲池）</a></li>
-      <li class="lv3"><a href="#23-innodb">2.3 InnoDB 三大优化组件（面试高频）</a></li>
+      <li class="lv3"><a href="#23-innodb">2.3 InnoDB 三大优化组件（高频）</a></li>
       <li class="lv3"><a href="#24-redo-undo-binlog">2.4 三大日志：redo / undo / binlog</a></li>
       <li class="lv3"><a href="#25-redo-binlog">2.5 两阶段提交（redo + binlog 一致性）</a></li>
       <li class="lv3"><a href="#26">2.6 崩溃恢复流程</a></li>
@@ -1326,7 +1326,7 @@ log_replica_updates = ON             # 从库级联复制
       <li class="lv3"><a href="#83">8.3 连接与线程调优</a></li>
       <li class="lv3"><a href="#84">8.4 事务与锁调优</a></li>
       <li class="lv3"><a href="#85">8.5 复制调优</a></li>
-      <li class="lv3"><a href="#86">8.6 调优原则（面试加分）</a></li>
+      <li class="lv3"><a href="#86">8.6 调优原则（加分项）</a></li>
       <li class="lv2"><a href="#_9">总结：八大板块内在关联</a></li>
       <li class="lv2"><a href="#_10">各板块对应项目场景索引</a></li>
     </ul>
@@ -1337,7 +1337,7 @@ log_replica_updates = ON             # 从库级联复制
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&amp;面试版）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/场景12-分布式锁.html"><span class="rel-title">场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL-事务与锁排查治理手册.html"><span class="rel-title">MySQL（InnoDB）事务与锁排查治理手册</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/KingbaseES-锁与事务排查手册.html"><span class="rel-title">KingbaseES / PostgreSQL 锁与长事务排查手册</span><span class="rel-meta">mysql 系列</span></a></li>
