@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/demo.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">定位是「拿来就能跑」的压测样例：docker-compose 一键起 MySQL + Redis + 应用，init.sql 初始化库存与账号数据，脚本按 100/150/200/250/300 五档并发跑完自动出 HTML 报告。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">Demo 同时是降级设计的试验田：Redis 预扣 + 本地文件兜底的库存方案，在 Redis 不可用时如何限速回放、如何保证最终一致，都在这个仓里可以直接看代码。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>秒杀场景的库存一致性</strong><em><b>难点：</b>高并发抢购下查了再扣必然超卖，纯 Redis 预扣又在宕机时丢数据。</em><em><b>方案：</b>Redis 原子预扣（Lua/DECR）作为主路径，本地文件兜底记录增量，恢复后限速回放对账，保证最终一致——降级链路全程可观测。</em></div></li><li><div class="step-body"><strong>压测环境搭建成本高</strong><em><b>难点：</b>每次压测要手动起 MySQL/Redis/应用、灌数据、清状态，效率低且容易环境污染。</em><em><b>方案：</b>docker-compose 一键编排全栈，init.sql 幂等初始化，压完即弃、随起随测。</em></div></li><li><div class="step-body"><strong>报告不具备可复现性</strong><em><b>难点：</b>压测报告只有结论没有环境与参数，换个人跑不出同样数据。</em><em><b>方案：</b>五档并发参数、场景脚本、init 数据全部入库，HTML 报告由脚本自动生成，任何人 clone 后可复现同组数据。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/phase5.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">Phase 3 的工具是编译期写死的 @Tool；这一阶段把工具协议化：业务后端封成 MCP Server，Agent 启动时动态发现工具列表，新增工具不需要改 Agent 代码。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">实测链路走真实取数：/wxma 接口封装为 MCP 工具，Agent 通过 streamable-http 通道调用，返回真实数据。架构对比图见项目清单页（Phase 3 直连 vs Phase 5 MCP 动态发现）。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>工具硬编码的扩展瓶颈</strong><em><b>难点：</b>每接一个业务工具都要改 Agent 代码、重新发版，工具增长与发布节奏互相拖累。</em><em><b>方案：</b>工具协议化：业务后端封装为 MCP Server（streamable-http），Agent 作为 MCP 客户端启动时动态发现工具列表，新增工具零 Agent 改动。</em></div></li><li><div class="step-body"><strong>MCP 通道的真实取数验证</strong><em><b>难点：</b>协议跑通≠数据正确，需要验证参数传递、结果序列化在真实链路上不变形。</em><em><b>方案：</b>以 /wxma 业务接口为试点走通真实取数：参数 schema 校验、结果结构化回传、异常码透传三段都有实测记录（phase5 详解文档）。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

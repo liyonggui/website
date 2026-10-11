@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/phase3.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">这一阶段回答「Agent 怎么接真实业务」：把业务后端的查询接口封装成 @Tool，模型在多轮对话里自主决定何时调用、何时追问。记忆层负责把上下文里已确认的条件带到下一轮。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">实测场景：第一轮查北京 1/2/11 三所院校，第二轮直接问「上海呢」，Agent 从记忆取上下文正确切换城市——这验证了记忆注入的时机与格式是对的。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>记忆注入的时机与格式</strong><em><b>难点：</b>全量塞上下文会爆 token，漏塞又答非所问——多轮记忆的边界不好拿捏。</em><em><b>方案：</b>按轮次维护结构化会话状态（已确认条件显式存储），推理时注入「当前有效条件」而非历史全文；实测追问场景（查北京后问上海）正确切换城市。</em></div></li><li><div class="step-body"><strong>真实业务接口当工具的不可控性</strong><em><b>难点：</b>mock 工具无法暴露真实接口的参数歧义、慢响应与部分失败。</em><em><b>方案：</b>直接把业务后端查询接口注册为 @Tool，真实数据、真实延迟；配合 Phase 4 的舱壁与熔断兜住真实接口的不确定性。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

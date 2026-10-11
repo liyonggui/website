@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/phase2.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">实现走的是可解释路线：Spring AI 的 EmbeddingModel + Document 分层 + SimpleVectorStore 起步，再对比混合检索（向量 + BM25）与 rerank 的增益。每一步的召回率都可量化，不是「感觉变好了」。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">带引用问答是硬要求：答案必须标注来源文档，评测集单独维护，召回率 83% 是在这套评测集上跑出来的可复现数字。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>召回率不可量化</strong><em><b>难点：</b>「检索效果好像变好了」的表述无法指导优化方向，改一版 prompt 就可能悄悄退化。</em><em><b>方案：</b>先建评测集再谈优化：固定问题集 + 标准答案来源，召回率逐版统计，83% 是这套评测集上的可复现数字。</em></div></li><li><div class="step-body"><strong>单路向量检索的召回上限</strong><em><b>难点：</b>纯向量检索对术语类查询（型号、编号）召回差，语义近似但不精确命中。</em><em><b>方案：</b>混合检索：向量 + BM25 双路召回，RRF 融合排序再 rerank；分层实现（Document 切分策略与 SimpleVectorStore 起步）保证每一步增益可单独度量。</em></div></li><li><div class="step-body"><strong>模型一本正经编造来源</strong><em><b>难点：</b>LLM 对检索不到的内容自行发挥，答案可信度无法追溯。</em><em><b>方案：</b>带引用问答硬约束：答案必须绑定来源文档片段，无来源不输出，评测时同时校验引用的正确性。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

@@ -10,10 +10,10 @@ import pathlib
 import urllib.parse
 
 from gen_articles import ROOT, SITE_BASE, build_html, scan_catalog
-from project_data import PROJECTS
+from project_data import PROJECTS, TECH
 
 
-def build_body(idx, family, title, metric, lead, paras, highlights, related, titles):
+def build_body(idx, slug, family, title, metric, lead, paras, highlights, related, titles):
     parts = []
     parts.append(
         '<div class="path-hero">'
@@ -30,6 +30,22 @@ def build_body(idx, family, title, metric, lead, paras, highlights, related, tit
     for p in paras:
         parts.append('<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">%s</p>' % html.escape(p))
     parts.append("</section>")
+
+    # 技术亮点与难点攻坚
+    tech = TECH.get(slug, [])
+    if tech:
+        parts.append('<section class="path-stage">')
+        parts.append("<h2>技术亮点与难点攻坚</h2>")
+        lis = []
+        for h, problem, solution in tech:
+            lis.append(
+                '<li><div class="step-body"><strong>%s</strong>'
+                '<em><b>难点：</b>%s</em>'
+                '<em><b>方案：</b>%s</em></div></li>'
+                % (html.escape(h), html.escape(problem), html.escape(solution))
+            )
+        parts.append('<ul class="ref-list">%s</ul>' % "".join(lis))
+        parts.append("</section>")
 
     # 关键数据 / 亮点
     if highlights:
@@ -87,7 +103,7 @@ def main():
     (pathlib.Path(ROOT) / "project").mkdir(exist_ok=True)
     n = 0
     for idx, (family, slug, title, metric, lead, paras, highlights, related) in enumerate(PROJECTS):
-        body = build_body(idx, family, title, metric, lead, paras, highlights, related, titles)
+        body = build_body(idx, slug, family, title, metric, lead, paras, highlights, related, titles)
         doc = build_html(
             prefix="../",
             title="%s · 小番茄程序猿项目详情" % title,

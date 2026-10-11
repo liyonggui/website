@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/mysql.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">主场景回答「原理是什么、线上怎么坏」：事务隔离的真实行为、MVCC 版本链、锁的相互作用、索引失效姿势、连接池打满、主从延迟。补测场景回答「怎么治」：热点行锁治理、连接泄漏、深分页、统计信息过期、死锁后的应用重试、从库自动摘除。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">配套产出：MySQL 学习线路（38 站，按认知顺序编排）、事务与锁排查治理手册、KingbaseES 排查手册（信创环境迁移经验）、Sysbench 硬件上限压测。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>RR 下幻读「时有时无」</strong><em><b>难点：</b>同一事务内两次范围查询，有时能读到新插入行、有时读不到，快照读与当前读行为不一致，排查时极易误判为「隔离级别没生效」。</em><em><b>方案：</b>用实验说清 ReadView 的生成时机：RC 每次查询生成新视图、RR 复用首次视图；普通读走版本链不加锁，当前读（for update）才加 Next-Key Lock。幻读是否出现取决于混用了哪类读，结论与复现 SQL 见场景 2/9/4 系列。</em></div></li><li><div class="step-body"><strong>连接池打满引发雪崩 + 超卖</strong><em><b>难点：</b>慢查询堆积把连接池占满，后续请求排队超时，超时重试又放大流量；同一时刻库存扣减在并发下出现负数。</em><em><b>方案：</b>连接池参数按「池大小 × 等待队列 × 超时」联动调优，快速失败优于无限等待；库存侧用条件更新（WHERE stock &gt;= ?）在数据库层兜底，双管齐下治住雪崩与超卖（场景 1）。</em></div></li><li><div class="step-body"><strong>深分页 limit 100000,20 拖垮库</strong><em><b>难点：</b>偏移量越大扫描越多，翻到几十页后单查询秒级，索引形同虚设。</em><em><b>方案：</b>改为游标分页（WHERE id &gt; last_id ORDER BY id LIMIT 20）或延迟关联（先查覆盖索引拿主键再回表），实测两种方案在不同过滤条件下的适用边界（补测 B6）。</em></div></li><li><div class="step-body"><strong>执行计划「昨天还好好的」</strong><em><b>难点：</b>线上 SQL 无改动却突然全表扫描，业务侧一头雾水。</em><em><b>方案：</b>排查出统计信息过期导致优化器选错索引；建立 ANALYZE TABLE 时机与执行计划突变的监控告警流程，把「计划突变」纳入日常巡检项（补测 B7）。</em></div></li><li><div class="step-body"><strong>主从延迟不可观测</strong><em><b>难点：</b>读写分离后从库延迟悄悄涨到秒级，读到旧数据才暴露问题。</em><em><b>方案：</b>Seconds_Behind_Signal 之外补齐心跳表与 GTID 对比双口径监控，延迟超阈值自动把从库摘出负载均衡，恢复后再自动回接（补测 B10/场景 11）。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

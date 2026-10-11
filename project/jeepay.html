@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/jeepay.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">集成覆盖统一下单、跳转/二维码支付、渠道侧回调验签与订单状态回写。回调处理做了幂等与状态机校验：只有合法的状态迁移才落库，重复通知直接幂等返回。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">集成期修掉两个经典缺陷：其一，回调处理只更新了支付单状态、漏回写业务订单状态（订单永远停在待支付）；其二，容器内 localhost 通知地址不可达——notifyUrl 必须用容器网络可达地址，不能想当然写宿主机回环。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>回调只更新支付单、漏回写业务订单</strong><em><b>难点：</b>支付单显示已支付，业务订单永远停在待支付——回调处理链路的状态回写不完整。</em><em><b>方案：</b>修复回调处理器：支付状态落库后同步推进业务订单状态机（PAID 迁移），并加幂等保护，重复通知不产生二次迁移。</em></div></li><li><div class="step-body"><strong>容器内 localhost 通知地址不可达</strong><em><b>难点：</b>notifyUrl 习惯性写成 localhost，回调从容器/渠道侧发起时永远打不进来。</em><em><b>方案：</b>梳理容器网络链路：回调方与被调方不在同一网络命名空间，通知地址必须是容器网络可达地址（服务名/宿主机映射端口），并在 compose 里显式约定。</em></div></li><li><div class="step-body"><strong>回调的并发与乱序</strong><em><b>难点：</b>渠道重试机制下同一订单的多次通知可能并发到达、先后乱序。</em><em><b>方案：</b>状态机只允许合法迁移 + 数据库行锁串行化，乱序旧状态直接幂等拒绝，杜绝旧状态覆盖新状态。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

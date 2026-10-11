@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/agent-prod.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">产品层把前面所有阶段拼成一个可交付系统：检索侧向量 + BM25 双路召回 RRF 融合再 rerank；工具侧走 MCP 动态发现；Redis 同时承担向量库、语义缓存与会话记忆；中间件用 resilience4j 收拢护栏。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">质量与安全两侧：Langfuse 全链路评测（gold 集 13/13 通过），语义缓存带维度一致性护栏（实测拦截 guardRejects=1，防止错缓存串答案）；入口鉴权 + 敏感信息脱敏。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>双路召回的融合顺序</strong><em><b>难点：</b>向量与 BM25 各有强项，简单拼接互相当噪音，加权又难调。</em><em><b>方案：</b>RRF（倒数排名融合）做无参融合再统一 rerank，实测排序稳定性优于线性加权；gold 集 13/13 通过。</em></div></li><li><div class="step-body"><strong>语义缓存的「错误命中」</strong><em><b>难点：</b>问题语义相近但业务维度不同（城市/日期），缓存命中反而返回错误答案。</em><em><b>方案：</b>缓存命中前做维度一致性护栏校验，实测拦截 1 次（guardRejects=1）——宁可回源也不返回错答案，护栏与收益并行。</em></div></li><li><div class="step-body"><strong>Redis 三种角色的资源争抢</strong><em><b>难点：</b>向量库、语义缓存、会话记忆共用 Redis，大 value 与热 key 互相挤兑。</em><em><b>方案：</b>按角色分库/分前缀隔离，分别设置 TTL 与淘汰策略，内存水位与命中率分指标监控。</em></div></li><li><div class="step-body"><strong>评测与可观测的两张网</strong><em><b>难点：</b>问题要么靠评测集在发布前拦住，要么靠线上观测在运行时发现，二者缺一都会漏。</em><em><b>方案：</b>Langfuse 全链路追踪（每次调用的检索/工具/token）+ gold 集回归，发布前与运行时双保险，入口鉴权与敏感信息脱敏兜底安全侧。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

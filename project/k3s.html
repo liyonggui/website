@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/k3s.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">资源覆盖 Namespace / ConfigMap / Secret / Deployment / Service / Ingress，以及 Redis 用 StatefulSet + PVC 的有状态部署。网络策略做成了两层：默认拒绝所有入站，再按需放行（Redis 仅允许指定标签的应用访问）。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">运维实践包括滚动更新（探针参数与 maxSurge/maxUnavailable 的配合）、Ingress + HPA 弹性伸缩、Redis 主从与哨兵在 K8s 里的部署差异，以及一份 K8s 学习路线图。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>Pod 间默认全通的安全风险</strong><em><b>难点：</b>集群内任意 Pod 可互访，一次入侵即可横向移动，默认网络模型不满足最小权限。</em><em><b>方案：</b>NetworkPolicy 默认拒绝（deny-all 入站）+ 按标签白名单放行：Redis 只允许指定 label 的应用访问，规则用实测连通性逐条验证。</em></div></li><li><div class="step-body"><strong>有状态服务的部署差异</strong><em><b>难点：</b>Redis 用 Deployment 重建后数据丢失，副本间身份也无法稳定。</em><em><b>方案：</b>改用 StatefulSet + PVC：稳定网络标识 + 独立存储，主从与哨兵两种拓扑分别落地并对比运维差异（redis-replication / redis-sentinel）。</em></div></li><li><div class="step-body"><strong>滚动更新期间的服务抖动</strong><em><b>难点：</b>直接改镜像触发更新，新旧实例交替时出现 502 与请求失败。</em><em><b>方案：</b>探针参数（就绪/存活阈值）与 maxSurge/maxUnavailable 联动调优：新实例就绪才接流量，旧实例延迟退出，更新全程零失败（ROLLING-UPDATE）。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

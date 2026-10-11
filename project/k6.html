@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/k6.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">脚本设计遵循「先基准、再梯度、后专项」：基准脚本先摸清单接口水位，梯度脚本找拐点，专项脚本模拟秒杀抢购、库存超卖、余额扣减、突发尖峰（阶跃加压）。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">方法论上专门处理了压测领域最容易失真的问题——协同遗漏（Coordinated Omission）：为什么固定速率发压下 p99 会骗人、怎么用开环/闭环模式修正。降级设计沉淀了本地文件兜底与限速回放两套预案。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>压测数据失真：协同遗漏（Coordinated Omission）</strong><em><b>难点：</b>固定速率发压下，被测服务一旦抖动，压测器会「跳过」本应发出的请求，p99 被系统性低估——报告好看，线上爆炸。</em><em><b>方案：</b>识别开环/闭环发压的适用差异，按请求应发时间修正延迟统计（补上被跳过的时间窗），修正后 p99 与真实体验对齐。</em></div></li><li><div class="step-body"><strong>并发档位怎么定</strong><em><b>难点：</b>拍脑袋定并发数，要么压不垮、要么直接打死，得不到有效拐点。</em><em><b>方案：</b>基准脚本先摸单接口水位，再按 50/100/150/200/250/300 六档梯度阶梯加压，绘制吞吐/延迟曲线找拐点，拐点前的最高档即为推荐容量。</em></div></li><li><div class="step-body"><strong>压测把被测环境打死之后</strong><em><b>难点：</b>异常场景下依赖服务不可用，压测被迫中断，数据作废。</em><em><b>方案：</b>降级设计：本地文件兜底记录未完成请求 + 限速回放补测，压测中断不报废，也顺手验证了被测系统的降级行为。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

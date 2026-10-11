@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/backend-sandbox.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">Agent 开发需要一个「可以随便折腾」的业务后端：真实接口、真实数据、但改坏了不心疼。沙盒从业务仓复制而来，独立运行在 80 端口，Phase 3 起的所有业务 @Tool 与 Phase 5 的 MCP Server 都以它为数据源。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">「可改，原仓不碰」是刻意的工程边界：沙盒允许为了测试护栏、异常注入而改造接口行为（比如模拟慢查询、限流），原仓保持干净可同步。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>测试环境「不敢破坏」</strong><em><b>难点：</b>Agent 护栏需要模拟慢查询、限流、异常注入，直接改业务仓既危险又污染历史。</em><em><b>方案：</b>复制出独立沙盒（可改，原仓不碰）：为验证目的自由改造接口行为，用完即弃，原仓保持可同步的干净状态。</em></div></li><li><div class="step-body"><strong>异常注入如何逼近真实故障</strong><em><b>难点：</b>随手抛异常测不出真实故障模式（超时、半开、部分成功）。</em><em><b>方案：</b>按故障类型实现注入点：延迟注入（模拟慢查询）、限流注入、部分成功响应，让 Phase 4 舱壁/熔断在可控故障下完成实测。</em></div></li><li><div class="step-body"><strong>沙盒与原仓的配置漂移</strong><em><b>难点：</b>沙盒改久了接口契约漂移，Agent 工具定义对不上。</em><em><b>方案：</b>以沙盒接口为准生成工具 schema，原仓同步时跑契约校验，漂移即报警。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

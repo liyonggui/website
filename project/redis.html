@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/redis.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">这条线从 Lettuce 客户端的真实问题切入：Pipeline 批量写入为何反而变慢、跨槽命令在 Cluster 下如何报错、连接数与 maxclients 的边界在哪。每个场景都保留原始压测数据与排查过程，而不是只给结论。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">除压测外，还沉淀了两份可直接照做的产出：一份 Redis 高并发缓存架构实战手册（缓存穿透/击穿/雪崩、双写一致性、热点探测），一份 11 场景总结汇总（每场景一句话结论 + 适用条件 + 反例）。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>Pipeline 在 Cluster 下直接报错</strong><em><b>难点：</b>Pipeline 批量命令按 slot 分发，跨槽 key 混在一次批量里直接被节点拒绝（CROSSSLOT），批量收益瞬间归零。</em><em><b>方案：</b>客户端侧按 CRC16 slot 对 key 预分组：先本地计算每个 key 的槽位，同槽 key 才合进一个 Pipeline 分片，跨槽拆多次发送；实测拆分后吞吐恢复到接近单槽水平。</em></div></li><li><div class="step-body"><strong>Lettuce Pipeline 线上变慢</strong><em><b>难点：</b>批量写入吞吐不升反降，且延迟抖动剧烈，现象与「Pipeline 应该更快」的直觉相反。</em><em><b>方案：</b>逐层排查：连接复用、命令聚合粒度、flush 时机，定位到聚合批次过大导致单次网络往返载荷过重与响应排队；调小批次并配合并行连接后恢复正常，完整排查过程与数据见场景 1。</em></div></li><li><div class="step-body"><strong>String 编码阈值照抄默认值踩坑</strong><em><b>难点：</b>按默认 128/512 阈值估算内存与编码，实测 128 个短 member 并没有触发 listpack→skiplist 转换，容量预估直接失真。</em><em><b>方案：</b>实测确认阈值为「大于才转换」（129+/513+），且转换单向不可逆；生产上把安全余量压到 ≤127 / ≤511，并写进容量规划口径。</em></div></li><li><div class="step-body"><strong>热点 Key 计数打爆单分片</strong><em><b>难点：</b>爆款商品的库存/计数 key 落在单个 slot，读写全压一个节点，加机器也没用。</em><em><b>方案：</b>Pipeline 自增合并写 + key 打散（后缀分片再聚合）双管齐下，实测热点分片负载显著摊平，具体数值见场景 8-1/8-2。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/springcloud.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">架构上刻意保持简单：三个独立服务、四个库（order_db / user_db / inventory_db / seata_db），把复杂度留给「分布式事务到底怎么选」这个问题本身。Seata AT 的undo_log、全局锁、二阶段提交都在压测里实测过行为。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">并发控制没有用 JVM 锁：库存扣减走 SQL 乐观锁（WHERE stock &gt; ?），余额走 WHERE balance &gt;= ?，冲突率与吞吐的权衡有实测数据。缓存层 Spring Cache + Redis 的 Cache-Aside（TTL 60s + 写失效）与双写一致性问题在 MySQL 系列里单独展开。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>Seata AT 全局锁竞争</strong><em><b>难点：</b>热点行被多个全局事务同时更新，AT 模式的全局锁排队导致吞吐骤降，二阶段回滚还会放大延迟。</em><em><b>方案：</b>压测量化锁竞争窗口：缩短本地事务持锁时间、热点行拆分，undo_log 清理策略同步调整；给出「哪些场景适合 AT、哪些应该退回 TCC/消息最终一致」的选型边界。</em></div></li><li><div class="step-body"><strong>库存扣减的并发正确性</strong><em><b>难点：</b>应用层先查再减的经典写法在并发下必然超卖，加 JVM 锁在多实例下又失效。</em><em><b>方案：</b>下推到数据库层做条件更新：UPDATE stock SET num = num - ? WHERE id = ? AND num &gt;= ?，用受影响行数判断成功与否；冲突率与吞吐的权衡用压测数据说话。</em></div></li><li><div class="step-body"><strong>旁路缓存与 DB 的双写窗口</strong><em><b>难点：</b>Cache-Aside 先更库再删缓存，仍存在删除失败与读写并发的脏读窗口。</em><em><b>方案：</b>TTL 60s 兜底 + 写路径删缓存重试，双写一致性专项（场景 10）给出不同并发强度下的不一致窗口实测，明确「业务能容忍多久旧数据」决定方案档位。</em></div></li><li><div class="step-body"><strong>扩容不是无脑加实例</strong><em><b>难点：</b>库存服务出现 MySQL 行锁排队后，横向扩应用实例反而加剧数据库争用。</em><em><b>方案：</b>明确扩容顺序：先连接池调优、再读写分离、最后分库分表；各服务按自身瓶颈独立伸缩，避免「哪儿慢全加机器」的粗放扩容。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

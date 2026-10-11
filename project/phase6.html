@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/phase6.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">评测 harness 两层：关键词硬校验（答案必须包含指定事实，不信任模型自由发挥）+ LLM-as-judge（裁判模型按 rubric 打分，均分 1.8/2）。两层各有通过率，CI 里任一维度 &lt; 90% 直接失败。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">这让 Agent 的每次改动都有回归兜底：换模型、改 prompt、调检索参数，跑一遍评测集就知道有没有退化，而不是上线后靠用户反馈发现。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>Agent 改动无法回归</strong><em><b>难点：</b>换模型、改 prompt、调检索参数都可能悄悄变差，人工抽查覆盖不了长尾。</em><em><b>方案：</b>建评测 harness：关键词硬校验（事实必须命中，实测 100%）+ LLM-as-judge 按 rubric 打分（均分 1.8/2），每次改动跑全集出报告。</em></div></li><li><div class="step-body"><strong>评测分数「看着不错」却不设防</strong><em><b>难点：</b>评测只出数字不卡发布，退化照样上线。</em><em><b>方案：</b>接入 CI 门禁：任一维度通过率 &lt; 90% 直接 fail，评测从「参考指标」升级为「发布门槛」，质量门禁实践另见工程实战复盘。</em></div></li><li><div class="step-body"><strong>裁判模型自身不可靠</strong><em><b>难点：</b>LLM-as-judge 的打分随模型与 prompt 波动，单次评分不足为凭。</em><em><b>方案：</b>rubric 明确评分维度与扣分点，裁判 prompt 版本化管理，分数分布而非单次分值作为结论依据。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

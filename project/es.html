@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/es.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">源码研读按三条主线展开：传输层（节点间通信、REST 与 Transport 的分工）、集群协调（选主、分片分配算法、MurmurHash3 路由）、搜索执行（Query + Fetch 两阶段为什么这样切分）。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">研读结论落到两份生产向产出：一套运维命令速查手册（集群架构 + 常用命令），一套分片倾斜应急处理步骤（线上可直接照做），另有 ILM 冷热分层、Reindex 重构、别名与 Rollover 的完整实操手册。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>文档到底落在哪个分片</strong><em><b>难点：</b>不清楚路由规则就没法解释倾斜与查询行为，读源码前只能猜。</em><em><b>方案：</b>从源码确认默认路由为 MurmurHash3(_id) % primary_count，并验证自定义 routing 的落点；据此定位多个倾斜案例的根因（路由键分布不均），应急处理步骤整理成可直接照做的手册。</em></div></li><li><div class="step-body"><strong>写入链路「丢没丢」说不清</strong><em><b>难点：</b>refresh/translog/flush 各环节职责混在一起，数据可靠性与可见性争论没有依据。</em><em><b>方案：</b>沿 ES 7.17 写入全流程逐段梳理：index buffer → refresh 生成段 → translog 持久化 → flush 落盘，把「可见 ≠ 可靠」的分界讲清楚（ES7.17 写入全流程-2）。</em></div></li><li><div class="step-body"><strong>分片倾斜线上应急</strong><em><b>难点：</b>节点磁盘/负载严重不均，直接 rebalance 可能引发更大抖动。</em><em><b>方案：</b>沉淀应急步骤：先查倾斜分布与路由键，再决定 move 分片 / reroute / 调整 watermarks 的顺序与风险点，形成照着操作的 checklist。</em></div></li><li><div class="step-body"><strong>索引重建期间的双写与切换</strong><em><b>难点：</b>mapping 变更需要 reindex，直接切流量会丢数据或停服。</em><em><b>方案：</b>别名 + Rollover 方案：新索引 reindex 期间双写（别名切读/切写分步），验证一致后原子切换，完整手册覆盖参数与故障排查。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>

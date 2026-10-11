@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/project/phase1.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json"></script>
-<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=7"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -56,6 +56,10 @@
 <h2>项目概述</h2>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">这一阶段刻意做减法：一个 @Tool 注解的工具循环、一套 SSE 流式输出，验证 Spring AI 的工具调用链路到底需要哪些部件。576+ 单已发货的实测结果证明闭环可用。</p>
 <p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">价值在于建立了后续所有阶段的基准：之后的记忆、RAG、MCP、评测都是在「这个最小闭环还缺什么」的追问下一步步加出来的。</p>
+</section>
+<section class="path-stage">
+<h2>技术亮点与难点攻坚</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>工具调用的最小闭环到底需要什么</strong><em><b>难点：</b>框架文档琳琅满目，不清楚「模型→工具→结果→再推理」链路里哪些是必需件。</em><em><b>方案：</b>用 @Tool 注解注册业务函数，让 Spring AI 处理函数签名/参数 schema 的序列化与调用回传，最小代码跑通闭环并流式输出，576+ 单实测验证。</em></div></li><li><div class="step-body"><strong>流式与工具调用的冲突</strong><em><b>难点：</b>流式输出希望 token 尽快吐出，而工具调用需要等完整结果才能继续推理，两者叠加时序容易乱。</em><em><b>方案：</b>区分「中间工具调用不外发」与「最终回答流式」两种阶段，SSE 通道只透传面向用户的增量，链路实测不卡顿。</em></div></li></ul>
 </section>
 <section class="path-stage">
 <h2>关键数据与亮点</h2>
