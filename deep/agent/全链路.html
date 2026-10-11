@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>瑞达星 × Agent 全链路（代码级） · 小番茄程序猿</title>
-<meta name="description" content="谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…"/>
+<title>自研后端 × Agent 全链路（代码级） · 小番茄程序猿</title>
+<meta name="description" content="谁接入谁：只有自研后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…"/>
 <meta name="keywords" content="AI Agent, Spring AI, agent"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/agent/全链路.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="瑞达星 × Agent 全链路（代码级） · 小番茄程序猿" />
-<meta property="og:description" content="谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…" />
+<meta property="og:title" content="自研后端 × Agent 全链路（代码级） · 小番茄程序猿" />
+<meta property="og:description" content="谁接入谁：只有自研后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/agent/全链路.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "瑞达星 × Agent 全链路（代码级）", "description": "谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是\"择校/专业/课程\"公开浏览接口）。 > 数据源纪律：Agent 打的是沙盒后端 D:\\ai-agent-proj…", "url": "https://liyonggui.github.io/website/deep/agent/全链路.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/全链路.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-07", "keywords": "AI Agent, Spring AI, agent"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "自研后端 × Agent 全链路（代码级）", "description": "谁接入谁：只有自研后端 /wxma 被 Agent 接入（读的是\"择校/专业/课程\"公开浏览接口）。 > 数据源纪律：Agent 打的是沙盒后端 D:\\ai-agent-proj…", "url": "https://liyonggui.github.io/website/deep/agent/全链路.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/全链路.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-07", "keywords": "AI Agent, Spring AI, agent"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -51,76 +51,76 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>瑞达星 × Agent 全链路（代码级）</h1>
+    <h1>自研后端 × Agent 全链路（代码级）</h1>
 <div class="meta-row"><span class="m-item">2026-10-07</span><span class="m-item">agent 系列</span><span class="m-item">约 9 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=AI Agent">AI Agent</a><a class="m-tag" href="../../tags.html?t=Spring AI">Spring AI</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
 <blockquote>
-<p>谁接入谁：<strong>只有瑞达星后端 <code>/wxma</code> 被 Agent 接入</strong>（读的是"择校/专业/课程"公开浏览接口）。
-数据源纪律：Agent 打的是<strong>沙盒后端</strong> <code>D:\ai-agent-project\rdx-bx-backend</code>（本机 <code>127.0.0.1/wxma</code>），<strong>永不默认生产</strong> <code>www.ruidaxing.com.cn</code>。</p>
+<p>谁接入谁：<strong>只有自研后端 <code>/wxma</code> 被 Agent 接入</strong>（读的是"择校/专业/课程"公开浏览接口）。
+数据源纪律：Agent 打的是<strong>沙盒后端</strong>（本机 <code>127.0.0.1/wxma</code>），<strong>永不默认生产环境域名</strong>。</p>
 </blockquote>
 <h2 id="_1">一、涉及的仓库/工程</h2>
 <table>
 <thead>
 <tr>
 <th>角色</th>
-<th>路径</th>
+<th>说明</th>
 <th>在本链路里干什么</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>瑞达星后端(原仓)</td>
-<td><code>D:\rdx-bx-backend</code></td>
+<td>自研后端(原仓)</td>
+<td>本地原仓库</td>
 <td><strong>不碰</strong></td>
 </tr>
 <tr>
-<td>瑞达星后端(沙盒)</td>
-<td><code>D:\ai-agent-project\rdx-bx-backend</code></td>
-<td>Agent 的数据源；<code>java -jar target/blade-api.jar --spring.profiles.active=dev</code> 占 80</td>
+<td>自研后端(沙盒)</td>
+<td>后端的沙盒副本目录</td>
+<td>Agent 的数据源；<code>java -jar app.jar --spring.profiles.active=dev</code> 占 80</td>
 </tr>
 <tr>
-<td>瑞达星官网</td>
-<td><code>D:\rdx-website</code></td>
+<td>企业官网</td>
+<td>静态站点目录</td>
 <td>仅<strong>接口契约来源</strong>(<code>src/utils/{request,school,major,course}.js</code>, BASE_URL <code>/api/wxma/</code>)；Agent 不经过它</td>
 </tr>
 <tr>
 <td>小程序</td>
-<td><code>D:\ruidaxing-mini-program</code></td>
+<td>小程序仓库</td>
 <td>后端另一消费者，同理不被 Agent 调</td>
 </tr>
 <tr>
 <td>管理端 / 考试系统</td>
-<td><code>rdx-bx-frontend</code> / <code>rdx-exam-system</code></td>
+<td>对应前端仓库</td>
 <td><strong>未涉及</strong></td>
 </tr>
 <tr>
 <td>Agent</td>
-<td><code>D:\ai-agent-project\phase3-agent / phase4-agent-ops / phase5-mcp-server / phase5-mcp-client</code></td>
+<td>Agent 侧各阶段模块（phase3-agent / phase4-agent-ops / phase5-mcp-server / phase5-mcp-client）</td>
 <td>消费 <code>/wxma</code>（phase3/4 直连、phase5 经 MCP）</td>
 </tr>
 </tbody>
 </table>
 <h2 id="_2">二、后端侧代码链（沙盒，真类名/方法/缓存键）</h2>
-<p>Base：<code>org.springblade.rdx.normal.wx</code> 下控制器，<code>@RequestMapping("/wxma")</code>。</p>
+<p>Base：<code>normal.wx</code> 包下控制器，<code>@RequestMapping("/wxma")</code>。</p>
 <ul>
 <li><code>GET /wxma/school?page,city,name,way,level,major</code>
   → <code>WxMaSchoolController.getSchool(...)</code>
-  → <code>WxQueryCache.school(RdxCacheKey.SCHOOL, ...)</code>（两级缓存：本地 + Redis，未命中回源）
-  → <code>IWxMaSchoolService</code> → MyBatis-Plus Mapper → <strong>MySQL <code>rdx_school</code></strong>
+  → <code>WxQueryCache.school(CacheKey.SCHOOL, ...)</code>（两级缓存：本地 + Redis，未命中回源）
+  → <code>IWxMaSchoolService</code> → MyBatis-Plus Mapper → <strong>MySQL 院校表</strong>
   → 返回 <code>R&lt;IPage&lt;Map&gt;&gt;</code> = <code>{code,success,data:{records,total,pages,size,current},msg}</code></li>
 <li><code>GET /wxma/majors/search?page,pageSize,school,region,major,direction,subject,learningStyle</code>
-  → <code>WxMaSchoolController.searchMajors(...)</code> → <code>WxQueryCache.majorsSearch(RdxCacheKey.MAJORS_SEARCH)</code>（JOIN 院校）→ Service → Mapper → MySQL</li>
+  → <code>WxMaSchoolController.searchMajors(...)</code> → <code>WxQueryCache.majorsSearch(CacheKey.MAJORS_SEARCH)</code>（JOIN 院校）→ Service → Mapper → MySQL</li>
 <li><code>GET /wxma/course?type,category</code>
-  → <code>WxMaCourseController.getCourse(...)</code> → <code>WxQueryCache.course(RdxCacheKey.COURSE_LIST, () -&gt; courseService.getCoursesByType(type,category))</code> → Mapper → MySQL
-  → 返回 <code>R&lt;List&lt;RdxCourse&gt;&gt;</code>（注意：course 的 <code>data</code> 是<strong>数组</strong>、非分页 <code>records</code>）</li>
+  → <code>WxMaCourseController.getCourse(...)</code> → <code>WxQueryCache.course(CacheKey.COURSE_LIST, () -&gt; courseService.getCoursesByType(type,category))</code> → Mapper → MySQL
+  → 返回 <code>R&lt;List&lt;CourseVO&gt;&gt;</code>（注意：course 的 <code>data</code> 是<strong>数组</strong>、非分页 <code>records</code>）</li>
 </ul>
 <p>鉴权：上面 3 个是<strong>匿名可访</strong>（走 WxQueryCache，无 token）；<code>/wxma/majors/count</code> 才 <code>WxMaJwtUtil.validateToken</code>。这解释了 Agent 不需要登录态。</p>
 <h2 id="agent-wxma">三、Agent 侧两条等价路径（同一 <code>/wxma</code>，两种接线）</h2>
 <h3 id="aphase34-tool">路径 A：phase3/4 — 本地硬编码 @Tool</h3>
 <div class="codehilite"><pre><span></span><code>HTTP 用户 /api/a3/chat?cid&amp;q (phase3) 或 /api/ops/... (phase4)
-  → ChatClient(defaultTools = RuidaxingTools / ToolGateway包一层)
+  → ChatClient(defaultTools = SchoolTools / ToolGateway包一层)
   → 模型出 tool_calls → Spring AI 反射执行 @Tool searchSchools(name,city,page)
      [phase4: ToolGateway = Caffeine缓存 + Breaker熔断 + RestClient超时/降级 → 返回结构化unavailable]
   → RestClient(baseUrl=http://127.0.0.1/wxma).GET /school → (第二节后端链) → JSON
@@ -133,7 +133,7 @@
   → ChatClient(defaultToolCallbacks = MCP ToolCallbackProvider 的回调, 各包 RecordingToolCallback 记 trajectory)
   → 模型出 tool_calls → MCP client 经 streamable-http 发 JSON-RPC tools/call
      端点 http://localhost:8085/mcp（握手 initialize→Mcp-Session-Id→…）
-  → phase5-mcp-server: RdxTools @Tool(search_schools/search_majors/list_courses) 由 MethodToolCallbackProvider 发布
+  → phase5-mcp-server: SchoolTools @Tool(search_schools/search_majors/list_courses) 由 MethodToolCallbackProvider 发布
   → RestClient(http://127.0.0.1/wxma).GET /school → (第二节后端链) → JSON 裁剪 → tool 结果 → 回填 → 模型答
 </code></pre></div>
 
@@ -188,7 +188,7 @@
       <ul class="related-list">
         <li><a href="../../deep/agent/项目评估与改进建议.html"><span class="rel-title">AI Agent 项目集评估与改进建议</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/README.html"><span class="rel-title">phase1-minimal-agent</span><span class="rel-meta">agent 系列</span></a></li>
-        <li><a href="../../deep/agent/rdx-agent-工程化落地纪要.html"><span class="rel-title">rdx-agent 工程化落地纪要</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/agent-工程化落地纪要.html"><span class="rel-title">自研 agent 应用 工程化落地纪要</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/RAG代码与原理详解.html"><span class="rel-title">RAG 代码与原理详解（phase2 深读 · 新手向）</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/phase6-评测代码与原理详解.html"><span class="rel-title">phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</span><span class="rel-meta">agent 系列</span></a></li>
       </ul>

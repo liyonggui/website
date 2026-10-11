@@ -24,7 +24,7 @@
   │  title / summary / date / tags / category / series / reading_time / draft
   ▼
 add_front_matter.py   # 给新文章注入元数据（幂等）
-gen_articles.py       # 渲染 106 篇带排版/TOC/评论区/暗色模式的文章页
+gen_articles.py       # 渲染 109 篇带排版/TOC/评论区/暗色模式的文章页
 gen_deep.py           # 生成 deep.html 深度专栏索引
 generate_index.py     # 生成 data/*.json（文章/标签/归档/搜索索引）+ rss.xml
 verify_titles.py      # 全站校验：元数据完整性 + HTML 结构 + 产物对应 + JSON 可解析

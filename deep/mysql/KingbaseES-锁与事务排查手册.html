@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>KingbaseES / PostgreSQL 锁与长事务排查手册 · 小番茄程序猿</title>
-<meta name="description" content="适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 zhcl，运维账号 dgclylf，客户端 KStudio，经 aTrust 零信任 VPN 连接。 &gt; …"/>
+<meta name="description" content="适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境，客户端 KStudio，经零信任 VPN 连接。 &gt; …"/>
 <meta name="keywords" content="MySQL, Elasticsearch, 事务, 锁, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/KingbaseES-锁与事务排查手册.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="KingbaseES / PostgreSQL 锁与长事务排查手册 · 小番茄程序猿" />
-<meta property="og:description" content="适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 zhcl，运维账号 dgclylf，客户端 KStudio，经 aTrust 零信任 VPN 连接。 &gt; …" />
+<meta property="og:description" content="适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境，客户端 KStudio，经零信任 VPN 连接。 &gt; …" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/KingbaseES-锁与事务排查手册.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "KingbaseES / PostgreSQL 锁与长事务排查手册", "description": "适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 zhcl，运维账号 dgclylf，客户端 KStudio，经 aTrust 零信任 VPN 连接。 > …", "url": "https://liyonggui.github.io/website/deep/mysql/KingbaseES-锁与事务排查手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/KingbaseES-锁与事务排查手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-15", "keywords": "MySQL, Elasticsearch, 事务, 锁, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "KingbaseES / PostgreSQL 锁与长事务排查手册", "description": "适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境，客户端 KStudio，经零信任 VPN 连接。 > …", "url": "https://liyonggui.github.io/website/deep/mysql/KingbaseES-锁与事务排查手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/KingbaseES-锁与事务排查手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-15", "keywords": "MySQL, Elasticsearch, 事务, 锁, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -57,7 +57,7 @@
   <div class="article-layout">
     <article class="prose">
 <blockquote>
-<p>适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 <code>zhcl</code>，运维账号 <code>dgcl_ylf</code>，客户端 KStudio，经 aTrust 零信任 VPN 连接。
+<p>适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境（库名/账号略），客户端 KStudio，经零信任 VPN 连接。
 本手册既是本次「卡死事务」事件的复盘，也是可长期复用的锁/事务排查 runbook。
 整理日期：2026-09-22</p>
 </blockquote>
@@ -80,10 +80,10 @@
 <p><strong>现象</strong>：在 KStudio 里想编辑某张表（改结构 / DDL），一直执行不了、卡住。</p>
 <p><strong>定位过程</strong>（每一步用的关键 SQL 见第 4 节）：</p>
 <ol>
-<li>查 <code>pg_stat_activity</code> 发现一个 <code>pid=21634</code>、<code>usename=dgcl_ylf</code>、<code>state=active</code> 的会话，<strong>事务时长已达 2 天</strong>，<code>wait_event_type</code> 为空。</li>
+<li>查 <code>pg_stat_activity</code> 发现一个 <code>pid=21634</code>、<code>usename=&lt;ops_user&gt;</code>、<code>state=active</code> 的会话，<strong>事务时长已达 2 天</strong>，<code>wait_event_type</code> 为空。</li>
 <li>查 <code>pg_locks</code> 发现它持有的一堆锁<strong>全是 <code>AccessShareLock</code></strong>（普通 SELECT 的锁），外加一条 <code>virtualxid</code> 的 <code>ExclusiveLock</code>（正常现象，非元凶）。</li>
 <li>查阻塞链 <code>pg_blocking_pids()</code> 返回<strong>空</strong> → 说明它当前<strong>没有阻塞任何其它会话</strong>，业务读写不受影响。</li>
-<li>查会话详情：<code>application_name = KStudio - SQLEditor &lt;Script-30.sql&gt;</code>、<code>client_addr = 19.104.4.128</code>（aTrust VPN 出口 IP，不是本机局域网 IP）。SQL 全文是一条查 <code>information_schema</code> 的<strong>表结构校验脚本</strong>（验证三张表 / 三个视图 / 九个索引是否齐全）。</li>
+<li>查会话详情：<code>application_name = KStudio - SQLEditor &lt;Script-30.sql&gt;</code>、<code>client_addr</code> 显示为 VPN 出口 IP（不是本机局域网 IP）。SQL 全文是一条查 <code>information_schema</code> 的<strong>表结构校验脚本</strong>（验证三张表 / 三个视图 / 九个索引是否齐全）。</li>
 </ol>
 <p><strong>根因</strong>：有人（部署这套尚未上线的新表结构时）在 KStudio 里跑了一条元数据校验 <code>SELECT</code>，窗口一直没关，查询<strong>跑飞 / 卡死</strong>（<code>state=active</code> 且 <code>wait_event</code> 空 = 进程在 CPU 上却出不来，属于 wedged 状态）。一条查字典视图的 SQL 正常几秒就该结束，能挂 2 天说明后端进程已卡死、且<strong>对终止信号不响应</strong>。</p>
 <p><strong>影响判读</strong>：</p>
@@ -421,12 +421,12 @@
 <span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">app_user</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">lock_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'5s'</span><span class="p">;</span>
 <span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">app_user</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">idle_in_transaction_session_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'60s'</span><span class="p">;</span>
 
-<span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">dgcl_ylf</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">statement_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'10min'</span><span class="p">;</span>
-<span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">dgcl_ylf</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">lock_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'30s'</span><span class="p">;</span>
-<span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">dgcl_ylf</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">idle_in_transaction_session_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'5min'</span><span class="p">;</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="o">&lt;</span><span class="n">ops_user</span><span class="o">&gt;</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">statement_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'10min'</span><span class="p">;</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="o">&lt;</span><span class="n">ops_user</span><span class="o">&gt;</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">lock_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'30s'</span><span class="p">;</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="o">&lt;</span><span class="n">ops_user</span><span class="o">&gt;</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">idle_in_transaction_session_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'5min'</span><span class="p">;</span>
 
 <span class="c1">-- 库级（该库所有连接默认）</span>
-<span class="k">ALTER</span><span class="w"> </span><span class="k">DATABASE</span><span class="w"> </span><span class="n">zhcl</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">idle_in_transaction_session_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'5min'</span><span class="p">;</span>
+<span class="k">ALTER</span><span class="w"> </span><span class="k">DATABASE</span><span class="w"> </span><span class="o">&lt;</span><span class="n">prod_db</span><span class="o">&gt;</span><span class="w">  </span><span class="k">SET</span><span class="w"> </span><span class="n">idle_in_transaction_session_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'5min'</span><span class="p">;</span>
 <span class="c1">-- 实例级（超级用户，需 reload 或重启）</span>
 <span class="k">ALTER</span><span class="w"> </span><span class="k">SYSTEM</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">idle_in_transaction_session_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'5min'</span><span class="p">;</span>
 </code></pre></div>
@@ -609,11 +609,11 @@
 <li><strong><code>statement_timeout</code> 会误杀</strong>合法长任务：数据迁移、备份、大报表、<code>CREATE INDEX</code> 前记得临时设 <code>0</code> 或调大。</li>
 <li><strong><code>idle_in_transaction_session_timeout</code> 对 <code>active</code> 查询无效</strong>——本次跑飞是 active，得靠 <code>statement_timeout</code> 才拦得住。两者别混为一谈。</li>
 <li><strong>KStudio 每个 SQL 编辑器窗口 = 独立连接</strong>：会话级 <code>SET</code> 只在同窗口有效，跨窗口查 <code>SHOW</code> 会回到默认值（本次就出现过「设了却查回 0」）。</li>
-<li><strong><code>client_addr</code> 是 VPN 出口 IP，不是本机局域网 IP</strong>：经 aTrust 连库时，库里看到的来源是隧道/网关地址（如 <code>19.104.4.128</code>），别拿它去 <code>ipconfig</code> 里比对。</li>
+<li><strong><code>client_addr</code> 是 VPN 出口 IP，不是本机局域网 IP</strong>：经 VPN 连库时，库里看到的来源是隧道/网关地址（如 <code>19.x.x.x</code>），别拿它去 <code>ipconfig</code> 里比对。</li>
 <li><strong><code>pg_stat_activity</code> 不暴露按 pid 的 CPU%</strong>：精确 CPU 只能 OS <code>top</code> 或云控制台监控。</li>
 <li><strong>长事务 × 复制槽 = WAL 堆积</strong>：有逻辑复制/物理复制槽时，长事务会阻止 WAL 回收，可能撑爆磁盘，比单纯膨胀更危险。</li>
 <li><strong>生产 <code>terminate</code>/<code>kill</code> 前先确认</strong>：核对来源、确认无业务依赖、评估被杀事务是否为需回滚的大写事务。</li>
-<li><strong>权限受限的运维账号</strong>（如 <code>dgcl_ylf</code>）：改库报 <code>must be owner</code>、<code>ALTER ROLE</code> 无权限、杀不掉僵死会话都属正常——这类根治动作本就该由 DBA/运维或云平台管理账号做。</li>
+<li><strong>权限受限的运维账号</strong>（受限的运维账号）：改库报 <code>must be owner</code>、<code>ALTER ROLE</code> 无权限、杀不掉僵死会话都属正常——这类根治动作本就该由 DBA/运维或云平台管理账号做。</li>
 <li><strong><code>transaction_timeout</code></strong>（PG 17+）可限制整个事务（含 active+idle）总时长，作为长事务的最后兜底；KingbaseES 视版本而定，查不到即不支持。</li>
 </ul>
 <hr />

@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>AI Agent 项目集评估与改进建议 · 小番茄程序猿</title>
-<meta name="description" content="评估范围：D:\ai-agent-project 根目录下的 Agent 教学项目、可观测性项目和 rdx-bx-backend 业务后端沙盒。 &gt; 评估时间：2026-09-20…"/>
+<meta name="description" content="评估范围：Agent 教学项目、可观测性项目和后端业务沙盒。 &gt; 评估时间：2026-09-20…"/>
 <meta name="keywords" content="AI Agent, Spring AI, agent"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/agent/项目评估与改进建议.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="AI Agent 项目集评估与改进建议 · 小番茄程序猿" />
-<meta property="og:description" content="评估范围：D:\ai-agent-project 根目录下的 Agent 教学项目、可观测性项目和 rdx-bx-backend 业务后端沙盒。 &gt; 评估时间：2026-09-20…" />
+<meta property="og:description" content="评估范围：Agent 教学项目、可观测性项目和后端业务沙盒。 &gt; 评估时间：2026-09-20…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/agent/项目评估与改进建议.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "AI Agent 项目集评估与改进建议", "description": "评估范围：D:\\ai-agent-project 根目录下的 Agent 教学项目、可观测性项目和 rdx-bx-backend 业务后端沙盒。 > 评估时间：2026-09-20…", "url": "https://liyonggui.github.io/website/deep/agent/项目评估与改进建议.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/项目评估与改进建议.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-09", "keywords": "AI Agent, Spring AI, agent"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "AI Agent 项目集评估与改进建议", "description": "评估范围：Agent 教学项目、可观测性项目和后端业务沙盒。 > 评估时间：2026-09-20…", "url": "https://liyonggui.github.io/website/deep/agent/项目评估与改进建议.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/项目评估与改进建议.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-09", "keywords": "AI Agent, Spring AI, agent"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -57,7 +57,7 @@
   <div class="article-layout">
     <article class="prose">
 <blockquote>
-<p>评估范围：<code>D:\ai-agent-project</code> 根目录下的 Agent 教学项目、可观测性项目和 <code>rdx-bx-backend</code> 业务后端沙盒。<br />
+<p>评估范围：Agent 教学项目、可观测性项目和 <code>后端沙盒</code> 业务后端沙盒。<br />
 评估时间：2026-09-20<br />
 评估方式：目录结构、README、Maven 配置、核心源码、测试目录、运行日志、Docker Compose 与 Git 忽略规则的静态检查。</p>
 </blockquote>
@@ -184,9 +184,9 @@
 <td style="text-align: right;">7.5/10</td>
 </tr>
 <tr>
-<td><code>rdx-bx-backend</code></td>
+<td><code>后端沙盒</code></td>
 <td>业务后端沙盒</td>
-<td>BladeX 单体、院校/专业/课程、考试及系统模块</td>
+<td>后端框架 单体、院校/专业/课程、考试及系统模块</td>
 <td style="text-align: right;">7/10</td>
 </tr>
 </tbody>
@@ -221,7 +221,7 @@
 <li>将根 README 改造成正式项目首页，包含项目定位、架构图、快速开始、安全说明、测试方式和已知限制。</li>
 <li>完善英文 README，或者删除模板文件。</li>
 <li>增加统一 <code>scripts/</code> 目录，提供构建、启动、停止和端到端验证脚本。</li>
-<li>将固定路径改为环境变量，例如 <code>RDX_BACKEND_DIR</code>、<code>MCP_SERVER_URL</code> 和 <code>AGENT_URL</code>。</li>
+<li>将固定路径改为环境变量，例如 <code>BACKEND_DIR</code>、<code>MCP_SERVER_URL</code> 和 <code>AGENT_URL</code>。</li>
 <li>增加版本兼容表，明确每个阶段的 JDK、Spring Boot、Spring AI 和 MCP 协议版本。</li>
 </ol>
 <h2 id="32-phase1-minimal-agent">3.2 phase1-minimal-agent</h2>
@@ -281,7 +281,7 @@
 <p>项目路径：<a href="./phase3-agent">phase3-agent</a></p>
 <h3 id="_10">优点</h3>
 <ul>
-<li><a href="./phase3-agent/src/main/java/com/example/agent3/tool/RuidaxingTools.java">RuidaxingTools.java</a> 将真实业务 HTTP 接口包装为模型工具。</li>
+<li><a href="./phase3-agent/src/main/java/com/example/agent3/tool/SchoolTools.java">SchoolTools.java</a> 将真实业务 HTTP 接口包装为模型工具。</li>
 <li>对返回结果进行字段裁剪和 Top-8 限制，具备 Token 控制意识。</li>
 <li><a href="./phase3-agent/src/main/java/com/example/agent3/web/AgentController.java">AgentController.java</a> 支持多轮会话、历史查看和 SSE 流式。</li>
 <li>默认业务地址指向本机后端，而不是生产地址，安全默认值正确。</li>
@@ -336,9 +336,9 @@
 <p>项目路径：<a href="./phase5-mcp-server">phase5-mcp-server</a></p>
 <h3 id="_16">优点</h3>
 <ul>
-<li>独立 MCP Server 避免了 BladeX 后端与 Spring AI 版本强耦合。</li>
+<li>独立 MCP Server 避免了 后端框架 后端与 Spring AI 版本强耦合。</li>
 <li><a href="./phase5-mcp-server/src/main/java/com/example/mcp/config/McpToolConfig.java">McpToolConfig.java</a> 通过 <code>MethodToolCallbackProvider</code> 发布工具，边界清晰。</li>
-<li><a href="./phase5-mcp-server/src/main/java/com/example/mcp/tool/RdxTools.java">RdxTools.java</a> 的院校、专业和课程工具职责明确。</li>
+<li><a href="./phase5-mcp-server/src/main/java/com/example/mcp/tool/SchoolTools.java">SchoolTools.java</a> 的院校、专业和课程工具职责明确。</li>
 <li>已验证 initialize、tools/list 和 tools/call 的真实链路。</li>
 <li>下游 RestClient 配置了连接和读取超时。</li>
 </ul>
@@ -437,9 +437,9 @@
 <li>默认关闭完整 prompt/completion 采集，按环境显式开启。</li>
 <li>增加数据保留周期和存储容量限制。</li>
 </ul>
-<h2 id="310-rdx-bx-backend">3.10 rdx-bx-backend</h2>
-<p>项目路径：<a href="./rdx-bx-backend">rdx-bx-backend</a></p>
-<p>这是一个规模较大的 BladeX 单体业务后端沙盒，包含系统管理、考试、院校、专业、课程、资源、工作流等模块。当前约有 615 个 Java 源文件，并包含一定数量的测试和 k6 压测脚本。</p>
+<h2 id="310">3.10 后端沙盒</h2>
+<p>项目路径：后端沙盒仓库</p>
+<p>这是一个规模较大的 后端框架 单体业务后端沙盒，包含系统管理、考试、院校、专业、课程、资源、工作流等模块。当前约有 615 个 Java 源文件，并包含一定数量的测试和 k6 压测脚本。</p>
 <h3 id="_28">优点</h3>
 <ul>
 <li>业务边界相对完整。</li>
@@ -451,9 +451,9 @@
 <h3 id="_29">主要问题</h3>
 <ul>
 <li>多个配置文件包含开发密码、数据库密码、OSS 密钥、微信配置、JWT/SM4 配置等敏感信息。</li>
-<li><a href="./rdx-bx-backend/pom.xml">pom.xml</a> 中存在 Docker Registry 账号密码配置，这是严重的仓库卫生问题。</li>
+<li><code>pom.xml</code> 中存在 Docker Registry 账号密码配置，这是严重的仓库卫生问题。</li>
 <li>数据库运行目录、日志和导入压缩包不应长期混在源码目录中。</li>
-<li>BladeX 商业授权边界需要在公开发布、博客和 GitHub 迁移时特别注意。</li>
+<li>后端框架 商业授权边界需要在公开发布、博客和 GitHub 迁移时特别注意。</li>
 <li>单体规模较大，模块间耦合成本高。</li>
 </ul>
 <h3 id="_30">建议</h3>
@@ -464,7 +464,7 @@
 <li>对 Agent 只开放明确的只读业务接口。</li>
 <li>给 <code>/wxma</code> 增加限流、审计、统一错误码、分页上限和脱敏。</li>
 <li>暂时不建议为了微服务化而直接拆分部署，优先按业务域降低代码耦合。</li>
-<li>公开发布前确认 BladeX 商业授权和业务数据授权边界。</li>
+<li>公开发布前确认 后端框架 商业授权和业务数据授权边界。</li>
 </ol>
 <h2 id="4">4. 跨项目高优先级问题</h2>
 <h2 id="p0">P0：密钥和凭据泄露风险</h2>
@@ -483,9 +483,9 @@
 <ul>
 <li><a href="./phase1-minimal-agent/src/main/resources/application.yml">phase1 application.yml</a></li>
 <li><a href="./phase2-rag/src/main/resources/application.yml">phase2 application.yml</a></li>
-<li><a href="./rdx-bx-backend/src/main/resources/application-dev.yml">rdx application-dev.yml</a></li>
-<li><a href="./rdx-bx-backend/src/main/resources/application.yml">rdx application.yml</a></li>
-<li><a href="./rdx-bx-backend/pom.xml">rdx pom.xml</a></li>
+<li>后端 dev 配置（仓库内 application-dev.yml）</li>
+<li>后端主配置（仓库内 application.yml）</li>
+<li>后端 pom（仓库内 pom.xml）</li>
 <li><a href="./docker-compose.yml">Langfuse docker-compose.yml</a></li>
 </ul>
 <p>建议立即执行：</p>
@@ -546,7 +546,7 @@
 <p>然后从 Git 索引中移除已经被跟踪的构建产物。</p>
 <p>另外，工作区中存在较大的导入压缩文件：</p>
 <ul>
-<li><a href="./rdx-bx-backend/doc/import_2026/zips/sync_good.zip">sync_good.zip</a></li>
+<li>数据导入包（仓库内 doc/import_2026/zips/）</li>
 </ul>
 <p>应确认该文件是否必须保留在项目目录中。</p>
 <h2 id="5">5. 推荐改进路线</h2>
@@ -681,7 +681,7 @@ Tool Gateway
       <li class="lv3"><a href="#_25">优点</a></li>
       <li class="lv3"><a href="#_26">风险</a></li>
       <li class="lv3"><a href="#_27">建议</a></li>
-      <li class="lv2"><a href="#310-rdx-bx-backend">3.10 rdx-bx-backend</a></li>
+      <li class="lv2"><a href="#310">3.10 后端沙盒</a></li>
       <li class="lv3"><a href="#_28">优点</a></li>
       <li class="lv3"><a href="#_29">主要问题</a></li>
       <li class="lv3"><a href="#_30">建议</a></li>
@@ -705,9 +705,9 @@ Tool Gateway
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/agent/全链路.html"><span class="rel-title">瑞达星 × Agent 全链路（代码级）</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/全链路.html"><span class="rel-title">自研后端 × Agent 全链路（代码级）</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/README.html"><span class="rel-title">phase1-minimal-agent</span><span class="rel-meta">agent 系列</span></a></li>
-        <li><a href="../../deep/agent/rdx-agent-工程化落地纪要.html"><span class="rel-title">rdx-agent 工程化落地纪要</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/agent-工程化落地纪要.html"><span class="rel-title">自研 agent 应用 工程化落地纪要</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/RAG代码与原理详解.html"><span class="rel-title">RAG 代码与原理详解（phase2 深读 · 新手向）</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/phase6-评测代码与原理详解.html"><span class="rel-title">phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</span><span class="rel-meta">agent 系列</span></a></li>
       </ul>

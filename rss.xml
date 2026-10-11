@@ -11,10 +11,31 @@
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
+      <title>AI Agent 质量门禁：CI 之外的智能分析链与代码生成链</title>
+      <link>https://liyonggui.github.io/website/deep/prj/03-AI-Agent%E8%B4%A8%E9%87%8F%E9%97%A8%E7%A6%81.html</link>
+      <guid>https://liyonggui.github.io/website/deep/prj/03-AI-Agent%E8%B4%A8%E9%87%8F%E9%97%A8%E7%A6%81.html</guid>
+      <description>一套真实落地的 AI 工程化系统（已脱敏）：不是 UI 自动化框架，而是一个 AI Agent 驱动的 CI 质量门禁服务。分析链复跑测试并归因失败、回写 PR 评论；生成链从 issue 出发让 LLM 写代码、过四道沙箱、跑同一套门禁、失败回灌迭代。核心纪律：LLM 只建议、不判生死。</description>
+      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>一个后端服务三个前端：多端业务后台的双存储、缓存工程化与影子表同步</title>
+      <link>https://liyonggui.github.io/website/deep/prj/02-%E5%A4%9A%E7%AB%AF%E4%B8%9A%E5%8A%A1%E5%90%8E%E5%8F%B0%E6%9E%B6%E6%9E%84.html</link>
+      <guid>https://liyonggui.github.io/website/deep/prj/02-%E5%A4%9A%E7%AB%AF%E4%B8%9A%E5%8A%A1%E5%90%8E%E5%8F%B0%E6%9E%B6%E6%9E%84.html</guid>
+      <description>一套教育升学服务后台的真实架构（已脱敏）：单体后端同时服务管理端、考生端 Web 与微信小程序。核心设计：MySQL + MongoDB 双存储分工、三级缓存与质数 TTL 防雪崩、EasyExcel SAX 流式解析 + 影子表原子切换的大文件同步、双轨认证与考试安全体系。</description>
+      <pubDate>Sat, 10 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>外部数据核验批处理引擎：失败分类、分级重试与两轮校对的完整设计</title>
+      <link>https://liyonggui.github.io/website/deep/prj/01-%E5%A4%96%E9%83%A8%E6%95%B0%E6%8D%AE%E6%A0%B8%E9%AA%8C%E6%89%B9%E5%A4%84%E7%90%86%E5%BC%95%E6%93%8E.html</link>
+      <guid>https://liyonggui.github.io/website/deep/prj/01-%E5%A4%96%E9%83%A8%E6%95%B0%E6%8D%AE%E6%A0%B8%E9%AA%8C%E6%89%B9%E5%A4%84%E7%90%86%E5%BC%95%E6%93%8E.html</guid>
+      <description>一个不监听任何端口的 Spring Boot 命令行批处理：把本地名册逐条送查外部数据共享网关的 5 个查询接口，全量留痕并产出比对结论。核心设计：失败分类学、按类分级重试、后置集中补打、熔断停机、断点续传与隔天两轮校对。</description>
+      <pubDate>Fri, 09 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
       <title>AI Agent 项目集评估与改进建议</title>
       <link>https://liyonggui.github.io/website/deep/agent/%E9%A1%B9%E7%9B%AE%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%94%B9%E8%BF%9B%E5%BB%BA%E8%AE%AE.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/%E9%A1%B9%E7%9B%AE%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%94%B9%E8%BF%9B%E5%BB%BA%E8%AE%AE.html</guid>
-      <description>评估范围：D:\ai-agent-project 根目录下的 Agent 教学项目、可观测性项目和 rdx-bx-backend 业务后端沙盒。 &gt; 评估时间：2026-09-20…</description>
+      <description>评估范围：Agent 教学项目、可观测性项目和后端业务沙盒。 &gt; 评估时间：2026-09-20…</description>
       <pubDate>Fri, 09 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
@@ -25,10 +46,10 @@
       <pubDate>Thu, 08 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>瑞达星 × Agent 全链路（代码级）</title>
+      <title>自研后端 × Agent 全链路（代码级）</title>
       <link>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</guid>
-      <description>谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…</description>
+      <description>谁接入谁：只有自研后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…</description>
       <pubDate>Wed, 07 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
@@ -39,38 +60,38 @@
       <pubDate>Mon, 05 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>rdx-agent 工程化落地纪要</title>
-      <link>https://liyonggui.github.io/website/deep/agent/rdx-agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</link>
-      <guid>https://liyonggui.github.io/website/deep/agent/rdx-agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</guid>
-      <description>项目根：D:\ai-agent-project\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…</description>
+      <title>自研 agent 应用 工程化落地纪要</title>
+      <link>https://liyonggui.github.io/website/deep/agent/agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</guid>
+      <description>项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…</description>
       <pubDate>Sun, 04 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>RAG 代码与原理详解（phase2 深读 · 新手向）</title>
       <link>https://liyonggui.github.io/website/deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
-      <description>配套 AI-Agent新手教学.md 第 3 课的深挖版。对照 D:\ai-agent-project\phase2-rag 的代码读。 &gt; 目录：① LinkedHashMap …</description>
+      <description>配套 AI-Agent新手教学.md 第 3 课的深挖版。对照 phase2-rag 模块的代码读。 &gt; 目录：① LinkedHashMap …</description>
       <pubDate>Fri, 02 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</title>
       <link>https://liyonggui.github.io/website/deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
-      <description>配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 D:\ai-agent-project\pha…</description>
+      <description>配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 phase6-eval 模块。</description>
       <pubDate>Thu, 01 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>phase5 MCP 代码与原理详解（server + client · 含失控案例）</title>
       <link>https://liyonggui.github.io/website/deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
-      <description>配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 D:\ai-agent-project\phase5-mcp-server 与 phase5-mcp-cli…</description>
+      <description>配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 phase5-mcp-server 与 phase5-mcp-cli…</description>
       <pubDate>Wed, 23 Sep 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</title>
       <link>https://liyonggui.github.io/website/deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
-      <description>配套：AI-Agent新手教学.md 第 7 课。代码在 D:\ai-agent-project\phase4-agent-ops。 &gt; 一句话：把 LLM 当不靠谱下游服务，用后…</description>
+      <description>配套：AI-Agent新手教学.md 第 7 课。代码在 phase4-agent-ops 模块。 &gt; 一句话：把 LLM 当不靠谱下游服务，用后…</description>
       <pubDate>Tue, 22 Sep 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
@@ -121,26 +142,5 @@
       <guid>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</guid>
       <description>「高并发实测」系列第 2 篇。 &gt; &gt; 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…</description>
       <pubDate>Wed, 09 Sep 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>Redis 1主1从（StatefulSet 主从复制）</title>
-      <link>https://liyonggui.github.io/website/deep/k8s/redis-replication.html</link>
-      <guid>https://liyonggui.github.io/website/deep/k8s/redis-replication.html</guid>
-      <description>在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…</description>
-      <pubDate>Wed, 09 Sep 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>单实例 Redis on K3s（学习用）</title>
-      <link>https://liyonggui.github.io/website/deep/k8s/redis-README.html</link>
-      <guid>https://liyonggui.github.io/website/deep/k8s/redis-README.html</guid>
-      <description>把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…</description>
-      <pubDate>Tue, 08 Sep 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>k3s 实战：一个可跑通、可炸给你看的单机集群</title>
-      <link>https://liyonggui.github.io/website/deep/k8s/README.html</link>
-      <guid>https://liyonggui.github.io/website/deep/k8s/README.html</guid>
-      <description>这份东西不是&quot;K8s 入门教程&quot;，而是把前面几轮聊的结论落成能在你机器上跑、并且每个关键结论都有对应现场证据的一套材料。目标只有一个：让你亲手看到那些&quot;背下来但没感觉&quot;的机制——C…</description>
-      <pubDate>Sun, 06 Sep 2026 00:00:00 -0000</pubDate>
     </item>
 </channel></rss>

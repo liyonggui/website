@@ -316,7 +316,7 @@ def ensure_pygments_css():
         f.write(css)
 
 
-ARTICLE_DIRS = ["blog", "deep/mysql", "deep/redis", "deep/es", "deep/bench", "deep/k8s", "deep/agent"]
+ARTICLE_DIRS = ["blog", "deep/mysql", "deep/redis", "deep/es", "deep/bench", "deep/k8s", "deep/agent", "deep/prj"]
 
 
 def default_series(rel_dir):
@@ -479,6 +479,7 @@ def main():
     total += process_dir("deep/bench", "deep", "返回深度技术", catalog)
     total += process_dir("deep/k8s", "deep", "返回深度技术", catalog)
     total += process_dir("deep/agent", "deep", "返回深度技术", catalog)
+    total += process_dir("deep/prj", "deep", "返回深度技术", catalog)
     print("生成文章页总数:", total)
     print("pygments.css:", "已存在" if os.path.exists(PYG_CSS) else "已生成")
 

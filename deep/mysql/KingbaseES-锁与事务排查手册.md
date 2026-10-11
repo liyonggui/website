@@ -1,6 +1,6 @@
 ---
 title: "KingbaseES / PostgreSQL 锁与长事务排查手册"
-summary: "适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 zhcl，运维账号 dgclylf，客户端 KStudio，经 aTrust 零信任 VPN 连接。 > …"
+summary: "适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境，客户端 KStudio，经零信任 VPN 连接。 > …"
 date: 2026-02-15
 author: "小番茄程序猿"
 tags:
@@ -17,7 +17,7 @@ draft: false
 ---
 ## KingbaseES / PostgreSQL 锁与长事务排查手册
 
-> 适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 `zhcl`，运维账号 `dgcl_ylf`，客户端 KStudio，经 aTrust 零信任 VPN 连接。
+> 适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境（库名/账号略），客户端 KStudio，经零信任 VPN 连接。
 > 本手册既是本次「卡死事务」事件的复盘，也是可长期复用的锁/事务排查 runbook。
 > 整理日期：2026-09-22
 
@@ -44,10 +44,10 @@ draft: false
 
 **定位过程**（每一步用的关键 SQL 见第 4 节）：
 
-1. 查 `pg_stat_activity` 发现一个 `pid=21634`、`usename=dgcl_ylf`、`state=active` 的会话，**事务时长已达 2 天**，`wait_event_type` 为空。
+1. 查 `pg_stat_activity` 发现一个 `pid=21634`、`usename=<ops_user>`、`state=active` 的会话，**事务时长已达 2 天**，`wait_event_type` 为空。
 2. 查 `pg_locks` 发现它持有的一堆锁**全是 `AccessShareLock`**（普通 SELECT 的锁），外加一条 `virtualxid` 的 `ExclusiveLock`（正常现象，非元凶）。
 3. 查阻塞链 `pg_blocking_pids()` 返回**空** → 说明它当前**没有阻塞任何其它会话**，业务读写不受影响。
-4. 查会话详情：`application_name = KStudio - SQLEditor <Script-30.sql>`、`client_addr = 19.104.4.128`（aTrust VPN 出口 IP，不是本机局域网 IP）。SQL 全文是一条查 `information_schema` 的**表结构校验脚本**（验证三张表 / 三个视图 / 九个索引是否齐全）。
+4. 查会话详情：`application_name = KStudio - SQLEditor <Script-30.sql>`、`client_addr` 显示为 VPN 出口 IP（不是本机局域网 IP）。SQL 全文是一条查 `information_schema` 的**表结构校验脚本**（验证三张表 / 三个视图 / 九个索引是否齐全）。
 
 **根因**：有人（部署这套尚未上线的新表结构时）在 KStudio 里跑了一条元数据校验 `SELECT`，窗口一直没关，查询**跑飞 / 卡死**（`state=active` 且 `wait_event` 空 = 进程在 CPU 上却出不来，属于 wedged 状态）。一条查字典视图的 SQL 正常几秒就该结束，能挂 2 天说明后端进程已卡死、且**对终止信号不响应**。
 
@@ -286,12 +286,12 @@ ALTER ROLE app_user  SET statement_timeout = '60s';
 ALTER ROLE app_user  SET lock_timeout = '5s';
 ALTER ROLE app_user  SET idle_in_transaction_session_timeout = '60s';
 
-ALTER ROLE dgcl_ylf  SET statement_timeout = '10min';
-ALTER ROLE dgcl_ylf  SET lock_timeout = '30s';
-ALTER ROLE dgcl_ylf  SET idle_in_transaction_session_timeout = '5min';
+ALTER ROLE <ops_user>  SET statement_timeout = '10min';
+ALTER ROLE <ops_user>  SET lock_timeout = '30s';
+ALTER ROLE <ops_user>  SET idle_in_transaction_session_timeout = '5min';
 
 -- 库级（该库所有连接默认）
-ALTER DATABASE zhcl  SET idle_in_transaction_session_timeout = '5min';
+ALTER DATABASE <prod_db>  SET idle_in_transaction_session_timeout = '5min';
 -- 实例级（超级用户，需 reload 或重启）
 ALTER SYSTEM SET idle_in_transaction_session_timeout = '5min';
 ```
@@ -372,11 +372,11 @@ ALTER SYSTEM SET idle_in_transaction_session_timeout = '5min';
 - **`statement_timeout` 会误杀**合法长任务：数据迁移、备份、大报表、`CREATE INDEX` 前记得临时设 `0` 或调大。
 - **`idle_in_transaction_session_timeout` 对 `active` 查询无效**——本次跑飞是 active，得靠 `statement_timeout` 才拦得住。两者别混为一谈。
 - **KStudio 每个 SQL 编辑器窗口 = 独立连接**：会话级 `SET` 只在同窗口有效，跨窗口查 `SHOW` 会回到默认值（本次就出现过「设了却查回 0」）。
-- **`client_addr` 是 VPN 出口 IP，不是本机局域网 IP**：经 aTrust 连库时，库里看到的来源是隧道/网关地址（如 `19.104.4.128`），别拿它去 `ipconfig` 里比对。
+- **`client_addr` 是 VPN 出口 IP，不是本机局域网 IP**：经 VPN 连库时，库里看到的来源是隧道/网关地址（如 `19.x.x.x`），别拿它去 `ipconfig` 里比对。
 - **`pg_stat_activity` 不暴露按 pid 的 CPU%**：精确 CPU 只能 OS `top` 或云控制台监控。
 - **长事务 × 复制槽 = WAL 堆积**：有逻辑复制/物理复制槽时，长事务会阻止 WAL 回收，可能撑爆磁盘，比单纯膨胀更危险。
 - **生产 `terminate`/`kill` 前先确认**：核对来源、确认无业务依赖、评估被杀事务是否为需回滚的大写事务。
-- **权限受限的运维账号**（如 `dgcl_ylf`）：改库报 `must be owner`、`ALTER ROLE` 无权限、杀不掉僵死会话都属正常——这类根治动作本就该由 DBA/运维或云平台管理账号做。
+- **权限受限的运维账号**（受限的运维账号）：改库报 `must be owner`、`ALTER ROLE` 无权限、杀不掉僵死会话都属正常——这类根治动作本就该由 DBA/运维或云平台管理账号做。
 - **`transaction_timeout`**（PG 17+）可限制整个事务（含 active+idle）总时长，作为长事务的最后兜底；KingbaseES 视版本而定，查不到即不支持。
 
 ---

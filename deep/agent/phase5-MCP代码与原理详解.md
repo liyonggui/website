@@ -1,6 +1,6 @@
 ---
 title: "phase5 MCP 代码与原理详解（server + client · 含失控案例）"
-summary: "配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 D:\\ai-agent-project\\phase5-mcp-server 与 phase5-mcp-cli…"
+summary: "配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 phase5-mcp-server 与 phase5-mcp-cli…"
 date: 2026-09-23
 author: "小番茄程序猿"
 tags:
@@ -17,39 +17,39 @@ draft: false
 ---
 # phase5 MCP 代码与原理详解（server + client · 含失控案例）
 
-> 配套：`AI-Agent新手教学.md` 第 6 课、`全链路.md`。代码在 `D:\ai-agent-project\phase5-mcp-server` 与 `phase5-mcp-client`。
+> 配套：`AI-Agent新手教学.md` 第 6 课、`全链路.md`。代码在 `phase5-mcp-server` 与 `phase5-mcp-client` 模块。
 > 一句话：**把"工具"从 Agent 代码里搬进协议里**——server 声明能力，client 运行时发现，两端解耦。
 
 ## 0. 为什么是独立服务（不是内嵌后端）
-BladeX 是 Spring Boot **3.2.10**，Spring AI（含 MCP starter）要求 **3.4+/1.1.x**——版本硬冲突。独立 MCP Server 用 RestClient 代理后端 REST，边界干净，也是"适配器模式"的活例。面试问"为什么不塞进老后端"，这就是答案。
+后端框架 是 Spring Boot **3.2.10**，Spring AI（含 MCP starter）要求 **3.4+/1.1.x**——版本硬冲突。独立 MCP Server 用 RestClient 代理后端 REST，边界干净，也是"适配器模式"的活例。面试问"为什么不塞进老后端"，这就是答案。
 
 ## 1. 文件总览
 
 | 端 | 文件 | 职责 |
 |---|---|---|
-| Server (8085) | `tool/RdxTools` | 4 个 `@Tool`：search_schools / search_majors / **list_colleges** / list_courses |
+| Server (8085) | `tool/SchoolTools` | 4 个 `@Tool`：search_schools / search_majors / **list_colleges** / list_courses |
 | | `config/McpToolConfig` | RestClient(超时) + **ToolCallbackProvider**（发布工具的关键 Bean） |
 | | `application.yml` | `protocol: STREAMABLE` + server 名/版本 |
 | Client (8086) | `config/AgentConfig` | ChatMemory + ChatClient（`defaultToolCallbacks`＝MCP 发现来的工具） |
 | | `tool/RecordingToolCallback` | 装饰器：记轨迹 + **单次请求调用上限**（防失控） |
 | | `tool/ToolCallRecorder` | 按 cid 记录工具调用；`overLimit()` 护栏 |
 | | `web/AgentController` | /chat(带 memory 开关) /stream /history /trace |
-| | `application.yml` | `streamable-http.connections.rdx.url` + `agent.max-tool-calls: 25` |
+| | `application.yml` | `streamable-http.connections.app.url` + `agent.max-tool-calls: 25` |
 
 ## 2. Server 端：发布机制只有一个 Bean
 ```java
 @Bean
-public ToolCallbackProvider rdxToolCallbackProvider(RdxTools rdxTools) {
-    return MethodToolCallbackProvider.builder().toolObjects(rdxTools).build();
+public ToolCallbackProvider appToolCallbackProvider(SchoolTools schoolTools) {
+    return MethodToolCallbackProvider.builder().toolObjects(schoolTools).build();
 }
 ```
 `MethodToolCallbackProvider` 扫描 `@Tool` 方法 → 每个方法转成 `ToolCallback`（名字/描述/**参数 JSON Schema** 由方法签名生成）→ MCP server 自动配置把它们发布成 `tools/list` 的清单。**协议代码（握手/会话/分发）全是 starter 做的，你零代码。** 启动日志 `Registered tools: 4` 即证据。
-`RdxTools` 的方法体与 phase4 相同：RestClient 调 `/wxma/*` + `pick()` 裁字段（**工具返回值全变文本喂模型，裁剪=省 token**）。
+`SchoolTools` 的方法体与 phase4 相同：RestClient 调 `/wxma/*` + `pick()` 裁字段（**工具返回值全变文本喂模型，裁剪=省 token**）。
 
 ## 3. 协议四步（curl 实录）
 ```
 ① POST /mcp {"method":"initialize","params":{"protocolVersion":"2025-06-18",...}}
-   ← 200 + 头 Mcp-Session-Id + {"serverInfo":{"name":"rdx-school-tools","version":"1.0.0"}}
+   ← 200 + 头 Mcp-Session-Id + {"serverInfo":{"name":"school-tools","version":"1.0.0"}}
 ② POST /mcp {"method":"notifications/initialized"}（带 Session 头）  ← 202
 ③ POST /mcp {"method":"tools/list"}   ← 工具名+描述+参数 schema（= @Tool 的 description 穿透协议）
 ④ POST /mcp {"method":"tools/call","params":{"name":"search_schools","arguments":{"city":"北京"}}}
@@ -65,7 +65,7 @@ ToolCallback[] wrapped = Arrays.stream(mcpTools.getToolCallbacks())
 return builder.defaultToolCallbacks(wrapped)...               // phase3 是 defaultTools(@Tool Bean)
 ```
 **从"编译期写死"变成"运行时发现"**，模型/循环/记忆/Controller 全不变。
-yml：`spring.ai.mcp.client.streamable-http.connections.rdx.url`（**前缀是 `streamable-http` 不是 `streamable`**）+ `toolcallback.enabled: true`。
+yml：`spring.ai.mcp.client.streamable-http.connections.app.url`（**前缀是 `streamable-http` 不是 `streamable`**）+ `toolcallback.enabled: true`。
 ⚠️ **急切初始化**：client 启动时就握手+拉清单，**server 没起 client 直接启动失败**（`Client failed to initialize by explicit API call`）。
 
 ## 5. 失控案例与修复（本文件最值钱的一节）

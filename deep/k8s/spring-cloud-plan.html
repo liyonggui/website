@@ -161,11 +161,11 @@ sc-user/Dockerfile                    temurin 8-jre + 非 root uid 10001 + EXPOS
 <p><code>UserService</code> 接口从 <code>api-common</code> 复制进本项目，所以不再依赖 <code>api-common</code>；provider 侧也不再有 Dubbo。<code>@Cacheable/@CacheEvict</code> 直接不带（没有 <code>@EnableCaching</code>，注解本来就是死的，留着只会误导）。</p>
 <h3 id="43">4.3 构建与外部依赖（本轮实跑过的命令）</h3>
 <div class="codehilite"><pre><span></span><code><span class="c1"># 1) 打 fat jar（Windows）</span>
-<span class="nb">cd</span><span class="w"> </span>/d/high-concurrency-projects/k3s-project/sc-user
+<span class="nb">cd</span><span class="w"> </span>/d/&lt;k3s-project<span class="w"> </span>源目录&gt;/sc-user
 /d/apache-maven-3.9.16/bin/mvn<span class="w"> </span>-B<span class="w"> </span>package<span class="w">        </span><span class="c1"># → target/sc-user-1.0-SNAPSHOT.jar，26.6 MB，Main-Class=JarLauncher</span>
 
 <span class="c1"># 2) 起外部 MySQL（WSL，全新卷会自动执行 init-user.sql）</span>
-wsl<span class="p">;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/mnt/d/high-concurrency-projects/k3s-project/sc-user
+wsl<span class="p">;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/mnt/d/&lt;k3s-project<span class="w"> </span>源目录&gt;/sc-user
 docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose.mysql.yml<span class="w"> </span>up<span class="w"> </span>-d
 
 <span class="c1"># 3) 镜像（第二个 tag 只为演示滚动更新/回滚，内容其实同一个 digest）</span>
@@ -330,7 +330,7 @@ curl<span class="w"> </span>-s<span class="w"> </span>localhost:18081/user/whoam
 <p>未做，按性价比排序：
 1. §6 Redis StatefulSet + PVC（补上"有状态 + 存储"这一类对象，是这套方案里唯一还没见过的核心概念）。
 2. 手写 Endpoints 把 <code>MYSQL_HOST</code> 从"宿主机 IP"变成"集群内的服务名"（§5.2 那个会变IP的根因）。
-3. <code>scripts/90-fault-drills.sh</code> 是围绕 <code>rdx-demo</code> 的 nginx 替身写的，要不要给 <code>sc-user</code> 复制一份对应演练（OOMKilled、探针失败、镜像拉不到）。
+3. <code>scripts/90-fault-drills.sh</code> 是围绕 <code>app-demo</code> 的 nginx 替身写的，要不要给 <code>sc-user</code> 复制一份对应演练（OOMKilled、探针失败、镜像拉不到）。
 4. 演练完记得 <code>kubectl delete ns sc-demo</code> + <code>docker compose -f docker-compose.mysql.yml down</code>。</p>
 <blockquote>
 <p>一句话：<strong>上 K8s 的只有一个 Spring Boot 服务（独立新项目 <code>sc-user</code>）+（可选）一个 Redis；外部只有一个 MySQL 容器。原项目一行没改，专注把 K8s 的核心对象和操作摸熟。</strong></p>

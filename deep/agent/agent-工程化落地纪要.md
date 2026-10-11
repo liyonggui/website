@@ -1,6 +1,6 @@
 ---
-title: "rdx-agent 工程化落地纪要"
-summary: "项目根：D:\\ai-agent-project\\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…"
+title: "自研 agent 应用 工程化落地纪要"
+summary: "项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…"
 date: 2026-10-04
 author: "小番茄程序猿"
 tags:
@@ -8,14 +8,14 @@ tags:
   - Spring AI
 category: deep
 series: "agent"
-slug: "rdx-agent-工程化落地纪要"
+slug: "自研 agent 应用-工程化落地纪要"
 reading_time: 19
 featured: false
 draft: false
 ---
-# rdx-agent 工程化落地纪要
+# 自研 agent 应用 工程化落地纪要
 
-> 项目根：`D:\ai-agent-project\rdx-agent`（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090）
+> 项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090）
 > 定位：阶段 1~6（工具调用 / RAG / 真实业务接口+记忆 / 护栏 / MCP / 评测）合流的**产品层**——一个 ChatClient 统调本地 `rag_search` 工具 + MCP 动态发现的业务工具 + 记忆 + 治理。
 > 本文记录在此之上做的**中间件优化 + 安全/可观测/测试加固**，每条都带实测数据与踩坑；末尾是"诚实教训"和已知边界。
 
@@ -33,11 +33,11 @@ draft: false
 
 | 组件 | 类 | 存储 | 关键点 |
 |---|---|---|---|
-| RAG 向量库 | `RedisVectorStore`（自定义 Bean） | `rdx-rag-index` / `rdx:doc:<id>`（RedisJSON） | 向量字段 `embedding` HNSW/COSINE/dim1024；`content`+`source` TEXT |
-| 语义缓存 | `SemanticCache` | `rdx-cache-index` / `rdx:cache:<sha1>` | FT.SEARCH KNN + 本地精确复算余弦 + facet 校验 + namespace 隔离 + TTL |
-| 会话记忆 | `RedisChatMemoryRepository`（自建） | `rdx:chat:<cid>`（JSON 串 + TTL） | 接 `MessageWindowChatMemory`；Spring AI 1.1.8 只有 InMemory 版 |
+| RAG 向量库 | `RedisVectorStore`（自定义 Bean） | `rag-index` / `app:doc:<id>`（RedisJSON） | 向量字段 `embedding` HNSW/COSINE/dim1024；`content`+`source` TEXT |
+| 语义缓存 | `SemanticCache` | `cache-index` / `app:cache:<sha1>` | FT.SEARCH KNN + 本地精确复算余弦 + facet 校验 + namespace 隔离 + TTL |
+| 会话记忆 | `RedisChatMemoryRepository`（自建） | `app:chat:<cid>`（JSON 串 + TTL） | 接 `MessageWindowChatMemory`；Spring AI 1.1.8 只有 InMemory 版 |
 
-**实测**：语义缓存 hit 0.12s vs miss ~27s（≈200x）；杀 JVM 重启后 `--scan rdx:cache:*` 仍在、原题重问 `cached:true` 不花 LLM（内存版做不到）；会话记忆重启后 `/history` 仍在、追问"那它排第几"靠记忆把"它"解析成清华答"第1名"。
+**实测**：语义缓存 hit 0.12s vs miss ~27s（≈200x）；杀 JVM 重启后 `--scan app:cache:*` 仍在、原题重问 `cached:true` 不花 LLM（内存版做不到）；会话记忆重启后 `/history` 仍在、追问"那它排第几"靠记忆把"它"解析成清华答"第1名"。
 
 **踩坑（都靠实测/javap 逼出来）**：
 1. yml 键是 `index-name` 不是 `index`——写错**不报错**、静默回落 `default-index`。
@@ -79,7 +79,7 @@ draft: false
 
 ## 5. Langfuse Datasets 评测闭环
 
-- gold 集进 Langfuse 数据集 `rdx-gold`（13 题：6 normal + 7 对抗 similar/exact/multihop/refuse），按 id upsert、版本化；打分器**读回 Langfuse 的 expectedOutput**（集=唯一真相源）+ `expect_absent` 反幻觉 + 按类型汇总。
+- gold 集进 Langfuse 数据集 `gold 数据集`（13 题：6 normal + 7 对抗 similar/exact/multihop/refuse），按 id upsert、版本化；打分器**读回 Langfuse 的 expectedOutput**（集=唯一真相源）+ `expect_absent` 反幻觉 + 按类型汇总。
 - `run-langfuse-eval.py`（纯 stdlib，Basic pk:sk）：`seed`/`run <name>`/`cachetrap <name>`；回写 `trace-create`+`dataset-run-items`+`scores`(NUMERIC)。多 run 在 UI 并排对比。
 - **契约从运行实例 `/generated/api/openapi.yml` 现查**（v3.225.7），没照文档猜。
 - **两轮自我纠错（价值所在）**：① 第二次跑同题 `tool_correct 0/6`——语义缓存持久化把整条链跳过了 → 给 `/chat` 加 `nocache=true`；② 初判"0.92 省份↔城市串味"是**测试假象**（B 命中自己同文本 + DB city 就返回浙江）→ 改"Q=E+追加子句"造真碰撞才证实护栏有效。
@@ -89,7 +89,7 @@ draft: false
 
 ## 6. Higress AI 网关（统一入口）
 
-`higress-registry…/higress/all-in-one`（控制台 :8001、数据面 :8080，避开被后端占的 80）。经控制台 **REST API 脚本化**配了：DNS 服务来源 `bailian-maas`（→MaaS:443/https/SNI）+ 路由 `/v1/chat/completions`、`/v1/embeddings` → 重写到 `/compatible-mode/v1/...` + 透传鉴权。rdx-agent `--spring.ai.openai.base-url=http://localhost:8080` 后 chat+embedding 全经网关，端到端问答正常。
+`higress-registry…/higress/all-in-one`（控制台 :8001、数据面 :8080，避开被后端占的 80）。经控制台 **REST API 脚本化**配了：DNS 服务来源 `bailian-maas`（→MaaS:443/https/SNI）+ 路由 `/v1/chat/completions`、`/v1/embeddings` → 重写到 `/compatible-mode/v1/...` + 透传鉴权。自研 agent 应用 `--spring.ai.openai.base-url=http://localhost:8080` 后 chat+embedding 全经网关，端到端问答正常。
 **限流也脚本化了**：内置 `key-rate-limit` 经 `PUT /v1/global/plugin-instances/{name}`（配置字段是 `rawConfigurations` 不是 yamlConfig），实测并发 6 发→1×200+5×429。复现脚本 `setup-higress-ai-gateway.sh`。
 **没做透（诚实）**：多厂商 fallback（`fallbackConfig`/`proxyNextUpstream` 字段逆通了、provider 建了，但单 MaaS 环境造不出可重试的传输层失败，failover 没验成，已回滚稳定路由）。
 
@@ -97,7 +97,7 @@ draft: false
 
 ## 7. 统一基础设施（compose）
 
-项目根 `docker-compose.yml` 一把起全部 infra：后端 `bx-mysql/redis/minio/mongodb`（容器名仍 `rdx-bx-*`）+ `redis-stack`(6380) + Langfuse 栈。合并时处理的坑：服务名去重（两份都有 redis/minio）、相对路径前缀、后端口令只用 `env_file`（不写 `environment:${}`，否则空值覆盖真值）、**命名卷固定 `name:`** 切换不丢数据。之前手动 `docker run` 的 redis-stack 也收编进来。
+项目根 `docker-compose.yml` 一把起全部 infra：后端 `bx-mysql/redis/minio/mongodb`（容器名仍 `bx-*`）+ `redis-stack`(6380) + Langfuse 栈。合并时处理的坑：服务名去重（两份都有 redis/minio）、相对路径前缀、后端口令只用 `env_file`（不写 `environment:${}`，否则空值覆盖真值）、**命名卷固定 `name:`** 切换不丢数据。之前手动 `docker run` 的 redis-stack 也收编进来。
 
 ---
 
@@ -138,7 +138,7 @@ draft: false
 
 ```bash
 # 起全部 infra（后端库 + redis-stack + Langfuse）
-cd D:/ai-agent-project && docker compose up -d
+cd Agent 项目根目录 && docker compose up -d
 
 # 起后端 + mcp-server + agent（见各 run-*.sh；agent 用 JDK17 全路径）
 #   语义缓存/检索 A/B：
@@ -156,7 +156,7 @@ python run-langfuse-eval.py cachetrap "cache-trap-$(date +%Y%m%d)"
 bash setup-higress-ai-gateway.sh          # 服务来源/路由；APPLY_RATELIMIT=1 加限流演示
 
 # 测试（本机连已在跑的 redis-stack；CI 用 testcontainer）
-cd rdx-agent && REDIS_IT_PORT=6380 mvn test      # 17/17
+cd 自研 agent 应用 && REDIS_IT_PORT=6380 mvn test      # 17/17
 ```
 
 ---
@@ -165,10 +165,10 @@ cd rdx-agent && REDIS_IT_PORT=6380 mvn test      # 17/17
 
 - **环境锁死**：`maven-enforcer-plugin` 强制 JDK `[17,18)` + Maven `[3.9,)`，不满足直接 fail（杜绝"只在我电脑能编"）。本机 JDK 17.0.19 / Maven 3.9.16。
 - **构建门**：`mvn -B clean verify` → BUILD SUCCESS，**25 个测试全绿**（13→25：新增 rerank 边界/空/缺字段、recorder 并发不交叉、Web 层鉴权 401/200/缺参 400）。
-- **仓库卫生**：`.gitignore` 从"逐个模块列 target/"改成 `**/target/` + IDE + 临时 txt；把之前**误提交进 git 的 `phase5-*/target`、`phase6-eval/target`（含 `.jar.original`）和 `rdx-agent/c1~c3.txt`** 用 `git update-index --force-remove` 取消跟踪（本地文件保留）。
+- **仓库卫生**：`.gitignore` 从"逐个模块列 target/"改成 `**/target/` + IDE + 临时 txt；把之前**误提交进 git 的 `phase5-*/target`、`phase6-eval/target`（含 `.jar.original`）和 `自研 agent 应用/c1~c3.txt`** 用 `git update-index --force-remove` 取消跟踪（本地文件保留）。
 - **配置分层**：`application.yml`(dev) / `application-prod.yml`(prod 观测脱敏)；默认不跑 prod，需 `--spring.profiles.active=prod`；密钥全走 env。
-- **交付 checklist** 见 `rdx-agent/README.md`「发布与交付」节。
+- **交付 checklist** 见 `自研 agent 应用/README.md`「发布与交付」节。
 
 ---
 
-*配套细节文档：`rdx-agent/README.md`（逐 API 精读 + 各节实测）、`Agent中间件优化选型.md`（选型与优先级）、`RAG代码与原理详解.md`、`phase6-评测代码与原理详解.md`、`observability/README.md`。求职主文档（技术栈总结/学习日志/速记卡）在 `D:\high-concurrency-projects\求职\`。*
+*配套细节文档：`自研 agent 应用/README.md`（逐 API 精读 + 各节实测）、`Agent中间件优化选型.md`（选型与优先级）、`RAG代码与原理详解.md`、`phase6-评测代码与原理详解.md`、`observability/README.md`。*

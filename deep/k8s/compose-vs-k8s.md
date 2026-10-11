@@ -50,7 +50,7 @@ Compose 的 named volume 就是 `/var/lib/docker/volumes/xxx`，永远在那台�
 **3. 生命周期：从"起完就算成功"变成"永远在调和"。**
 Compose `up -d` 之后容器在跑就算完。K8s 里"在跑"只是中间态：探针在反复判定，controller 在反复对比副本数，节点一挂 Pod 就在别处重建。所以你的应用必须能回答三个问题：怎么被摘流量（readiness）、怎么被要求下线（SIGTERM + 优雅停机）、怎么被杀掉（Graceful Shutdown 超时）。**答不出第一个和第三个，滚动更新就必然有一小撮 502**——这就是 `90-fault-drills.sh` 演练 8 演示的那个竞态。
 
-## 迁移一个 Spring Boot 单体（比如 BladeX）的最小清单顺序
+## 迁移一个 Spring Boot 单体（比如常见的企业级脚手架）的最小清单顺序
 
 1. 镜像：Dockerfile 里 `USER 10001` 非 root，`EXPOSE 8080`，jar 只读层。
 2. 探针：引入 `spring-boot-starter-actuator`，`management.endpoint.health.probes.enabled=true`，得到 `/actuator/health/liveness` 与 `/readiness`（Spring Boot 2.3+ 自带，别自己造）。

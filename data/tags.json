@@ -1,7 +1,7 @@
 [
   {
     "name": "MySQL",
-    "count": 45
+    "count": 46
   },
   {
     "name": "Redis",
@@ -21,7 +21,7 @@
   },
   {
     "name": "AI Agent",
-    "count": 10
+    "count": 11
   },
   {
     "name": "Spring AI",
@@ -68,11 +68,35 @@
     "count": 2
   },
   {
+    "name": "Spring Boot",
+    "count": 2
+  },
+  {
+    "name": "工程实践",
+    "count": 2
+  },
+  {
     "name": "技术笔记",
     "count": 2
   },
   {
+    "name": "架构设计",
+    "count": 2
+  },
+  {
+    "name": "CI/CD",
+    "count": 1
+  },
+  {
+    "name": "LLM",
+    "count": 1
+  },
+  {
     "name": "MCP",
+    "count": 1
+  },
+  {
+    "name": "MongoDB",
     "count": 1
   },
   {
@@ -80,7 +104,15 @@
     "count": 1
   },
   {
+    "name": "批处理",
+    "count": 1
+  },
+  {
     "name": "评测",
+    "count": 1
+  },
+  {
+    "name": "质量工程",
     "count": 1
   }
 ]

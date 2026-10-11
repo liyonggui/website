@@ -133,7 +133,7 @@ kubectl<span class="w"> </span>rollout<span class="w"> </span>resume<span class=
 
 <p>（这一步需要改代码重新打包，可让我帮你改，你再 build。）</p>
 <h3 id="2-wsl">2. 打包 + 构建镜像（WSL 内）</h3>
-<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/mnt/d/high-concurrency-projects/k3s-project/sc-user
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/mnt/d/&lt;k3s-project<span class="w"> </span>源目录&gt;/sc-user
 mvn<span class="w"> </span>-DskipTests<span class="w"> </span>package
 docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>sc-user:0.2.0<span class="w"> </span>.
 </code></pre></div>
@@ -248,7 +248,7 @@ kubectl<span class="w"> </span>rollout<span class="w"> </span>status<span class=
 <p>三份都是 <code>kubectl get ... -o yaml</code> 导出后，清理掉 <code>status</code> / <code>resourceVersion</code> / <code>uid</code> / <code>creationTimestamp</code> / <code>last-applied-configuration</code> 自动字段得到的干净基线。</p>
 </blockquote>
 <p><strong>重建顺序</strong>（WSL）：</p>
-<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/mnt/d/high-concurrency-projects/k3s-project/sc-user
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/mnt/d/&lt;k3s-project<span class="w"> </span>源目录&gt;/sc-user
 kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>user-env.yaml<span class="w">      </span><span class="c1"># 1. 先建 ConfigMap</span>
 kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>user-secret.yaml<span class="w">   </span><span class="c1"># 2. 再建 Secret</span>
 kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>deploy.yaml<span class="w">        </span><span class="c1"># 3. 建 Deployment（依赖前两个）</span>

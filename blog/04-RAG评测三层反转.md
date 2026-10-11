@@ -213,7 +213,7 @@ Java 复刻的四个指标（LLM-as-judge，5 题 gold 集，每题各跑一次�
 
 ## 复现（命令与代码路径）
 
-- 代码：`D:\ai-agent-project\phase2-rag` —— `RagEvalService.java`（RAGAS 四指标 + runs 中位数 + rerank 开关）、`/evalrank`（hit@1 / MRR / precision@k，纯计算不经裁判）；护栏与网关见 `phase4-agent-ops`（`ToolGateway` / `Breaker` 均为手写，缓存用 Caffeine，其余 ChatClient/VectorStore 为 Spring AI 自带）。
+- 代码：`phase2-rag` 模块 —— `RagEvalService.java`（RAGAS 四指标 + runs 中位数 + rerank 开关）、`/evalrank`（hit@1 / MRR / precision@k，纯计算不经裁判）；护栏与网关见 `phase4-agent-ops`（`ToolGateway` / `Breaker` 均为手写，缓存用 Caffeine，其余 ChatClient/VectorStore 为 Spring AI 自带）。
 - 四指标（runs=3 取中位数）：
 
 ```bash

@@ -1,6 +1,6 @@
 ---
 title: "phase6 评测代码与原理详解（三路判分·中位数·CI门禁）"
-summary: "配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 D:\\ai-agent-project\\pha…"
+summary: "配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 phase6-eval 模块。"
 date: 2026-10-01
 author: "小番茄程序猿"
 tags:
@@ -17,7 +17,7 @@ draft: false
 ---
 # phase6 评测代码与原理详解（三路判分·中位数·CI门禁）
 
-> 配套：`AI-Agent新手教学.md` 第 8 课、`phase5-MCP代码与原理详解.md`（trajectory 数据来源）。代码在 `D:\ai-agent-project\phase6-eval`。
+> 配套：`AI-Agent新手教学.md` 第 8 课、`phase5-MCP代码与原理详解.md`（trajectory 数据来源）。代码在 `phase6-eval` 模块。
 > 一句话：**Agent 输出非确定、没有标准答案——评测就是把"感觉挺对"变成"可量化、可回归、可门禁"的那套机制。**
 
 ## 0. 文件总览

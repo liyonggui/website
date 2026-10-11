@@ -157,7 +157,7 @@ Compose 里你习惯 <code>8080:80</code>，因为在 Docker 眼里容器端口�
 Compose 的 named volume 就是 <code>/var/lib/docker/volumes/xxx</code>，永远在那台机器上。K8s 的 PVC 是一份<strong>申请</strong>：谁来 provision、Provisioner 能不能跨节点挂载、访问模式是 RWO 还是 RWX，会直接决定 Pod 能不能被调度。<code>ReadWriteOnce</code> 在 local-path 上意味着"这个 Pod 被钉死在那台节点"；换成 RWX 的共享存储（NFS/CephFS/云盘多_attach_）才允许漂移。这一层想清楚了，StatefulSet 为什么不能换成 Deployment 就自动有答案了。</p>
 <p><strong>3. 生命周期：从"起完就算成功"变成"永远在调和"。</strong>
 Compose <code>up -d</code> 之后容器在跑就算完。K8s 里"在跑"只是中间态：探针在反复判定，controller 在反复对比副本数，节点一挂 Pod 就在别处重建。所以你的应用必须能回答三个问题：怎么被摘流量（readiness）、怎么被要求下线（SIGTERM + 优雅停机）、怎么被杀掉（Graceful Shutdown 超时）。<strong>答不出第一个和第三个，滚动更新就必然有一小撮 502</strong>——这就是 <code>90-fault-drills.sh</code> 演练 8 演示的那个竞态。</p>
-<h2 id="spring-boot-bladex">迁移一个 Spring Boot 单体（比如 BladeX）的最小清单顺序</h2>
+<h2 id="spring-boot">迁移一个 Spring Boot 单体（比如常见的企业级脚手架）的最小清单顺序</h2>
 <ol>
 <li>镜像：Dockerfile 里 <code>USER 10001</code> 非 root，<code>EXPOSE 8080</code>，jar 只读层。</li>
 <li>探针：引入 <code>spring-boot-starter-actuator</code>，<code>management.endpoint.health.probes.enabled=true</code>，得到 <code>/actuator/health/liveness</code> 与 <code>/readiness</code>（Spring Boot 2.3+ 自带，别自己造）。</li>
@@ -176,7 +176,7 @@ Compose <code>up -d</code> 之后容器在跑就算完。K8s 里"在跑"只是�
     <ul>
       <li class="lv2"><a href="#_1">字段映射</a></li>
       <li class="lv2"><a href="#_2">三件真正需要重建心智的事</a></li>
-      <li class="lv2"><a href="#spring-boot-bladex">迁移一个 Spring Boot 单体（比如 BladeX）的最小清单顺序</a></li>
+      <li class="lv2"><a href="#spring-boot">迁移一个 Spring Boot 单体（比如常见的企业级脚手架）的最小清单顺序</a></li>
     </ul>
   </nav>
 </details></aside>

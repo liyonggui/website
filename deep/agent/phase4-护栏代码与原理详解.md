@@ -1,6 +1,6 @@
 ---
 title: "phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）"
-summary: "配套：AI-Agent新手教学.md 第 7 课。代码在 D:\\ai-agent-project\\phase4-agent-ops。 > 一句话：把 LLM 当不靠谱下游服务，用后…"
+summary: "配套：AI-Agent新手教学.md 第 7 课。代码在 phase4-agent-ops 模块。 > 一句话：把 LLM 当不靠谱下游服务，用后…"
 date: 2026-09-22
 author: "小番茄程序猿"
 tags:
@@ -17,7 +17,7 @@ draft: false
 ---
 # phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）
 
-> 配套：`AI-Agent新手教学.md` 第 7 课。代码在 `D:\ai-agent-project\phase4-agent-ops`。
+> 配套：`AI-Agent新手教学.md` 第 7 课。代码在 `phase4-agent-ops` 模块。
 > 一句话：**把 LLM 当不靠谱下游服务，用后端老本行（超时/降级/限流/熔断/缓存/指标）把它治理成可依赖系统。**
 
 ## 0. 文件总览（8 个文件各管一件事）
@@ -27,7 +27,7 @@ draft: false
 | `config/AgentConfig` | 带**双超时**的 RestClient + 挂工具的 ChatClient（含降级话术） |
 | `ops/AgentService` | **LLM 舱壁**(Semaphore) + token 成本 + 结果埋点 |
 | `ops/AgentMetrics` | 延迟/成败/缓存/熔断/token 全量指标 + snapshot |
-| `tool/RuidaxingTools` | 3 个 `@Tool`，只管"构造请求+解析"（护栏逻辑已下沉） |
+| `tool/SchoolTools` | 3 个 `@Tool`，只管"构造请求+解析"（护栏逻辑已下沉） |
 | `tool/ToolGateway` | 所有工具调用的唯一咽喉：缓存→熔断→真调→降级 |
 | `tool/Breaker` | CLOSED/OPEN/HALF_OPEN 状态机（手写，生产可换 resilience4j） |
 | `ops/OpsController` | /chat /school /eval /snapshot |

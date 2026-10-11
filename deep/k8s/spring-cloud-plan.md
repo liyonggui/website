@@ -94,11 +94,11 @@ sc-user/Dockerfile                    temurin 8-jre + 非 root uid 10001 + EXPOS
 
 ```bash
 # 1) 打 fat jar（Windows）
-cd /d/high-concurrency-projects/k3s-project/sc-user
+cd /d/<k3s-project 源目录>/sc-user
 /d/apache-maven-3.9.16/bin/mvn -B package        # → target/sc-user-1.0-SNAPSHOT.jar，26.6 MB，Main-Class=JarLauncher
 
 # 2) 起外部 MySQL（WSL，全新卷会自动执行 init-user.sql）
-wsl; cd /mnt/d/high-concurrency-projects/k3s-project/sc-user
+wsl; cd /mnt/d/<k3s-project 源目录>/sc-user
 docker compose -f docker-compose.mysql.yml up -d
 
 # 3) 镜像（第二个 tag 只为演示滚动更新/回滚，内容其实同一个 digest）
@@ -214,7 +214,7 @@ $K -n sc-demo run lbprobe --image=busybox:1.36 --restart=Never --rm -i --command
 未做，按性价比排序：
 1. §6 Redis StatefulSet + PVC（补上"有状态 + 存储"这一类对象，是这套方案里唯一还没见过的核心概念）。
 2. 手写 Endpoints 把 `MYSQL_HOST` 从"宿主机 IP"变成"集群内的服务名"（§5.2 那个会变IP的根因）。
-3. `scripts/90-fault-drills.sh` 是围绕 `rdx-demo` 的 nginx 替身写的，要不要给 `sc-user` 复制一份对应演练（OOMKilled、探针失败、镜像拉不到）。
+3. `scripts/90-fault-drills.sh` 是围绕 `app-demo` 的 nginx 替身写的，要不要给 `sc-user` 复制一份对应演练（OOMKilled、探针失败、镜像拉不到）。
 4. 演练完记得 `kubectl delete ns sc-demo` + `docker compose -f docker-compose.mysql.yml down`。
 
 > 一句话：**上 K8s 的只有一个 Spring Boot 服务（独立新项目 `sc-user`）+（可选）一个 Redis；外部只有一个 MySQL 容器。原项目一行没改，专注把 K8s 的核心对象和操作摸熟。**

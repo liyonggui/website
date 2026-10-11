@@ -17,11 +17,14 @@ SERIES = [
     ("k8s", "K8s / 云原生底层",
      "Redis 主从复制与哨兵、Ingress + HPA 弹性、滚动更新、compose vs k8s、K8s 学习路线图。", "K"),
     ("agent", "AI Agent 底层原理",
-     "RAG / MCP / 护栏 / 评测的代码与原理详解，Agent 中间件选型，rdx-agent 工程化落地，phase1-6 阶段 README。", "A"),
+     "RAG / MCP / 护栏 / 评测的代码与原理详解，Agent 中间件选型，自研 Agent 工程化落地，phase1-6 阶段 README。", "A"),
+    ("prj", "项目工程实战",
+     "三个真实生产项目（已脱敏）的架构复盘：外部数据核验批处理引擎、多端业务后台、AI Agent 质量门禁——整体思路、代码逻辑与工程实践全解析。", "P"),
 ]
 
 SHORT = {"mysql": "MySQL", "redis": "Redis", "es": "Elasticsearch",
-         "bench": "压测方法论", "k8s": "K8s 云原生", "agent": "Agent 原理"}
+         "bench": "压测方法论", "k8s": "K8s 云原生", "agent": "Agent 原理",
+         "prj": "工程实战"}
 
 CORE = ["原理", "详解", "核心汇总", "实战手册", "架构演变", "数据类型原理", "写入全流程",
         "路由机制", "ILM", "Coordinated", "降级", "RAG代码", "MCP代码", "护栏代码",

@@ -428,7 +428,7 @@
 </table>
 <h2 id="_7">复现（命令与代码路径）</h2>
 <ul>
-<li>代码：<code>D:\ai-agent-project\phase2-rag</code> —— <code>RagEvalService.java</code>（RAGAS 四指标 + runs 中位数 + rerank 开关）、<code>/evalrank</code>（hit@1 / MRR / precision@k，纯计算不经裁判）；护栏与网关见 <code>phase4-agent-ops</code>（<code>ToolGateway</code> / <code>Breaker</code> 均为手写，缓存用 Caffeine，其余 ChatClient/VectorStore 为 Spring AI 自带）。</li>
+<li>代码：<code>phase2-rag</code> 模块 —— <code>RagEvalService.java</code>（RAGAS 四指标 + runs 中位数 + rerank 开关）、<code>/evalrank</code>（hit@1 / MRR / precision@k，纯计算不经裁判）；护栏与网关见 <code>phase4-agent-ops</code>（<code>ToolGateway</code> / <code>Breaker</code> 均为手写，缓存用 Caffeine，其余 ChatClient/VectorStore 为 Spring AI 自带）。</li>
 <li>四指标（runs=3 取中位数）：</li>
 </ul>
 <div class="codehilite"><pre><span></span><code>curl<span class="w"> </span><span class="s2">"http://localhost:8082/api/rag/evalrag?topK=4&amp;retrieve=10&amp;rerank=false&amp;runs=3"</span>

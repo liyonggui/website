@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>项目 · 小番茄程序猿作品集</title>
-  <meta name="description" content="高并发微服务与 AI Agent 工程化项目清单：Redis、MySQL、Spring Cloud、Elasticsearch、K8s、以及 Spring AI phase1-6 与 rdx-agent。" />
+  <meta name="description" content="高并发微服务与 AI Agent 工程化项目清单：Redis、MySQL、Spring Cloud、Elasticsearch、K8s、以及 Spring AI phase1-6 与自研 Agent 应用。" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="项目 · 小番茄程序猿作品集" />
@@ -177,8 +177,8 @@
             <div class="tag-row"><span class="tag">Eval</span><span class="tag gray">LLM-as-judge</span><span class="tag gray">CI 门禁</span></div>
           </div>
 
-          <div class="card proj" id="rdxagent">
-            <div class="proj-top"><h3>rdx-agent 产品层</h3><span class="metric">8090 · gold 13/13</span></div>
+          <div class="card proj" id="agent-prod">
+            <div class="proj-top"><h3>Agent 产品层</h3><span class="metric">8090 · gold 13/13</span></div>
             <p>rag_search（向量+BM25+RRF+rerank）+ MCP 业务工具 + Redis（向量/缓存/记忆）+ resilience4j + Langfuse 评测 + 鉴权/脱敏。语义缓存带维度一致性护栏（guardRejects=1）。</p>
             <div class="metric-viz">
               <div class="mv-row"><span class="mv-label">gold 集通过</span><span class="mv-track"><i class="mv-fill solo" style="width:100%"></i></span><span class="mv-num">13/13</span></div>
@@ -186,10 +186,10 @@
             <div class="tag-row"><span class="tag">Spring AI</span><span class="tag">RAG</span><span class="tag gray">MCP</span><span class="tag gray">Langfuse</span></div>
           </div>
 
-          <div class="card proj" id="rdxbackend">
-            <div class="proj-top"><h3>rdx-bx-backend 沙盒</h3><span class="metric">端口 80</span></div>
-            <p>瑞达星后端沙盒（可改，原仓不碰），作为 Agent 业务工具的被测后端与基础设施来源。</p>
-            <div class="tag-row"><span class="tag gray">SpringBlade</span><span class="tag gray">沙盒</span></div>
+          <div class="card proj" id="backend-sandbox">
+            <div class="proj-top"><h3>业务后端沙盒</h3><span class="metric">端口 80</span></div>
+            <p>业务后端沙盒（可改，原仓不碰），作为 Agent 业务工具的被测后端与基础设施来源。</p>
+            <div class="tag-row"><span class="tag gray">Spring Boot 3</span><span class="tag gray">沙盒</span></div>
           </div>
         </div>
 

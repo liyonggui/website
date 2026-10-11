@@ -108,7 +108,7 @@ public String whoami() {
 
 ### 2. 打包 + 构建镜像（WSL 内）
 ```bash
-cd /mnt/d/high-concurrency-projects/k3s-project/sc-user
+cd /mnt/d/<k3s-project 源目录>/sc-user
 mvn -DskipTests package
 docker build -t sc-user:0.2.0 .
 ```
@@ -177,7 +177,7 @@ kubectl rollout undo deployment/service-user -n sc-demo
 
 **重建顺序**（WSL）：
 ```bash
-cd /mnt/d/high-concurrency-projects/k3s-project/sc-user
+cd /mnt/d/<k3s-project 源目录>/sc-user
 kubectl apply -f user-env.yaml      # 1. 先建 ConfigMap
 kubectl apply -f user-secret.yaml   # 2. 再建 Secret
 kubectl apply -f deploy.yaml        # 3. 建 Deployment（依赖前两个）

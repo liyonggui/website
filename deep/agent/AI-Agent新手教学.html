@@ -59,7 +59,7 @@
 <blockquote>
 <p>你是谁：会写后端、懂接口/并发/缓存，但<strong>从没碰过 AI Agent</strong>。
 这份文档怎么读：<strong>从上到下，每一课 = 一个概念 + 你项目里的代码 + 你现在动手试什么</strong>。别跳，前 5 课是地基。
-你的实验室：<code>D:\ai-agent-project\</code>（phase1~6 都是我给你搭好的、能跑的）。</p>
+你的实验室：Agent 项目根目录（phase1~6 都是我给你搭好的、能跑的）。</p>
 </blockquote>
 <hr />
 <h2 id="0">第 0 课：一句话建立正确的心智模型（最重要）</h2>
@@ -126,7 +126,7 @@
 <h2 id="5-phase3">第 5 课：接你自己的真实业务（phase3）</h2>
 <p>前面工具都是假的（计算器、假订单）。这一课把工具接到<strong>你真实的后端接口</strong>上——这才是 Agent 有生产价值的地方。
 - 做法：把"查院校/查专业/查课程"这些真实 HTTP 接口，包成 <code>@Tool</code> 方法（方法内部用 HTTP 客户端调你的后端）。
-- 你项目里：<code>phase3-agent</code> 的 <code>RuidaxingTools</code> 调 <code>http://127.0.0.1/wxma/school</code> 等（瑞达星后端，跑在沙盒）。模型问"北京前三院校"，它真的去查你的库拿真数据。
+- 你项目里：<code>phase3-agent</code> 的 <code>SchoolTools</code> 调 <code>http://127.0.0.1/wxma/school</code> 等（自研后端，跑在沙盒）。模型问"北京前三院校"，它真的去查你的库拿真数据。
 - 关键纪律：<strong>Agent 只连本机后端，永不默认打生产</strong>。</p>
 <p><strong>动手</strong>：起后端+phase3，问一个只有你库里才有的事实（如某校软科排名），看它是不是真查出来的。</p>
 <hr />
@@ -163,9 +163,9 @@
 <hr />
 <h2 id="_1">环境怎么起（你的实验室）</h2>
 <ul>
-<li>一键起全栈 + 跑评测门禁：<code>bash D:\ai-agent-project\run-e2e-gate.sh</code></li>
-<li>逐接口怎么 curl、各服务端口：见 <code>D:\ai-agent-project\README.md</code>（索引+手册）</li>
-<li>数据从哪来、代码链路：见 <code>D:\ai-agent-project\全链路.md</code></li>
+<li>一键起全栈 + 跑评测门禁：<code>bash run-e2e-gate.sh</code></li>
+<li>逐接口怎么 curl、各服务端口：见项目 <code>README.md</code>（索引+手册）</li>
+<li>数据从哪来、代码链路：见 <code>全链路.md</code></li>
 <li>⚠️ 两个必踩的坑先记住：① 模型 base-url 到 <code>/compatible-mode</code>（不带 /v1）；② <strong>Windows 的 Git Bash 里 curl 传中文会乱码</strong>，中文请求体一律写成 UTF-8 文件用 <code>--data @文件</code>。</li>
 </ul>
 <h2 id="_2">建议学习顺序（新手）</h2>
@@ -254,9 +254,9 @@
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/agent/项目评估与改进建议.html"><span class="rel-title">AI Agent 项目集评估与改进建议</span><span class="rel-meta">agent 系列</span></a></li>
-        <li><a href="../../deep/agent/全链路.html"><span class="rel-title">瑞达星 × Agent 全链路（代码级）</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/全链路.html"><span class="rel-title">自研后端 × Agent 全链路（代码级）</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/README.html"><span class="rel-title">phase1-minimal-agent</span><span class="rel-meta">agent 系列</span></a></li>
-        <li><a href="../../deep/agent/rdx-agent-工程化落地纪要.html"><span class="rel-title">rdx-agent 工程化落地纪要</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/agent-工程化落地纪要.html"><span class="rel-title">自研 agent 应用 工程化落地纪要</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/RAG代码与原理详解.html"><span class="rel-title">RAG 代码与原理详解（phase2 深读 · 新手向）</span><span class="rel-meta">agent 系列</span></a></li>
       </ul>
     </div>

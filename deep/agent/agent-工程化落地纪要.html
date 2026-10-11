@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>rdx-agent 工程化落地纪要 · 小番茄程序猿</title>
-<meta name="description" content="项目根：D:\ai-agent-project\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…"/>
+<title>自研 agent 应用 工程化落地纪要 · 小番茄程序猿</title>
+<meta name="description" content="项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…"/>
 <meta name="keywords" content="AI Agent, Spring AI, agent"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/agent/rdx-agent-工程化落地纪要.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/agent/agent-工程化落地纪要.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="rdx-agent 工程化落地纪要 · 小番茄程序猿" />
-<meta property="og:description" content="项目根：D:\ai-agent-project\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/agent/rdx-agent-工程化落地纪要.html" />
+<meta property="og:title" content="自研 agent 应用 工程化落地纪要 · 小番茄程序猿" />
+<meta property="og:description" content="项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/agent/agent-工程化落地纪要.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "rdx-agent 工程化落地纪要", "description": "项目根：D:\\ai-agent-project\\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…", "url": "https://liyonggui.github.io/website/deep/agent/rdx-agent-工程化落地纪要.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/rdx-agent-工程化落地纪要.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-04", "keywords": "AI Agent, Spring AI, agent"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "自研 agent 应用 工程化落地纪要", "description": "项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…", "url": "https://liyonggui.github.io/website/deep/agent/agent-工程化落地纪要.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/agent-工程化落地纪要.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-04", "keywords": "AI Agent, Spring AI, agent"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -51,13 +51,13 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>rdx-agent 工程化落地纪要</h1>
+    <h1>自研 agent 应用 工程化落地纪要</h1>
 <div class="meta-row"><span class="m-item">2026-10-04</span><span class="m-item">agent 系列</span><span class="m-item">约 19 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=AI Agent">AI Agent</a><a class="m-tag" href="../../tags.html?t=Spring AI">Spring AI</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
 <blockquote>
-<p>项目根：<code>D:\ai-agent-project\rdx-agent</code>（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090）
+<p>项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090）
 定位：阶段 1~6（工具调用 / RAG / 真实业务接口+记忆 / 护栏 / MCP / 评测）合流的<strong>产品层</strong>——一个 ChatClient 统调本地 <code>rag_search</code> 工具 + MCP 动态发现的业务工具 + 记忆 + 治理。
 本文记录在此之上做的<strong>中间件优化 + 安全/可观测/测试加固</strong>，每条都带实测数据与踩坑；末尾是"诚实教训"和已知边界。</p>
 </blockquote>
@@ -80,24 +80,24 @@
 <tr>
 <td>RAG 向量库</td>
 <td><code>RedisVectorStore</code>（自定义 Bean）</td>
-<td><code>rdx-rag-index</code> / <code>rdx:doc:&lt;id&gt;</code>（RedisJSON）</td>
+<td><code>rag-index</code> / <code>app:doc:&lt;id&gt;</code>（RedisJSON）</td>
 <td>向量字段 <code>embedding</code> HNSW/COSINE/dim1024；<code>content</code>+<code>source</code> TEXT</td>
 </tr>
 <tr>
 <td>语义缓存</td>
 <td><code>SemanticCache</code></td>
-<td><code>rdx-cache-index</code> / <code>rdx:cache:&lt;sha1&gt;</code></td>
+<td><code>cache-index</code> / <code>app:cache:&lt;sha1&gt;</code></td>
 <td>FT.SEARCH KNN + 本地精确复算余弦 + facet 校验 + namespace 隔离 + TTL</td>
 </tr>
 <tr>
 <td>会话记忆</td>
 <td><code>RedisChatMemoryRepository</code>（自建）</td>
-<td><code>rdx:chat:&lt;cid&gt;</code>（JSON 串 + TTL）</td>
+<td><code>app:chat:&lt;cid&gt;</code>（JSON 串 + TTL）</td>
 <td>接 <code>MessageWindowChatMemory</code>；Spring AI 1.1.8 只有 InMemory 版</td>
 </tr>
 </tbody>
 </table>
-<p><strong>实测</strong>：语义缓存 hit 0.12s vs miss ~27s（≈200x）；杀 JVM 重启后 <code>--scan rdx:cache:*</code> 仍在、原题重问 <code>cached:true</code> 不花 LLM（内存版做不到）；会话记忆重启后 <code>/history</code> 仍在、追问"那它排第几"靠记忆把"它"解析成清华答"第1名"。</p>
+<p><strong>实测</strong>：语义缓存 hit 0.12s vs miss ~27s（≈200x）；杀 JVM 重启后 <code>--scan app:cache:*</code> 仍在、原题重问 <code>cached:true</code> 不花 LLM（内存版做不到）；会话记忆重启后 <code>/history</code> 仍在、追问"那它排第几"靠记忆把"它"解析成清华答"第1名"。</p>
 <p><strong>踩坑（都靠实测/javap 逼出来）</strong>：
 1. yml 键是 <code>index-name</code> 不是 <code>index</code>——写错<strong>不报错</strong>、静默回落 <code>default-index</code>。
 2. starter 自动装配的 <code>RedisVectorStore</code> <strong>不回传自定义 metadata（source）</strong>→ 自建 Bean + <code>.metadataFields(MetadataField.text("source"))</code> + <code>spring.autoconfigure.exclude</code> 掉自动装配 + <code>FT.DROPINDEX idx DD</code> 重建 schema。
@@ -128,7 +128,7 @@
 <hr />
 <h2 id="5-langfuse-datasets">5. Langfuse Datasets 评测闭环</h2>
 <ul>
-<li>gold 集进 Langfuse 数据集 <code>rdx-gold</code>（13 题：6 normal + 7 对抗 similar/exact/multihop/refuse），按 id upsert、版本化；打分器<strong>读回 Langfuse 的 expectedOutput</strong>（集=唯一真相源）+ <code>expect_absent</code> 反幻觉 + 按类型汇总。</li>
+<li>gold 集进 Langfuse 数据集 <code>gold 数据集</code>（13 题：6 normal + 7 对抗 similar/exact/multihop/refuse），按 id upsert、版本化；打分器<strong>读回 Langfuse 的 expectedOutput</strong>（集=唯一真相源）+ <code>expect_absent</code> 反幻觉 + 按类型汇总。</li>
 <li><code>run-langfuse-eval.py</code>（纯 stdlib，Basic pk:sk）：<code>seed</code>/<code>run &lt;name&gt;</code>/<code>cachetrap &lt;name&gt;</code>；回写 <code>trace-create</code>+<code>dataset-run-items</code>+<code>scores</code>(NUMERIC)。多 run 在 UI 并排对比。</li>
 <li><strong>契约从运行实例 <code>/generated/api/openapi.yml</code> 现查</strong>（v3.225.7），没照文档猜。</li>
 <li><strong>两轮自我纠错（价值所在）</strong>：① 第二次跑同题 <code>tool_correct 0/6</code>——语义缓存持久化把整条链跳过了 → 给 <code>/chat</code> 加 <code>nocache=true</code>；② 初判"0.92 省份↔城市串味"是<strong>测试假象</strong>（B 命中自己同文本 + DB city 就返回浙江）→ 改"Q=E+追加子句"造真碰撞才证实护栏有效。</li>
@@ -136,12 +136,12 @@
 </ul>
 <hr />
 <h2 id="6-higress-ai">6. Higress AI 网关（统一入口）</h2>
-<p><code>higress-registry…/higress/all-in-one</code>（控制台 :8001、数据面 :8080，避开被后端占的 80）。经控制台 <strong>REST API 脚本化</strong>配了：DNS 服务来源 <code>bailian-maas</code>（→MaaS:443/https/SNI）+ 路由 <code>/v1/chat/completions</code>、<code>/v1/embeddings</code> → 重写到 <code>/compatible-mode/v1/...</code> + 透传鉴权。rdx-agent <code>--spring.ai.openai.base-url=http://localhost:8080</code> 后 chat+embedding 全经网关，端到端问答正常。
+<p><code>higress-registry…/higress/all-in-one</code>（控制台 :8001、数据面 :8080，避开被后端占的 80）。经控制台 <strong>REST API 脚本化</strong>配了：DNS 服务来源 <code>bailian-maas</code>（→MaaS:443/https/SNI）+ 路由 <code>/v1/chat/completions</code>、<code>/v1/embeddings</code> → 重写到 <code>/compatible-mode/v1/...</code> + 透传鉴权。自研 agent 应用 <code>--spring.ai.openai.base-url=http://localhost:8080</code> 后 chat+embedding 全经网关，端到端问答正常。
 <strong>限流也脚本化了</strong>：内置 <code>key-rate-limit</code> 经 <code>PUT /v1/global/plugin-instances/{name}</code>（配置字段是 <code>rawConfigurations</code> 不是 yamlConfig），实测并发 6 发→1×200+5×429。复现脚本 <code>setup-higress-ai-gateway.sh</code>。
 <strong>没做透（诚实）</strong>：多厂商 fallback（<code>fallbackConfig</code>/<code>proxyNextUpstream</code> 字段逆通了、provider 建了，但单 MaaS 环境造不出可重试的传输层失败，failover 没验成，已回滚稳定路由）。</p>
 <hr />
 <h2 id="7-compose">7. 统一基础设施（compose）</h2>
-<p>项目根 <code>docker-compose.yml</code> 一把起全部 infra：后端 <code>bx-mysql/redis/minio/mongodb</code>（容器名仍 <code>rdx-bx-*</code>）+ <code>redis-stack</code>(6380) + Langfuse 栈。合并时处理的坑：服务名去重（两份都有 redis/minio）、相对路径前缀、后端口令只用 <code>env_file</code>（不写 <code>environment:${}</code>，否则空值覆盖真值）、<strong>命名卷固定 <code>name:</code></strong> 切换不丢数据。之前手动 <code>docker run</code> 的 redis-stack 也收编进来。</p>
+<p>项目根 <code>docker-compose.yml</code> 一把起全部 infra：后端 <code>bx-mysql/redis/minio/mongodb</code>（容器名仍 <code>bx-*</code>）+ <code>redis-stack</code>(6380) + Langfuse 栈。合并时处理的坑：服务名去重（两份都有 redis/minio）、相对路径前缀、后端口令只用 <code>env_file</code>（不写 <code>environment:${}</code>，否则空值覆盖真值）、<strong>命名卷固定 <code>name:</code></strong> 切换不丢数据。之前手动 <code>docker run</code> 的 redis-stack 也收编进来。</p>
 <hr />
 <h2 id="8-code-review">8. Code-review 六条加固</h2>
 <table>
@@ -213,7 +213,7 @@
 <hr />
 <h2 id="11">11. 复现命令</h2>
 <div class="codehilite"><pre><span></span><code><span class="c1"># 起全部 infra（后端库 + redis-stack + Langfuse）</span>
-<span class="nb">cd</span><span class="w"> </span>D:/ai-agent-project<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+<span class="nb">cd</span><span class="w"> </span>Agent<span class="w"> </span>项目根目录<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
 
 <span class="c1"># 起后端 + mcp-server + agent（见各 run-*.sh；agent 用 JDK17 全路径）</span>
 <span class="c1">#   语义缓存/检索 A/B：</span>
@@ -231,7 +231,7 @@ python<span class="w"> </span>run-langfuse-eval.py<span class="w"> </span>cachet
 bash<span class="w"> </span>setup-higress-ai-gateway.sh<span class="w">          </span><span class="c1"># 服务来源/路由；APPLY_RATELIMIT=1 加限流演示</span>
 
 <span class="c1"># 测试（本机连已在跑的 redis-stack；CI 用 testcontainer）</span>
-<span class="nb">cd</span><span class="w"> </span>rdx-agent<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">REDIS_IT_PORT</span><span class="o">=</span><span class="m">6380</span><span class="w"> </span>mvn<span class="w"> </span><span class="nb">test</span><span class="w">      </span><span class="c1"># 17/17</span>
+<span class="nb">cd</span><span class="w"> </span>自研<span class="w"> </span>agent<span class="w"> </span>应用<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">REDIS_IT_PORT</span><span class="o">=</span><span class="m">6380</span><span class="w"> </span>mvn<span class="w"> </span><span class="nb">test</span><span class="w">      </span><span class="c1"># 17/17</span>
 </code></pre></div>
 
 <hr />
@@ -239,12 +239,12 @@ bash<span class="w"> </span>setup-higress-ai-gateway.sh<span class="w">         
 <ul>
 <li><strong>环境锁死</strong>：<code>maven-enforcer-plugin</code> 强制 JDK <code>[17,18)</code> + Maven <code>[3.9,)</code>，不满足直接 fail（杜绝"只在我电脑能编"）。本机 JDK 17.0.19 / Maven 3.9.16。</li>
 <li><strong>构建门</strong>：<code>mvn -B clean verify</code> → BUILD SUCCESS，<strong>25 个测试全绿</strong>（13→25：新增 rerank 边界/空/缺字段、recorder 并发不交叉、Web 层鉴权 401/200/缺参 400）。</li>
-<li><strong>仓库卫生</strong>：<code>.gitignore</code> 从"逐个模块列 target/"改成 <code>**/target/</code> + IDE + 临时 txt；把之前<strong>误提交进 git 的 <code>phase5-*/target</code>、<code>phase6-eval/target</code>（含 <code>.jar.original</code>）和 <code>rdx-agent/c1~c3.txt</code></strong> 用 <code>git update-index --force-remove</code> 取消跟踪（本地文件保留）。</li>
+<li><strong>仓库卫生</strong>：<code>.gitignore</code> 从"逐个模块列 target/"改成 <code>**/target/</code> + IDE + 临时 txt；把之前<strong>误提交进 git 的 <code>phase5-*/target</code>、<code>phase6-eval/target</code>（含 <code>.jar.original</code>）和 <code>自研 agent 应用/c1~c3.txt</code></strong> 用 <code>git update-index --force-remove</code> 取消跟踪（本地文件保留）。</li>
 <li><strong>配置分层</strong>：<code>application.yml</code>(dev) / <code>application-prod.yml</code>(prod 观测脱敏)；默认不跑 prod，需 <code>--spring.profiles.active=prod</code>；密钥全走 env。</li>
-<li><strong>交付 checklist</strong> 见 <code>rdx-agent/README.md</code>「发布与交付」节。</li>
+<li><strong>交付 checklist</strong> 见 <code>自研 agent 应用/README.md</code>「发布与交付」节。</li>
 </ul>
 <hr />
-<p><em>配套细节文档：<code>rdx-agent/README.md</code>（逐 API 精读 + 各节实测）、<code>Agent中间件优化选型.md</code>（选型与优先级）、<code>RAG代码与原理详解.md</code>、<code>phase6-评测代码与原理详解.md</code>、<code>observability/README.md</code>。求职主文档（技术栈总结/学习日志/速记卡）在 <code>D:\high-concurrency-projects\求职\</code>。</em></p>
+<p><em>配套细节文档：<code>自研 agent 应用/README.md</code>（逐 API 精读 + 各节实测）、<code>Agent中间件优化选型.md</code>（选型与优先级）、<code>RAG代码与原理详解.md</code>、<code>phase6-评测代码与原理详解.md</code>、<code>observability/README.md</code>。</em></p>
     </article>
     <aside class="toc-side"><details class="toc" open>
   <summary>目录</summary>
@@ -272,7 +272,7 @@ bash<span class="w"> </span>setup-higress-ai-gateway.sh<span class="w">         
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/agent/项目评估与改进建议.html"><span class="rel-title">AI Agent 项目集评估与改进建议</span><span class="rel-meta">agent 系列</span></a></li>
-        <li><a href="../../deep/agent/全链路.html"><span class="rel-title">瑞达星 × Agent 全链路（代码级）</span><span class="rel-meta">agent 系列</span></a></li>
+        <li><a href="../../deep/agent/全链路.html"><span class="rel-title">自研后端 × Agent 全链路（代码级）</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/README.html"><span class="rel-title">phase1-minimal-agent</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/RAG代码与原理详解.html"><span class="rel-title">RAG 代码与原理详解（phase2 深读 · 新手向）</span><span class="rel-meta">agent 系列</span></a></li>
         <li><a href="../../deep/agent/phase6-评测代码与原理详解.html"><span class="rel-title">phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</span><span class="rel-meta">agent 系列</span></a></li>

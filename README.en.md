@@ -7,7 +7,7 @@ A fully static (HTML / CSS / JS, **zero-build, zero-dependency**) personal portf
 | Page | File | Content |
 | --- | --- | --- |
 | Home | `index.html` | Profile snapshot, featured projects, blog preview, contact |
-| Projects | `projects.html` | High-concurrency backend family (Redis / MySQL / Spring Cloud / ES / K3s / Jeepay / k6 / seckill) + AI Agent family (Spring AI phase1→6 + rdx-agent) |
+| Projects | `projects.html` | High-concurrency backend family (Redis / MySQL / Spring Cloud / ES / K3s / Jeepay / k6 / seckill) + AI Agent family (Spring AI phase1→6 + self-developed Agent app) |
 | Blog | `blog.html` | Canonical posts cross-published on CSDN / Juejin / Zhihu; Markdown sources in `blog/` |
 | Deep | `deep.html` | Low-level principles column: 105 docs across 6 series (MySQL / Redis / ES / benchmarking / K8s / Agent); sources in `deep/` |
 
