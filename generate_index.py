@@ -16,6 +16,7 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     import yaml
@@ -159,8 +160,8 @@ def build_rss(records):
         items.append(
             "    <item>\n"
             f"      <title>{html.escape(r['title'])}</title>\n"
-            f"      <link>{SITE_URL}{r['url']}</link>\n"
-            f"      <guid>{SITE_URL}{r['url']}</guid>\n"
+            f"      <link>{enc_url(r['url'])}</link>\n"
+            f"      <guid>{enc_url(r['url'])}</guid>\n"
             f"      <description>{html.escape(r['summary'])}</description>\n"
             f"      <pubDate>{pub}</pubDate>\n"
             "    </item>"
@@ -184,10 +185,15 @@ STATIC_PAGES = [
 ]
 
 
+def enc_url(rel):
+    """sitemap 协议要求 URL 中非 ASCII 字符做 UTF-8 百分号编码（路径保留 /）。"""
+    return SITE_URL + quote(rel, safe="/")
+
+
 def build_sitemap(records):
     urls = [(SITE_URL + p, "weekly", pri, "") for p, pri in STATIC_PAGES]
     for r in records:
-        urls.append((SITE_URL + r["url"], "monthly", "0.6", r["date"]))
+        urls.append((enc_url(r["url"]), "monthly", "0.6", r["date"]))
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',

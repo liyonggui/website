@@ -5,141 +5,141 @@
   <description>高并发后端与 AI Agent 工程化的技术博客与深度系列</description>
     <item>
       <title>高并发压测执行清单</title>
-      <link>https://liyonggui.github.io/website/deep/bench/高并发压测执行清单.html</link>
-      <guid>https://liyonggui.github.io/website/deep/bench/高并发压测执行清单.html</guid>
+      <link>https://liyonggui.github.io/website/deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html</link>
+      <guid>https://liyonggui.github.io/website/deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html</guid>
       <description>本文用于 Java + Redis + MySQL + MQ 类系统的压测设计、执行、分析和复盘。目标不是只得到一个最高 QPS，而是建立一条可追溯的证据链：</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>高并发写入测试总结</title>
-      <link>https://liyonggui.github.io/website/deep/bench/测试总结.html</link>
-      <guid>https://liyonggui.github.io/website/deep/bench/测试总结.html</guid>
+      <link>https://liyonggui.github.io/website/deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html</link>
+      <guid>https://liyonggui.github.io/website/deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html</guid>
       <description>日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</title>
-      <link>https://liyonggui.github.io/website/blog/02-异步不等于更快.html</link>
-      <guid>https://liyonggui.github.io/website/blog/02-异步不等于更快.html</guid>
+      <link>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</link>
+      <guid>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</guid>
       <description>「高并发实测」系列第 2 篇。 &gt; &gt; 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B9：连接泄漏与长连接治理</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B9-连接泄漏与长连接治理.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B9-连接泄漏与长连接治理.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html</guid>
       <description>连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的&quot;隐藏故障&quot;（进程运行几天/几周后连接缓…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B8：容量规划与压测上限评估</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B8-容量规划与压测上限评估.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B8-容量规划与压测上限评估.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html</guid>
       <description>高并发系统上线前需量化容量上限：能支撑多少 QPS/TPS、连接数上限、bufferpool/IO 饱和点，支撑容量预估与扩容决策。否则无法回答&quot;系统能扛多少并发&quot;。</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B7：统计信息过期与执行计划优化</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB7-%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E8%BF%87%E6%9C%9F%E4%B8%8E%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%BC%98%E5%8C%96.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB7-%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E8%BF%87%E6%9C%9F%E4%B8%8E%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%BC%98%E5%8C%96.html</guid>
       <description>优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B6-深分页查询优化.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B6-深分页查询优化.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html</guid>
       <description>高频慢查询源头：LIMIT 1000000,20 深分页。MySQL 需扫描并丢弃前 100 万行，offset 越大越慢，是列表页/管理后台最常见的慢查询。</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B5：连接耗尽治理（max_connections 打满）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B5-连接耗尽治理.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B5-连接耗尽治理.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB5-%E8%BF%9E%E6%8E%A5%E8%80%97%E5%B0%BD%E6%B2%BB%E7%90%86.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB5-%E8%BF%9E%E6%8E%A5%E8%80%97%E5%B0%BD%E6%B2%BB%E7%90%86.html</guid>
       <description>连接耗尽雪崩防护。当并发请求超过 MySQL maxconnections，新连接报 Too many connections，请求大量失败，系统雪崩。需治理：连接池大小与 max…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B4：SQL 注入与安全治理</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B4-SQL注入与安全治理.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B4-SQL注入与安全治理.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html</guid>
       <description>高并发系统安全必修。SQL 注入是最高危的漏洞之一：字符串拼接 SQL，恶意入参可绕过 WHERE 泄露全表、绕过认证、删库。治理核心：参数化根治 + 纵深防御（字段最小化、脱敏、…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B3-热点行锁治理.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B3-热点行锁治理.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB3-%E7%83%AD%E7%82%B9%E8%A1%8C%E9%94%81%E6%B2%BB%E7%90%86.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB3-%E7%83%AD%E7%82%B9%E8%A1%8C%E9%94%81%E6%B2%BB%E7%90%86.html</guid>
       <description>真实并发最大瓶颈是热点行锁争用：单行库存/账户（如 thotsingle WHERE id=1）被大量并发 UPDATE，同一行锁串行化，吞吐骤降。MySQL 行锁粒度是行，热点行…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B2-主从一致性校验与修复.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B2-主从一致性校验与修复.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html</guid>
       <description>主从复制可能静默丢数据/漂移：某条 SQL 在从库执行失败被跳过、人为改库、DDL 不同步，都会导致主从数据不一致而不自知。复制线程 Running 只代表&quot;复制在跑&quot;，不代表数据…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B1：备份恢复（binlog PITR / 误删误更新恢复）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html</guid>
       <description>高并发治理除了&quot;读写/一致性&quot;，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B12：死锁后的应用重试机制</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB12-%E6%AD%BB%E9%94%81%E5%90%8E%E7%9A%84%E5%BA%94%E7%94%A8%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB12-%E6%AD%BB%E9%94%81%E5%90%8E%E7%9A%84%E5%BA%94%E7%94%A8%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6.html</guid>
       <description>死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B11：冷热分离的查询路由</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B11-冷热分离的查询路由.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B11-冷热分离的查询路由.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB11-%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB%E7%9A%84%E6%9F%A5%E8%AF%A2%E8%B7%AF%E7%94%B1.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB11-%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB%E7%9A%84%E6%9F%A5%E8%AF%A2%E8%B7%AF%E7%94%B1.html</guid>
       <description>数据冷热分离后（热表存近期高频数据、归档表存历史冷数据），查询需应用层路由：热数据查热表、历史数据查归档表，避免查询扫全量大表。</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>补测B10：主从延迟告警与从库自动摘除</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/补测B10-主从延迟告警与从库自动摘除.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/补测B10-主从延迟告警与从库自动摘除.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html</guid>
       <description>读写分离下，从库复制延迟会导致读从库读到过期数据。延迟超阈值必须告警 + 自动把从库从读写分离摘除（读全部回主库），延迟恢复后再重新挂载。否则高并发下读到陈旧数据引发业务事故。</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>瑞达星 × Agent 全链路（代码级）</title>
-      <link>https://liyonggui.github.io/website/deep/agent/全链路.html</link>
-      <guid>https://liyonggui.github.io/website/deep/agent/全链路.html</guid>
+      <link>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</guid>
       <description>谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>数据同步工具对比：mysqldump / DataX / Flink CDC</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/数据同步工具对比-mysqldump-DataX-FlinkCDC.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/数据同步工具对比-mysqldump-DataX-FlinkCDC.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html</guid>
       <description>定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>我发出去的文章里有一句承重墙是错的（第 4 篇更正）</title>
-      <link>https://liyonggui.github.io/website/blog/05-第4篇更正-承重墙是错的.html</link>
-      <guid>https://liyonggui.github.io/website/blog/05-第4篇更正-承重墙是错的.html</guid>
+      <link>https://liyonggui.github.io/website/blog/05-%E7%AC%AC4%E7%AF%87%E6%9B%B4%E6%AD%A3-%E6%89%BF%E9%87%8D%E5%A2%99%E6%98%AF%E9%94%99%E7%9A%84.html</link>
+      <guid>https://liyonggui.github.io/website/blog/05-%E7%AC%AC4%E7%AF%87%E6%9B%B4%E6%AD%A3-%E6%89%BF%E9%87%8D%E5%A2%99%E6%98%AF%E9%94%99%E7%9A%84.html</guid>
       <description>「高并发实测」系列 · 第 4 篇更正。 &gt; &gt; 第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>场景9：InnoDB 并发控制（MVCC 多版本并发控制）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/场景9-InnoDB并发控制MVCC.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/场景9-InnoDB并发控制MVCC.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html</guid>
       <description>InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
       <title>场景8：批量写入优化</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/场景8-批量写入优化.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/场景8-批量写入优化.html</guid>
+      <link>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF8-%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5%E4%BC%98%E5%8C%96.html</link>
+      <guid>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF8-%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5%E4%BC%98%E5%8C%96.html</guid>
       <description>MySQL 单条 INSERT 的瓶颈主要在网络往返和事务提交：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。批量写入通…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
