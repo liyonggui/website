@@ -623,3 +623,6 @@ body::after {
 @media (max-width: 640px) {
   .list-row { flex-direction: column; gap: 4px; }
 }
+
+/* ——— 评论区列宽：与正文同宽，避免满宽显得空旷 ——— */
+.giscus-wrap .wrap { max-width: calc(var(--maxw-prose) + 48px); }

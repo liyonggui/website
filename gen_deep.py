@@ -50,7 +50,7 @@ HEAD = """<!DOCTYPE html>
   <meta property="og:description" content="数据库内核、压测方法论、云原生、AI Agent 原理——项目背后的硬核底层知识库。" />
   <meta property="og:url" content="https://liyonggui.github.io/website/deep.html" />
   <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="stylesheet" href="assets/css/style.css?v=2" />
   <script>
     (function () {
       try {
