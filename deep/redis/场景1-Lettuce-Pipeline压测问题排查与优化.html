@@ -4,11 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>场景 1 — Lettuce Pipeline 压测问题排查与优化 · 小番茄程序猿</title>
-<meta name="description" content="场景 1 — Lettuce Pipeline 压测问题排查与优化 —— 小番茄程序猿的技术文章。"/>
+<meta name="description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="场景 1 — Lettuce Pipeline 压测问题排查与优化 · 小番茄程序猿" />
-<meta property="og:description" content="场景 1 — Lettuce Pipeline 压测问题排查与优化 —— 小番茄程序猿的技术文章。" />
+<meta property="og:description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -48,6 +48,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景 1 — Lettuce Pipeline 压测问题排查与优化</h1>
+<div class="meta-row"><span class="m-item">2026-10-11</span><span class="m-item">redis 系列</span><span class="m-item">约 62 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Redis">Redis</a><a class="m-tag" href="../../tags.html?t=压测">压测</a><a class="m-tag" href="../../tags.html?t=缓存">缓存</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -1686,7 +1687,7 @@ io-threads-do-reads<span class="w"> </span>yes
 <footer>
   <div class="wrap">
     <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    <span class="foot-links"><a href="../../tags.html">标签</a> · <a href="../../archives.html">归档</a> · <a href="../../search.html">搜索</a> · <a href="../../rss.xml">RSS</a></span>
   </div>
 </footer>
 <script>

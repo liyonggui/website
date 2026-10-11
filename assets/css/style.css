@@ -568,3 +568,58 @@ body::after {
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .hero { padding: var(--s7) 0 var(--s6); }
 }
+
+/* =========================================================
+   工具页（标签 / 归档 / 搜索）
+   ========================================================= */
+.tool-page { padding: var(--s7) 0 var(--s8); }
+
+.tool-input {
+  width: 100%; max-width: 560px; padding: 12px 16px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--ink); font-size: 15px;
+  font-family: var(--sans); outline: none;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.tool-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.chip-cloud { display: flex; flex-wrap: wrap; gap: 10px; margin: var(--s5) 0 var(--s6); }
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 15px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg);
+  color: var(--ink-soft); font-family: var(--sans); line-height: 1.2;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.chip i { font-style: normal; font-size: 0.72em; color: var(--ink-faint); font-family: var(--mono); }
+.chip:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip.on i { color: rgba(255, 255, 255, 0.75); }
+
+.dim-note { color: var(--ink-faint); font-size: 14px; }
+
+.list-head { display: flex; align-items: baseline; gap: 12px; margin: var(--s6) 0 var(--s3); }
+.list-head h3 { margin: 0; font-size: 17px; }
+
+.post-list { display: flex; flex-direction: column; }
+.list-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 18px;
+  padding: 13px 4px; border-bottom: 1px solid var(--line);
+  text-decoration: none; color: var(--ink);
+  transition: background 0.15s var(--ease), padding-left 0.15s var(--ease);
+}
+.list-row:hover { background: var(--bg-soft); padding-left: 10px; }
+.list-row .lr-title { font-size: 15px; font-weight: 500; }
+.list-row:hover .lr-title { color: var(--accent); }
+.list-row .lr-meta { flex-shrink: 0; font-size: 12.5px; color: var(--ink-faint); font-family: var(--mono); }
+
+.year-group { margin-bottom: var(--s6); }
+.year-group .year { font-size: 22px; margin: 0 0 6px; }
+.year-group .year i { font-style: normal; font-size: 14px; color: var(--ink-faint); font-family: var(--mono); }
+
+.foot-links a { color: var(--ink-soft); text-decoration: none; }
+.foot-links a:hover { color: var(--accent); }
+
+@media (max-width: 640px) {
+  .list-row { flex-direction: column; gap: 4px; }
+}

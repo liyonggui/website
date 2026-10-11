@@ -1,3 +1,18 @@
+---
+title: "Compose → K8s 概念对照（给已经会 docker-compose 的人）"
+summary: "如果你只记一句话：Compose 描述的是\"一台机器上如何起一组容器\"，K8s 描述的是\"一个集群里期望状态长什么样\"。 前者的单位是容器，后者的单位是\"契约 + 调和循环\"。这个…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - K8s
+  - 云原生
+category: deep
+series: "k8s"
+slug: "compose-vs-k8s"
+reading_time: 9
+featured: false
+draft: false
+---
 # Compose → K8s 概念对照（给已经会 docker-compose 的人）
 
 如果你只记一句话：**Compose 描述的是"一台机器上如何起一组容器"，K8s 描述的是"一个集群里期望状态长什么样"。**

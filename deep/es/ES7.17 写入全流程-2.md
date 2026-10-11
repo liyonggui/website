@@ -1,3 +1,17 @@
+---
+title: "ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）"
+summary: "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+category: deep
+series: "es"
+slug: "ES7.17 写入全流程-2"
+reading_time: 14
+featured: false
+draft: false
+---
 # ES7\.17 写入全流程\+底层存储算法精准拆解（完整版文档）
 
 ## 文档说明

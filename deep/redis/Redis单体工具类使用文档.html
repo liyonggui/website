@@ -4,11 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Redis 单体工具类使用文档 · 小番茄程序猿</title>
-<meta name="description" content="Redis 单体工具类使用文档 —— 小番茄程序猿的技术文章。"/>
+<meta name="description" content="面向单节点单机 Redis（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回 RedisResult&lt;T&gt;，业务层通过 isSuccess() 判断结果，getData()…"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Redis 单体工具类使用文档 · 小番茄程序猿" />
-<meta property="og:description" content="Redis 单体工具类使用文档 —— 小番茄程序猿的技术文章。" />
+<meta property="og:description" content="面向单节点单机 Redis（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回 RedisResult&lt;T&gt;，业务层通过 isSuccess() 判断结果，getData()…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -48,6 +48,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis 单体工具类使用文档</h1>
+<div class="meta-row"><span class="m-item">2026-10-11</span><span class="m-item">redis 系列</span><span class="m-item">约 20 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Redis">Redis</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -389,7 +390,7 @@ mvn<span class="w"> </span>spring-boot:run
 <footer>
   <div class="wrap">
     <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    <span class="foot-links"><a href="../../tags.html">标签</a> · <a href="../../archives.html">归档</a> · <a href="../../search.html">搜索</a> · <a href="../../rss.xml">RSS</a></span>
   </div>
 </footer>
 <script>

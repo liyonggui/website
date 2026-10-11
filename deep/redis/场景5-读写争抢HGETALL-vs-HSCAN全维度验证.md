@@ -1,3 +1,17 @@
+---
+title: "场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证"
+summary: "问题要点： - HGETALL 在大 Hash（field 数数千以上）时做 O(N) 操作，导致 Redis 单线程长时间阻塞，写请求在此期间全部排队并出现 P99 激增或超时。…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+category: deep
+series: "redis"
+slug: "场景5-读写争抢HGETALL-vs-HSCAN全维度验证"
+reading_time: 33
+featured: false
+draft: false
+---
 ## 场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证
 
 ### TL;DR

@@ -1,3 +1,18 @@
+---
+title: "场景3：悲观锁 vs 乐观锁"
+summary: "高并发写场景下，保证数据一致性有两种主流方案： - 悲观锁：SELECT ... FOR UPDATE 先锁定数据行，阻塞其它写，再读改写。依赖 InnoDB 行锁。 - 乐观锁：…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+  - 锁
+category: deep
+series: "mysql"
+slug: "场景3-悲观锁vs乐观锁"
+reading_time: 6
+featured: false
+draft: false
+---
 # 场景3：悲观锁 vs 乐观锁
 
 ## 一、问题背景

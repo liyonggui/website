@@ -1,3 +1,18 @@
+---
+title: "场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化"
+summary: "场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT < 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+  - 缓存
+category: deep
+series: "redis"
+slug: "场景8-2-Pipeline RTT敏感度与WAIT"
+reading_time: 117
+featured: false
+draft: false
+---
 ## 场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化
 
 ### 8.15.1 背景与问题

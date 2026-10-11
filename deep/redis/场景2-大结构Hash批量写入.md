@@ -1,3 +1,17 @@
+---
+title: "场景 2 — 大结构 Hash 批量写入"
+summary: "多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemor…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+category: deep
+series: "redis"
+slug: "场景2-大结构Hash批量写入"
+reading_time: 65
+featured: false
+draft: false
+---
 # 场景 2 — 大结构 Hash 批量写入
 
 ## TL;DR

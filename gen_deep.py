@@ -129,7 +129,7 @@ __GROUPS__
   <footer>
     <div class="wrap">
       <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-      <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+      <span class="foot-links"><a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
     </div>
   </footer>
 

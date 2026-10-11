@@ -1,3 +1,18 @@
+---
+title: "service-user 滚动更新练习（K8s 核心概念 · B）"
+summary: "目标：认识 K8s 的滚动更新（Rolling Update）与回滚，理解\"零停机发布\"是怎么发生的。 > 当前状态：sc-demo 命名空间下，service-user Depl…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - K8s
+  - 云原生
+category: deep
+series: "k8s"
+slug: "ROLLING-UPDATE"
+reading_time: 13
+featured: false
+draft: false
+---
 # service-user 滚动更新练习（K8s 核心概念 · B）
 
 > 目标：认识 K8s 的**滚动更新（Rolling Update）**与**回滚**，理解"零停机发布"是怎么发生的。

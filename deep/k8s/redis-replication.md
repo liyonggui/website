@@ -1,3 +1,19 @@
+---
+title: "Redis 1主1从（StatefulSet 主从复制）"
+summary: "在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - K8s
+  - 云原生
+  - Redis
+category: deep
+series: "k8s"
+slug: "redis-replication"
+reading_time: 5
+featured: false
+draft: false
+---
 # Redis 1主1从（StatefulSet 主从复制）
 
 在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解

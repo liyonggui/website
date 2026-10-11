@@ -1,3 +1,18 @@
+---
+title: "场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）"
+summary: "已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+  - 压测
+category: deep
+series: "redis"
+slug: "场景11-String三种编码int-embstr-raw压测"
+reading_time: 74
+featured: false
+draft: false
+---
 # 场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）
 
 > 已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需启动 `redis` + `lettuce-bench`

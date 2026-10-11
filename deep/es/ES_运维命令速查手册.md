@@ -1,3 +1,17 @@
+---
+title: "ES 运维常用命令速查手册（独立文档，可直接复制使用）"
+summary: "1. 分片路由与倾斜排查命令 2. 集群分片均衡 & 磁盘水位配置 3. ILM 生命周期常规运维命令 4. ILM 冷热层级向上回退全套命令（Warm↔Hot / Cold↔Wa…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+category: deep
+series: "es"
+slug: "ES_运维命令速查手册"
+reading_time: 15
+featured: false
+draft: false
+---
 # ES 运维常用命令速查手册（独立文档，可直接复制使用）
 
 ## 目录

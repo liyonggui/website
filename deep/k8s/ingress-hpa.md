@@ -1,3 +1,19 @@
+---
+title: "Ingress + HPA 实践清单（sc-user）"
+summary: "两份清单已生成，风格对齐既有 sc-user 资源（命名空间 sc-demo）："
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - K8s
+  - 云原生
+  - Elasticsearch
+category: deep
+series: "k8s"
+slug: "ingress-hpa"
+reading_time: 4
+featured: false
+draft: false
+---
 # Ingress + HPA 实践清单（sc-user）
 
 两份清单已生成，风格对齐既有 sc-user 资源（命名空间 `sc-demo`）：

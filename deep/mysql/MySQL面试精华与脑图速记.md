@@ -1,3 +1,17 @@
+---
+title: "MySQL 面试精华 & 脑图速记"
+summary: "基于《MySQL四层架构与监控汇总》提取的面试精华版。用于快速记忆核心考点。 > 面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+category: deep
+series: "mysql"
+slug: "MySQL面试精华与脑图速记"
+reading_time: 17
+featured: false
+draft: false
+---
 # MySQL 面试精华 & 脑图速记
 
 > 基于《MySQL四层架构与监控汇总》提取的**面试精华版**。用于快速记忆核心考点。

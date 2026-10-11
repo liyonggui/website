@@ -1,3 +1,21 @@
+---
+title: "MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制"
+summary: "本篇系统梳理 MySQL 底层原理，覆盖八大板块：整体架构、InnoDB 存储引擎、索引原理、事务与隔离、锁机制、复制与高可用、生产环境问题排查、生产环境参数调优。 > 侧重原理深…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+  - 事务
+  - 锁
+  - 索引
+  - 源码
+category: deep
+series: "mysql"
+slug: "MySQL原理篇"
+reading_time: 38
+featured: false
+draft: false
+---
 # MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制
 
 > 本篇系统梳理 MySQL 底层原理，覆盖**八大板块**：整体架构、InnoDB 存储引擎、索引原理、事务与隔离、锁机制、复制与高可用、生产环境问题排查、生产环境参数调优。

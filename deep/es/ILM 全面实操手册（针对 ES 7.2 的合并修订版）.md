@@ -1,3 +1,18 @@
+---
+title: "ILM 全面实操手册（针对 ES 7.2 的合并修订版）"
+summary: "直接结论（要点）："
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+  - ILM
+category: deep
+series: "es"
+slug: "ILM 全面实操手册（针对 ES 7.2 的合并修订版）"
+reading_time: 30
+featured: false
+draft: false
+---
 直接结论（要点）：
 
 - 我检查了你刚发的 7.2 文档片段，发现若干与 ES 7.2 版本兼容性、API/setting 名称、脚本健壮性以及操作风险的误导点（尤其是 data_tier、ILM snapshot、searchable snapshots/SLM、Math.abs 溢出、split/shrink 的约束与前置条件等）。我已修正示例脚本中的取模/溢出问题、补充了 7.2 可行的替代做法（使用 node attributes 做冷热分层分配）、标注需要升级到 >=7.10 才能用 data_tier/searchable snapshots/SLM 等新特性，以及把两份内容（你最初那份我之前修订的文档 + 你最新的 7.2 片段）合并成一份面向 ES 7.2 的、可直接落地的完整手册并在文中标注版本差异与注意事项。

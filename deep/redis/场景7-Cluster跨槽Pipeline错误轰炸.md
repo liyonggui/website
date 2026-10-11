@@ -1,3 +1,18 @@
+---
+title: "场景 7: Cluster 跨槽 Pipeline 错误轰炸"
+summary: "Redis Cluster 核心规则: - 16384 个 hash slot（slot = CRC16(key) % 16384） - 每个 key 根据 CRC16 哈希只属于…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+  - 缓存
+category: deep
+series: "redis"
+slug: "场景7-Cluster跨槽Pipeline错误轰炸"
+reading_time: 34
+featured: false
+draft: false
+---
 ## 场景 7: Cluster 跨槽 Pipeline 错误轰炸
 
 ### 7.1 背景与问题

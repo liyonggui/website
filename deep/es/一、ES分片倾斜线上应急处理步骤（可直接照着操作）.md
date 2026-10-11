@@ -1,3 +1,18 @@
+---
+title: "一、ES分片倾斜线上应急处理步骤（可直接照着操作）"
+summary: "先定位、再评估影响、先应急降压、再根治修复，禁止高峰期大力度迁移分片、大批量 reindex。"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+  - 分库分表
+category: deep
+series: "es"
+slug: "一、ES分片倾斜线上应急处理步骤（可直接照着操作）"
+reading_time: 11
+featured: false
+draft: false
+---
 # 一、ES分片倾斜线上应急处理步骤（可直接照着操作）
 
 ## 前置原则

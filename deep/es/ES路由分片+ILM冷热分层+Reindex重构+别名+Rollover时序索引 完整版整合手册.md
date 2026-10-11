@@ -1,3 +1,20 @@
+---
+title: "ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册"
+summary: "1. 索引/分片/节点层级基础关系"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+  - 索引
+  - 分库分表
+  - ILM
+category: deep
+series: "es"
+slug: "ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册"
+reading_time: 24
+featured: false
+draft: false
+---
 # ES路由分片\+ILM冷热分层\+Reindex重构\+别名\+Rollover时序索引 完整版整合手册
 
 ## 目录

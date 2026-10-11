@@ -1,3 +1,19 @@
+---
+title: "ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册"
+summary: "1. 索引与分片核心基础"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+  - 分库分表
+  - ILM
+category: deep
+series: "es"
+slug: "ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册"
+reading_time: 17
+featured: false
+draft: false
+---
 # ES分片\+路由\+ILM冷热\+Rollover\+Reindex\+全层级回流 最终完整版手册
 
 ## 全文目录

@@ -1,3 +1,17 @@
+---
+title: "Java 线程池 CallerRunsPolicy 高负载退化实测：4 个异步任务减到 3 个，QPS 提升 38%（交错矩阵 + 四库对账）"
+summary: "线程池参数怎么定？异步一定比同步快吗？本文用一条真实链路（HTTP → Disruptor → Kafka → 3 个消费者 → 写 MySQL / Redis / ES / Mo…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Java 并发
+category: blog
+series: "博客"
+slug: "02-线程池退化实测-CSDN版"
+reading_time: 19
+featured: true
+draft: false
+---
 # Java 线程池 CallerRunsPolicy 高负载退化实测：4 个异步任务减到 3 个，QPS 提升 38%（交错矩阵 + 四库对账）
 
 线程池参数怎么定？异步一定比同步快吗？本文用一条真实链路（HTTP → Disruptor → Kafka → 3 个消费者 → 写 MySQL / Redis / ES / Mongo 四个存储）做交错压测矩阵：三种"同步/异步怎么分配"的写法各跑 3 轮取中位数，并用四库数据一致性对账验证不丢数据。结论是 **CallerRunsPolicy 在高负载 I/O 场景下会把异步任务静默退回调用线程执行，形成"伪装成异步的同步器"**——把最重的 MySQL 改回同步，反而让 QPS 提升 38%。全文含线程池秒级埋点实现、压测踩坑复盘与生产选型建议。

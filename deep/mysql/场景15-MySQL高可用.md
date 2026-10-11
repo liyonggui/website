@@ -1,3 +1,17 @@
+---
+title: "场景15：MySQL 高可用（主从切换 / 故障演练）"
+summary: "单点 MySQL 一旦故障，整个服务不可用。高可用（HA） 的核心是：故障时能快速探测 + 自动切换，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+category: deep
+series: "mysql"
+slug: "场景15-MySQL高可用"
+reading_time: 8
+featured: false
+draft: false
+---
 # 场景15：MySQL 高可用（主从切换 / 故障演练）
 
 ## 一、问题背景

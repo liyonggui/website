@@ -1,3 +1,18 @@
+---
+title: "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距"
+summary: "环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+  - 压测
+category: blog
+series: "博客"
+slug: "01-Redis-String三种编码压测"
+reading_time: 15
+featured: true
+draft: false
+---
 # 别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距
 
 > 环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对值受客户端影响，**请关注相对差距**，全部数据来自我自己的压测工程，文末附复现方式。

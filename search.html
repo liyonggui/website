@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>搜索 · 小番茄程序猿</title>
+  <meta name="description" content="按标题、摘要、标签、系列搜索全部技术文章。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks">
+          <a href="index.html">首页</a>
+          <a href="projects.html">项目</a>
+          <a href="blog.html">博客</a>
+          <a href="deep.html">深度</a>
+        </nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="tool-page">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">发现</div>
+          <h2>搜索</h2>
+          <p>按标题、摘要、标签与系列搜索，纯客户端、无追踪。</p>
+        </div>
+        <input class="tool-input" id="q" type="search" placeholder="输入关键词，如：锁、Pipeline、RAG、ILM…" autocomplete="off" />
+        <div class="list-head">
+          <h3 id="resTitle">结果</h3>
+          <span class="dim-note" id="resCount"></span>
+        </div>
+        <div class="post-list" id="resList"><span class="dim-note">输入关键词开始搜索。</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+      <span class="foot-links">
+        <a href="tags.html">标签</a> ·
+        <a href="archives.html">归档</a> ·
+        <a href="rss.xml">RSS</a>
+      </span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+    syncThemeIcon();
+    th.addEventListener("click", function(){
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch(e){}
+      syncThemeIcon();
+    });
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function(){ l.classList.toggle("open"); });
+
+    var index = [];
+    function esc(s){ var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+    function render(q){
+      var box = document.getElementById("resList");
+      if (!q) {
+        document.getElementById("resTitle").textContent = "结果";
+        document.getElementById("resCount").textContent = "";
+        box.innerHTML = '<span class="dim-note">输入关键词开始搜索。</span>';
+        return;
+      }
+      var kw = q.toLowerCase();
+      var hits = index.filter(function(a){
+        return (a.title + " " + a.summary + " " + (a.tags || []).join(" ") + " " + a.series + " " + a.category)
+          .toLowerCase().indexOf(kw) !== -1;
+      });
+      document.getElementById("resTitle").textContent = "结果";
+      document.getElementById("resCount").textContent = hits.length + " 篇";
+      box.innerHTML = hits.length
+        ? hits.map(function(a){
+            return '<a class="list-row" href="' + esc(a.url) + '">' +
+                   '<span class="lr-title">' + esc(a.title) + '</span>' +
+                   '<span class="lr-meta">' + esc(a.date) + ' · ' + esc(a.series) + ' 系列</span></a>';
+          }).join("")
+        : '<span class="dim-note">没有匹配的文章，换个关键词试试。</span>';
+    }
+    var timer = null;
+    document.getElementById("q").addEventListener("input", function(e){
+      clearTimeout(timer);
+      var v = e.target.value.trim();
+      timer = setTimeout(function(){ render(v); }, 120);
+    });
+    fetch("data/search_index.json").then(function(r){ return r.json(); }).then(function(d){
+      index = d;
+      var q = new URLSearchParams(location.search).get("q");
+      if (q) { document.getElementById("q").value = q; render(q); }
+    }).catch(function(){
+      document.getElementById("resList").innerHTML = '<span class="dim-note">索引加载失败——请通过本地服务器或 GitHub Pages 访问。</span>';
+    });
+  </script>
+</body>
+</html>

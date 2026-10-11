@@ -1,3 +1,20 @@
+---
+title: "RAG 代码与原理详解（phase2 深读 · 新手向）"
+summary: "配套 AI-Agent新手教学.md 第 3 课的深挖版。对照 D:\\ai-agent-project\\phase2-rag 的代码读。 > 目录：① LinkedHashMap …"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - AI Agent
+  - Spring AI
+  - RAG
+  - 源码
+category: deep
+series: "agent"
+slug: "RAG代码与原理详解"
+reading_time: 12
+featured: false
+draft: false
+---
 # RAG 代码与原理详解（phase2 深读 · 新手向）
 
 > 配套 `AI-Agent新手教学.md` 第 3 课的深挖版。对照 `D:\ai-agent-project\phase2-rag` 的代码读。

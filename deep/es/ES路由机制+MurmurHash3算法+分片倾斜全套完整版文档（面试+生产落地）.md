@@ -1,3 +1,18 @@
+---
+title: "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）"
+summary: "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+  - 分库分表
+category: deep
+series: "es"
+slug: "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）"
+reading_time: 18
+featured: false
+draft: false
+---
 # ES路由机制\+MurmurHash3算法\+分片倾斜全套完整版文档（面试\+生产落地）
 
 ## 一、ES写入分片路由核心公式（源码原生）

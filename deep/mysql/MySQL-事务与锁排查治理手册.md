@@ -1,3 +1,19 @@
+---
+title: "MySQL（InnoDB）事务与锁排查治理手册"
+summary: "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+  - 事务
+  - 锁
+category: deep
+series: "mysql"
+slug: "MySQL-事务与锁排查治理手册"
+reading_time: 38
+featured: false
+draft: false
+---
 ## MySQL（InnoDB）事务与锁排查治理手册
 
 > 适用环境：生产 **MySQL 8.4.10**（经实测为**裁剪/云版本**——标准 8.4 应有的 `idle_transaction_timeout` 在本实例报 `1193 Unknown system variable`，故**所有参数务必先探针确认存在，再 `SET PERSIST`**）。

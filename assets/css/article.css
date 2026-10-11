@@ -194,6 +194,23 @@
   .toc-side { position: sticky; top: 90px; margin-top: 6px; }
 }
 
+/* 文章元信息行（日期/系列/阅读时长/标签） */
+.article-head .meta-row {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 8px 14px; margin-top: 12px;
+  font-size: 13px; color: var(--ink-faint);
+}
+.article-head .meta-row .m-item { display: inline-flex; align-items: center; gap: 5px; }
+.article-head .meta-row .m-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.article-head .meta-row .m-tag {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; text-decoration: none;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid transparent;
+  transition: border-color 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.article-head .meta-row .m-tag:hover { border-color: var(--accent); transform: translateY(-1px); }
+
 /* ——— 暗色模式适配 ——— */
 [data-theme="dark"] .prose code {
   background: rgba(124, 151, 255, 0.12);

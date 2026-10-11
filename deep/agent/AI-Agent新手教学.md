@@ -1,3 +1,18 @@
+---
+title: "AI Agent 新手教学（后端工程师·零基础版）"
+summary: "你是谁：会写后端、懂接口/并发/缓存，但从没碰过 AI Agent。 > 这份文档怎么读：从上到下，每一课 = 一个概念 + 你项目里的代码 + 你现在动手试什么。别跳，前 5 课…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - AI Agent
+  - Spring AI
+category: deep
+series: "agent"
+slug: "AI-Agent新手教学"
+reading_time: 20
+featured: false
+draft: false
+---
 # AI Agent 新手教学（后端工程师·零基础版）
 
 > 你是谁：会写后端、懂接口/并发/缓存，但**从没碰过 AI Agent**。

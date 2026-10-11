@@ -1,3 +1,18 @@
+---
+title: "rdx-agent 工程化落地纪要"
+summary: "项目根：D:\\ai-agent-project\\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - AI Agent
+  - Spring AI
+category: deep
+series: "agent"
+slug: "rdx-agent-工程化落地纪要"
+reading_time: 19
+featured: false
+draft: false
+---
 # rdx-agent 工程化落地纪要
 
 > 项目根：`D:\ai-agent-project\rdx-agent`（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090）

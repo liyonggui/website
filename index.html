@@ -6,6 +6,7 @@
   <title>小番茄程序猿 · 全栈作品集与博客</title>
   <meta name="description" content="Java 高级后端 / AI Agent 工程师作品集：高并发微服务、Redis/MySQL 治理、Spring Cloud、Elasticsearch 源码，以及 Spring AI Agent 工程化实战。" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="alternate" type="application/rss+xml" title="小番茄程序猿 · RSS" href="rss.xml" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="小番茄程序猿 · 全栈作品集与博客" />
   <meta property="og:description" content="把高并发与 Agent 都做成能跑、能量化的工程。" />
@@ -181,6 +182,23 @@
     <section class="reveal">
       <div class="wrap">
         <div class="section-head">
+          <div class="kicker">最新</div>
+          <h2>最近更新</h2>
+          <p>由文章 front matter 自动索引生成，随构建自动刷新。</p>
+        </div>
+        <div class="post-list" id="recentList"><span class="dim-note">加载中…</span></div>
+        <div class="tool-links" style="margin-top:var(--s5);display:flex;gap:14px;flex-wrap:wrap">
+          <a class="btn btn-ghost" href="tags.html">按标签浏览</a>
+          <a class="btn btn-ghost" href="archives.html">时间线归档</a>
+          <a class="btn btn-ghost" href="search.html">站内搜索</a>
+          <a class="btn btn-ghost" href="rss.xml">RSS 订阅</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
           <div class="kicker">联系</div>
           <h2>一起聊聊</h2>
           <p>交流高并发架构、AI Agent 工程化，或面试合作都欢迎。</p>
@@ -207,7 +225,7 @@
   <footer>
     <div class="wrap">
       <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-      <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+      <span class="foot-links"><a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
     </div>
   </footer>
 
@@ -243,6 +261,18 @@
     } else {
       document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
     }
+
+    // 最近更新（由 data/articles.json 驱动）
+    function esc(s){ var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+    fetch("data/articles.json").then(function(r){ return r.json(); }).then(function(list){
+      document.getElementById("recentList").innerHTML = list.slice(0, 6).map(function(a){
+        return '<a class="list-row" href="' + esc(a.url) + '">' +
+               '<span class="lr-title">' + esc(a.title) + '</span>' +
+               '<span class="lr-meta">' + esc(a.date) + ' · ' + esc(a.series) + ' 系列</span></a>';
+      }).join("");
+    }).catch(function(){
+      document.getElementById("recentList").innerHTML = '<span class="dim-note">索引加载失败——请通过本地服务器或 GitHub Pages 访问。</span>';
+    });
   </script>
 </body>
 </html>

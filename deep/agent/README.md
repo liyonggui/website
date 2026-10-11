@@ -1,3 +1,18 @@
+---
+title: "phase1-minimal-agent"
+summary: "阶段 1 骨架：Spring Boot + Spring AI Alibaba（DashScope / 通义千问）最小 Agent 循环。 目的不是做产品，是亲手把「模型 → 选工…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - AI Agent
+  - Spring AI
+category: deep
+series: "agent"
+slug: "README"
+reading_time: 2
+featured: false
+draft: false
+---
 # phase1-minimal-agent
 
 阶段 1 骨架：**Spring Boot + Spring AI Alibaba（DashScope / 通义千问）最小 Agent 循环**。

@@ -1,3 +1,20 @@
+---
+title: "phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）"
+summary: "配套：AI-Agent新手教学.md 第 7 课。代码在 D:\\ai-agent-project\\phase4-agent-ops。 > 一句话：把 LLM 当不靠谱下游服务，用后…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - AI Agent
+  - Spring AI
+  - 源码
+  - 缓存
+category: deep
+series: "agent"
+slug: "phase4-护栏代码与原理详解"
+reading_time: 9
+featured: false
+draft: false
+---
 # phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）
 
 > 配套：`AI-Agent新手教学.md` 第 7 课。代码在 `D:\ai-agent-project\phase4-agent-ops`。

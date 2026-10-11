@@ -1,3 +1,20 @@
+---
+title: "phase5 MCP 代码与原理详解（server + client · 含失控案例）"
+summary: "配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 D:\\ai-agent-project\\phase5-mcp-server 与 phase5-mcp-cli…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - AI Agent
+  - Spring AI
+  - MCP
+  - 源码
+category: deep
+series: "agent"
+slug: "phase5-MCP代码与原理详解"
+reading_time: 10
+featured: false
+draft: false
+---
 # phase5 MCP 代码与原理详解（server + client · 含失控案例）
 
 > 配套：`AI-Agent新手教学.md` 第 6 课、`全链路.md`。代码在 `D:\ai-agent-project\phase5-mcp-server` 与 `phase5-mcp-client`。

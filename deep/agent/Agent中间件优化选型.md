@@ -1,3 +1,19 @@
+---
+title: "Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）"
+summary: "原则：带着病历找药。每个中间件都必须对应一个\"已实测出的问题\"，并说清\"治好了没\"——不是堆组件。 > 当前栈：Spring AI 1.1.8 + 百炼 MaaS + RAG 向量…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - AI Agent
+  - Spring AI
+  - 压测
+category: deep
+series: "agent"
+slug: "Agent中间件优化选型"
+reading_time: 24
+featured: false
+draft: false
+---
 # Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）
 
 > 原则：**带着病历找药**。每个中间件都必须对应一个"已实测出的问题"，并说清"治好了没"——不是堆组件。

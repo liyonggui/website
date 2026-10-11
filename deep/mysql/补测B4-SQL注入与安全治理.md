@@ -1,3 +1,17 @@
+---
+title: "补测B4：SQL 注入与安全治理"
+summary: "高并发系统安全必修。SQL 注入是最高危的漏洞之一：字符串拼接 SQL，恶意入参可绕过 WHERE 泄露全表、绕过认证、删库。治理核心：参数化根治 + 纵深防御（字段最小化、脱敏、…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+category: deep
+series: "mysql"
+slug: "补测B4-SQL注入与安全治理"
+reading_time: 4
+featured: false
+draft: false
+---
 # 补测B4：SQL 注入与安全治理
 
 ## 一、问题背景

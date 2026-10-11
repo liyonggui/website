@@ -1,3 +1,19 @@
+---
+title: "场景 6: 高并发多连接 Pipeline — maxclients 边界探测"
+summary: "生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+  - Java 并发
+  - 缓存
+category: deep
+series: "redis"
+slug: "场景6-高并发多连接Pipeline-maxclients边界探测"
+reading_time: 31
+featured: false
+draft: false
+---
 ## 场景 6: 高并发多连接 Pipeline — maxclients 边界探测
 
 ### 6.1 背景与问题

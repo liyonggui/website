@@ -1,3 +1,18 @@
+---
+title: "ILM 全面实操手册（修订版）"
+summary: "结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split …"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+  - ILM
+category: deep
+series: "es"
+slug: "ILM 全面实操手册（修订版）"
+reading_time: 30
+featured: false
+draft: false
+---
 结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split 约束、备份/可搜索快照等），并把改正与补充后的完整文档一起给出。下面先列出“问题 & 建议修改点”，再给出修订后的完整文档（可直接复制到 Markdown/知识库）。
 
 主要问题与我做的改动（要点）

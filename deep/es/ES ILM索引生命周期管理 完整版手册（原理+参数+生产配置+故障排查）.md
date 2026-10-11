@@ -1,3 +1,20 @@
+---
+title: "ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）"
+summary: "本文承接前文ES路由、分片分配、冷热分层全套内容，ILM是ES冷热分层唯一原生实现方案，全程无业务代码、无定时任务，配置驱动实现索引自动冷热流转；同时厘清所有人都踩过的时间误区、调…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Elasticsearch
+  - 索引
+  - 源码
+  - ILM
+category: deep
+series: "es"
+slug: "ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）"
+reading_time: 11
+featured: false
+draft: false
+---
 # ES ILM索引生命周期管理 完整版手册（原理\+参数\+生产配置\+故障排查）
 
 ## 前置说明

@@ -4,11 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>场景18：锁等待与死锁监控治理 · 小番茄程序猿</title>
-<meta name="description" content="场景18：锁等待与死锁监控治理 —— 小番茄程序猿的技术文章。"/>
+<meta name="description" content="高并发下，多个事务争用同一行/间隙锁会产生锁等待（事务串行化、吞吐下降），更严重的是死锁（事务互相持有对方需要的锁，死循环等待）。治理需要&quot;制造 → 监控 → 诊断 → 治理&quot;闭环…"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="场景18：锁等待与死锁监控治理 · 小番茄程序猿" />
-<meta property="og:description" content="场景18：锁等待与死锁监控治理 —— 小番茄程序猿的技术文章。" />
+<meta property="og:description" content="高并发下，多个事务争用同一行/间隙锁会产生锁等待（事务串行化、吞吐下降），更严重的是死锁（事务互相持有对方需要的锁，死循环等待）。治理需要&quot;制造 → 监控 → 诊断 → 治理&quot;闭环…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -48,6 +48,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景18：锁等待与死锁监控治理</h1>
+<div class="meta-row"><span class="m-item">2026-10-11</span><span class="m-item">mysql 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=锁">锁</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -144,7 +145,7 @@ innodb_deadlocks         = 有死锁记录（SHOW ENGINE INNODB STATUS 检测）
 <footer>
   <div class="wrap">
     <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    <span class="foot-links"><a href="../../tags.html">标签</a> · <a href="../../archives.html">归档</a> · <a href="../../search.html">搜索</a> · <a href="../../rss.xml">RSS</a></span>
   </div>
 </footer>
 <script>

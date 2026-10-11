@@ -1,3 +1,19 @@
+---
+title: "场景9：InnoDB 并发控制（MVCC 多版本并发控制）"
+summary: "InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+  - 事务
+  - Java 并发
+category: deep
+series: "mysql"
+slug: "场景9-InnoDB并发控制MVCC"
+reading_time: 6
+featured: false
+draft: false
+---
 # 场景9：InnoDB 并发控制（MVCC 多版本并发控制）
 
 ## 一、问题背景

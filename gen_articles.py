@@ -12,6 +12,11 @@ import html
 import markdown
 from pygments.formatters import HtmlFormatter
 
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ARTICLE_CSS = os.path.join(ROOT, "assets", "css", "article.css")
 PYG_CSS = os.path.join(ROOT, "assets", "css", "pygments.css")
@@ -22,11 +27,11 @@ TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>__TITLE__ · 小番茄程序猿</title>
-<meta name="description" content="__TITLE__ —— 小番茄程序猿的技术文章。"/>
+<meta name="description" content="__DESC__"/>
 <link rel="icon" type="image/svg+xml" href="__PREFIX__assets/logo.svg" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="__TITLE__ · 小番茄程序猿" />
-<meta property="og:description" content="__TITLE__ —— 小番茄程序猿的技术文章。" />
+<meta property="og:description" content="__DESC__" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="__PREFIX__assets/css/style.css"/>
@@ -66,6 +71,7 @@ TEMPLATE = """<!DOCTYPE html>
   <div class="article-head">
     <a class="back" href="__BACK_HREF__">← __BACK_LABEL__</a>
     <h1>__TITLE__</h1>
+__META__
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -85,7 +91,7 @@ __BODY__
 <footer>
   <div class="wrap">
     <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    <span class="foot-links"><a href="__PREFIX__tags.html">标签</a> · <a href="__PREFIX__archives.html">归档</a> · <a href="__PREFIX__search.html">搜索</a> · <a href="__PREFIX__rss.xml">RSS</a></span>
   </div>
 </footer>
 <script>
@@ -117,18 +123,70 @@ __BODY__
 """
 
 
+def parse_front_matter(text):
+    """解析 YAML front matter；无/解析失败返回 ({}, 原文)。"""
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return {}, text
+    front = text[4:end]
+    body = text[end + len("\n---\n"):]
+    if yaml is None:
+        return {}, body
+    try:
+        data = yaml.safe_load(front) or {}
+        if not isinstance(data, dict):
+            return {}, body
+        return data, body
+    except Exception:
+        return {}, body
+
+
+def build_meta_row(meta, title, prefix):
+    """文章页头部的元信息行：日期 · 系列 · 阅读时长 · 标签（链到标签页）。"""
+    if not meta:
+        return ""
+    parts = []
+    if meta.get("date"):
+        parts.append(f'<span class="m-item">{html.escape(str(meta["date"]))}</span>')
+    if meta.get("series"):
+        parts.append(f'<span class="m-item">{html.escape(str(meta["series"]))} 系列</span>')
+    if meta.get("reading_time"):
+        try:
+            parts.append(f'<span class="m-item">约 {int(meta["reading_time"])} 分钟阅读</span>')
+        except (TypeError, ValueError):
+            pass
+    tags = meta.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    if tags:
+        chips = "".join(
+            f'<a class="m-tag" href="{prefix}tags.html?t={html.escape(str(t), quote=True)}">{html.escape(str(t))}</a>'
+            for t in tags
+        )
+        parts.append(f'<span class="m-tags">{chips}</span>')
+    if not parts:
+        return ""
+    return '<div class="meta-row">' + "".join(parts) + "</div>"
+
+
 def depth_prefix(subdir):
     """subdir 相对 ROOT：'blog' -> '../', 'deep/mysql' -> '../../'"""
     return "../" * (1 + subdir.count("/"))
 
 
-def build_html(prefix, title, body, active, back_href, back_label, toc=""):
+def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=None):
     a = {"home": "", "proj": "", "blog": "", "deep": ""}
     if active in a:
         a[active] = ' class="active"'
+    meta = meta or {}
+    desc = str(meta.get("summary") or "").strip() or f"{title} —— 小番茄程序猿的技术文章"
     return (TEMPLATE
             .replace("__PREFIX__", prefix)
-            .replace("__TITLE__", title)
+            .replace("__TITLE__", html.escape(title))
+            .replace("__DESC__", html.escape(desc))
+            .replace("__META__", build_meta_row(meta, title, prefix))
             .replace("__BODY__", body)
             .replace("__TOC__", toc)
             .replace("__BACK_HREF__", back_href)
@@ -159,9 +217,11 @@ def extract_title(text, fallback):
             continue
         m = re.match(r"^#{1,2}\s+(.+?)\s*#*\s*$", s)
         if m:
-            title = re.sub(r"\s*#+\s*$", "", m.group(1)).strip()
+            t = re.sub(r"\s*#+\s*$", "", m.group(1)).strip()
+            # 部分原文标题带 markdown 转义（如 ES7\.17、\+），页头是纯文本需还原
+            t = re.sub(r"\\([\\`*_{}\[\]()#+\-.!|>~])", r"\1", t)
             rest = "\n".join(lines[:i] + lines[i + 1:]).lstrip("\n")
-            return title, rest
+            return t, rest
         break  # 首个非空行不是标题：不动正文
     return fallback, text
 
@@ -255,11 +315,13 @@ def process_dir(rel_dir, active, back_label):
         src = os.path.join(abs_dir, fn)
         with open(src, "r", encoding="utf-8") as f:
             text = f.read()
-        title, text = extract_title(text, fn[:-3])
+        meta, text = parse_front_matter(text)
+        heading, text = extract_title(text, fn[:-3])
+        title = str(meta.get("title") or heading or fn[:-3]).strip()
         body, toc = md_to_html(demote_h1(text))
         out_name = fn[:-3] + ".html"
         out_path = os.path.join(abs_dir, out_name)
-        html_doc = build_html(prefix, title, body, active, back_href, back_label, toc)
+        html_doc = build_html(prefix, title, body, active, back_href, back_label, toc, meta)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(html_doc)
         count += 1

@@ -1,3 +1,18 @@
+---
+title: "场景4：间隙锁 / Next-Key Lock"
+summary: "InnoDB 在 REPEATABLE READ 隔离级别下，通过间隙锁（Gap Lock）和 Next-Key Lock 防止幻读，但也因此引入了锁范围扩大与间隙锁死锁等并发问题…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+  - 锁
+category: deep
+series: "mysql"
+slug: "场景4-间隙锁与Next-KeyLock"
+reading_time: 5
+featured: false
+draft: false
+---
 # 场景4：间隙锁 / Next-Key Lock
 
 ## 一、问题背景

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>标签 · 小番茄程序猿</title>
+  <meta name="description" content="按标签浏览全部技术文章：Redis、MySQL、Elasticsearch、压测、AI Agent、K8s。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks">
+          <a href="index.html">首页</a>
+          <a href="projects.html">项目</a>
+          <a href="blog.html">博客</a>
+          <a href="deep.html">深度</a>
+        </nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="tool-page">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">发现</div>
+          <h2>标签</h2>
+          <p>点击任意标签，筛选下方文章列表。数据由 generate_index.py 自动生成。</p>
+        </div>
+        <div class="chip-cloud" id="chipCloud"><span class="dim-note">加载中…</span></div>
+        <div class="list-head" id="listHead" style="display:none">
+          <h3 id="listTitle">全部文章</h3>
+          <span class="dim-note" id="listCount"></span>
+        </div>
+        <div class="post-list" id="postList"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+      <span class="foot-links">
+        <a href="archives.html">归档</a> ·
+        <a href="search.html">搜索</a> ·
+        <a href="rss.xml">RSS</a>
+      </span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+    syncThemeIcon();
+    th.addEventListener("click", function(){
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch(e){}
+      syncThemeIcon();
+    });
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function(){ l.classList.toggle("open"); });
+
+    var tags = [], articles = [], active = null;
+    function esc(s){ var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+    function renderChips(){
+      var max = Math.max.apply(null, tags.map(function(x){ return x.count; }));
+      document.getElementById("chipCloud").innerHTML = tags.map(function(x){
+        var w = 0.82 + 0.5 * (x.count / max);
+        return '<button class="chip' + (x.name === active ? ' on' : '') + '" data-t="' + esc(x.name) + '" style="font-size:' + w.toFixed(2) + 'em">' +
+               esc(x.name) + '<i>' + x.count + '</i></button>';
+      }).join("");
+      document.querySelectorAll(".chip").forEach(function(c){
+        c.addEventListener("click", function(){ pick(c.getAttribute("data-t") === active ? null : c.getAttribute("data-t")); });
+      });
+    }
+    function renderList(){
+      var head = document.getElementById("listHead");
+      var items = active ? articles.filter(function(a){ return a.tags.indexOf(active) !== -1; }) : articles;
+      head.style.display = "block";
+      document.getElementById("listTitle").textContent = active ? "标签：" + active : "全部文章";
+      document.getElementById("listCount").textContent = items.length + " 篇";
+      document.getElementById("postList").innerHTML = items.map(function(a){
+        return '<a class="list-row" href="' + esc(a.url) + '">' +
+               '<span class="lr-title">' + esc(a.title) + '</span>' +
+               '<span class="lr-meta">' + esc(a.date) + ' · ' + esc(a.series) + ' 系列</span></a>';
+      }).join("");
+    }
+    function pick(name){
+      active = name;
+      renderChips(); renderList();
+      try {
+        var u = name ? "?t=" + encodeURIComponent(name) : location.pathname;
+        history.replaceState(null, "", u);
+      } catch(e){}
+    }
+    Promise.all([
+      fetch("data/tags.json").then(function(r){ return r.json(); }),
+      fetch("data/articles.json").then(function(r){ return r.json(); })
+    ]).then(function(rs){
+      tags = rs[0]; articles = rs[1];
+      var q = new URLSearchParams(location.search).get("t");
+      if (q && tags.some(function(x){ return x.name === q; })) active = q;
+      renderChips(); renderList();
+    }).catch(function(){
+      document.getElementById("chipCloud").innerHTML = '<span class="dim-note">索引加载失败——请通过本地服务器或 GitHub Pages 访问（file:// 下 fetch 受限）。</span>';
+    });
+  </script>
+</body>
+</html>

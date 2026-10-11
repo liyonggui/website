@@ -1,3 +1,17 @@
+---
+title: "协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言"
+summary: "记录日期：2026-09-08 ｜ 来源：Gil Tene《How NOT to Measure Latency》(Strange Loop 2015) > 关联实验：demo 高…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - 压测
+category: deep
+series: "bench"
+slug: "协同遗漏-Coordinated-Omission"
+reading_time: 7
+featured: false
+draft: false
+---
 # 协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言
 
 > 记录日期：2026-09-08 ｜ 来源：Gil Tene《How NOT to Measure Latency》(Strange Loop 2015)

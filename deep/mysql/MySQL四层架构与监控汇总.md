@@ -1,3 +1,17 @@
+---
+title: "MySQL 四层架构、执行顺序、监控与 BufferPool 汇总"
+summary: "系统汇总 MySQL 核心原理：四层架构与各层监控、连接层参数辨析、SQL 执行顺序（正向/反向）、两阶段提交、BufferPool 与脏页、BufferPool 与无索引字段、长…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+category: deep
+series: "mysql"
+slug: "MySQL四层架构与监控汇总"
+reading_time: 80
+featured: false
+draft: false
+---
 # MySQL 四层架构、执行顺序、监控与 BufferPool 汇总
 
 > 系统汇总 MySQL 核心原理：四层架构与各层监控、连接层参数辨析、SQL 执行顺序（正向/反向）、两阶段提交、BufferPool 与脏页、BufferPool 与无索引字段、长连接与僵尸半开连接治理。

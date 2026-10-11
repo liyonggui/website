@@ -1,3 +1,17 @@
+---
+title: "场景13：InnoDB 参数调优对吞吐的影响"
+summary: "InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用\"强持久性\"配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - MySQL
+category: deep
+series: "mysql"
+slug: "场景13-InnoDB参数调优"
+reading_time: 7
+featured: false
+draft: false
+---
 # 场景13：InnoDB 参数调优对吞吐的影响
 
 ## 一、问题背景

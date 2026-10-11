@@ -1,3 +1,17 @@
+---
+title: "Java 秒杀/库存场景压测脚本设计清单"
+summary: "本文用于设计 Java 秒杀、库存扣减、订单创建和异步消息链路的压测脚本。重点覆盖："
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - 压测
+category: deep
+series: "bench"
+slug: "Java秒杀库存场景压测脚本设计清单"
+reading_time: 10
+featured: false
+draft: false
+---
 # Java 秒杀/库存场景压测脚本设计清单
 
 本文用于设计 Java 秒杀、库存扣减、订单创建和异步消息链路的压测脚本。重点覆盖：

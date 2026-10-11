@@ -1,3 +1,18 @@
+---
+title: "场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测"
+summary: "问题: 单服务压测最优 8 个 pipeline 槽位，生产 12 个 Java 服务同时写 Redis。 如果每服务 8 个 pipeline → 96 个并发管道，超出 Red…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+  - 缓存
+category: deep
+series: "redis"
+slug: "场景4-分布式信号量多Writer竞争Pipeline槽位"
+reading_time: 28
+featured: false
+draft: false
+---
 ## 场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测
 
 ---

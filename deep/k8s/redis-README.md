@@ -1,3 +1,19 @@
+---
+title: "单实例 Redis on K3s（学习用）"
+summary: "把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - K8s
+  - 云原生
+  - Redis
+category: deep
+series: "k8s"
+slug: "redis-README"
+reading_time: 3
+featured: false
+draft: false
+---
 # 单实例 Redis on K3s（学习用）
 
 把 Redis 放上 K8s，比 `sc-user` 只多一个概念：**数据要持久化、身份要稳定**。

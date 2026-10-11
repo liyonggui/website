@@ -4,11 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Redis 1主1从（StatefulSet 主从复制） · 小番茄程序猿</title>
-<meta name="description" content="Redis 1主1从（StatefulSet 主从复制） —— 小番茄程序猿的技术文章。"/>
+<meta name="description" content="在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Redis 1主1从（StatefulSet 主从复制） · 小番茄程序猿" />
-<meta property="og:description" content="Redis 1主1从（StatefulSet 主从复制） —— 小番茄程序猿的技术文章。" />
+<meta property="og:description" content="在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -48,6 +48,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis 1主1从（StatefulSet 主从复制）</h1>
+<div class="meta-row"><span class="m-item">2026-10-11</span><span class="m-item">k8s 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=K8s">K8s</a><a class="m-tag" href="../../tags.html?t=云原生">云原生</a><a class="m-tag" href="../../tags.html?t=Redis">Redis</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -156,7 +157,7 @@ kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </sp
 <footer>
   <div class="wrap">
     <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    <span class="foot-links"><a href="../../tags.html">标签</a> · <a href="../../archives.html">归档</a> · <a href="../../search.html">搜索</a> · <a href="../../rss.xml">RSS</a></span>
   </div>
 </footer>
 <script>

@@ -1,3 +1,18 @@
+---
+title: "场景 8: 热点 Key Pipeline INCR 自增"
+summary: "Redis Cluster + Pipeline 高并发 INCR 同一个热点 key:"
+date: 2026-10-11
+author: "小番茄程序猿"
+tags:
+  - Redis
+  - 缓存
+category: deep
+series: "redis"
+slug: "场景8-1-热点Key Pipeline自增"
+reading_time: 70
+featured: false
+draft: false
+---
 ## 场景 8: 热点 Key Pipeline INCR 自增
 
 ### 8.1 背景与问题

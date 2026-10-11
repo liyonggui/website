@@ -1,32 +1,119 @@
 # -*- coding: utf-8 -*-
-"""校验 112 篇文章页：页头 h1 恰 1 个，正文 prose 内不再含 h1。"""
+"""
+站点内容校验（落地方案 §6 升级版）：
+1. md 元数据完整性：title / summary / date / tags / category 必填
+2. HTML 结构：页头 h1 恰 1 个、正文无 h1
+3. md ↔ html 对应存在
+4. data/*.json 与 rss.xml 存在且可解析
+任一失败打印清单并 exit 1（供 CI 使用）。
+"""
 import glob
 import io
+import json
 import re
 import sys
+from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+ROOT = Path(__file__).resolve().parent
 
-bad = []
-total = 0
-for path in glob.glob("blog/*.html") + glob.glob("deep/*/*.html"):
-    total += 1
-    h = open(path, encoding="utf-8").read()
-    head = re.findall(r'<div class="article-head">.*?<h1>(.*?)</h1>', h, re.S)
-    m = re.search(r'<article class="prose">(.*?)</article>', h, re.S)
-    body_h1 = m.group(1).count("<h1") if m else -1
-    if len(head) != 1 or body_h1 != 0:
-        bad.append((path, len(head), body_h1))
 
-print(f"文章页总数: {total}")
-print(f"异常(页头h1!=1 或 正文含h1): {len(bad)}")
-for p, a, b in bad[:10]:
-    print("  ", p, "head=", a, "body_h1=", b)
+def parse_front_matter(text):
+    if not text.startswith("---\n"):
+        return {}, text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return {}, text
+    front = text[4:end]
+    body = text[end + len("\n---\n"):]
+    meta = {}
+    try:
+        import yaml
+        data = yaml.safe_load(front)
+        if isinstance(data, dict):
+            meta = data
+    except Exception:
+        # yaml 不可用/失败时退化为逐行解析（仅支持 key: value 与 "- item"）
+        key = None
+        for line in front.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("- ") and key:
+                meta.setdefault(key, []).append(line[2:].strip().strip('"'))
+                continue
+            if ":" in line:
+                k, v = line.split(":", 1)
+                key = k.strip()
+                if v.strip():
+                    meta[key] = v.strip().strip('"')
+    return meta, body
 
-# 抽样展示两篇的页头标题
-for p in ["blog/01-Redis-String三种编码压测.html",
-          "deep/mysql/KingbaseES-锁与事务排查手册.html"]:
-    h = open(p, encoding="utf-8").read()
-    t = re.search(r'<div class="article-head">.*?<h1>(.*?)</h1>', h, re.S)
-    m = re.search(r'<article class="prose">(.*?)</article>', h, re.S)
-    print(f"\n{p}\n  页头标题: {t.group(1).strip() if t else '(无)'}\n  正文 h1 数: {m.group(1).count('<h1') if m else '?'}")
+
+def check_md_quality():
+    errors = []
+    for path in list(ROOT.glob("blog/*.md")) + list(ROOT.glob("deep/*/*.md")):
+        meta, body = parse_front_matter(path.read_text(encoding="utf-8"))
+        rel = path.relative_to(ROOT).as_posix()
+        for field in ("title", "summary", "date", "tags", "category"):
+            if not meta.get(field):
+                errors.append(f"{rel}: front matter 缺少 {field}")
+        if meta.get("category") not in ("blog", "deep", None):
+            errors.append(f"{rel}: category 非法（应为 blog/deep）")
+    return errors
+
+
+def check_html_quality():
+    errors = []
+    for path in glob.glob("blog/*.html") + glob.glob("deep/*/*.html"):
+        h = open(path, encoding="utf-8").read()
+        head = re.findall(r'<div class="article-head">.*?<h1>(.*?)</h1>', h, re.S)
+        m = re.search(r'<article class="prose">(.*?)</article>', h, re.S)
+        body_h1 = m.group(1).count("<h1") if m else -1
+        if len(head) != 1 or body_h1 != 0:
+            errors.append(f"{path}: 页头 h1 数={len(head)} 正文 h1 数={body_h1} 异常")
+    return errors
+
+
+def check_missing_html():
+    errors = []
+    for md_path in list(ROOT.glob("blog/*.md")) + list(ROOT.glob("deep/*/*.md")):
+        if not md_path.with_suffix(".html").exists():
+            errors.append(f"{md_path.as_posix()}: 对应 HTML 未生成")
+    return errors
+
+
+def check_data_files():
+    errors = []
+    for name in ("articles.json", "tags.json", "archives.json", "search_index.json"):
+        p = ROOT / "data" / name
+        if not p.exists():
+            errors.append(f"data/{name} 不存在（先运行 generate_index.py）")
+            continue
+        try:
+            json.loads(p.read_text(encoding="utf-8"))
+        except Exception as e:
+            errors.append(f"data/{name} JSON 解析失败: {e}")
+    if not (ROOT / "rss.xml").exists():
+        errors.append("rss.xml 不存在（先运行 generate_index.py）")
+    return errors
+
+
+def main():
+    errors = []
+    errors += check_md_quality()
+    errors += check_html_quality()
+    errors += check_missing_html()
+    errors += check_data_files()
+
+    if errors:
+        print(f"站点校验失败（{len(errors)} 项）：")
+        for e in errors:
+            print(" -", e)
+        raise SystemExit(1)
+
+    print("站点校验通过：元数据 / HTML 结构 / 产物对应 / 索引文件 全部正常")
+
+
+if __name__ == "__main__":
+    main()
