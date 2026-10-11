@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景1：连接池与超卖问题（四种扣减策略对比） · 小番茄程序猿</title>
+<meta name="description" content="场景1：连接池与超卖问题（四种扣减策略对比） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景1：连接池与超卖问题（四种扣减策略对比）</h1>
+  </div>
+  <article class="prose">
+<h1 id="1">场景1：连接池与超卖问题（四种扣减策略对比）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>高并发秒杀/抢购场景下，多个请求同时扣减同一商品的库存。若不加任何并发控制，会导致<strong>超卖</strong>（库存减为负数）；而错误的加锁策略又会带来性能损耗或死锁。</p>
+<p>本场景在同一张 <code>t_stock</code> 表上，用相同并发量压测四种扣减策略，量化其<strong>超卖率 / 成功数 / 吞吐 / 延迟</strong>。</p>
+<h2 id="_2">二、四种策略</h2>
+<h3 id="1-oversell">1. <code>oversell</code> —— 先查后减（无锁，问题演示）</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_stock</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">product_no</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="p">;</span><span class="w">   </span><span class="c1">-- 读到旧值</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">t_stock</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">product_no</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 覆盖写</span>
+</code></pre></div>
+
+<p>多个线程同时读到 <code>stock=100</code>，各自 <code>UPDATE stock=stock-1</code>，最终结果取决于最后写入者，导致扣减次数丢失、<strong>库存减为负数</strong>。</p>
+<h3 id="2-atomic-sql">2. <code>atomic</code> —— 原子条件更新（推荐，SQL 层保证）</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">UPDATE</span><span class="w"> </span><span class="n">t_stock</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="o">?</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">product_no</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="o">?</span><span class="p">;</span><span class="w">   </span><span class="c1">-- 条件不满足则影响行数为 0</span>
+</code></pre></div>
+
+<p>利用 InnoDB <strong>行锁 + 条件判断</strong>，在单条 UPDATE 内完成"检查库存 + 扣减"，天然原子，<strong>杜绝超卖</strong>，且无显式事务/锁开销，性能最优。</p>
+<h3 id="3-pessimistic-select-for-update">3. <code>pessimistic</code> —— 悲观锁（SELECT ... FOR UPDATE）</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">BEGIN</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_stock</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">product_no</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="k">FOR</span><span class="w"> </span><span class="k">UPDATE</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 行锁，阻塞其它写</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">t_stock</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">product_no</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="p">;</span>
+<span class="k">COMMIT</span><span class="p">;</span>
+</code></pre></div>
+
+<p>事务内加<strong>排他行锁</strong>，其它事务必须等待锁释放，保证读改写一致。代价是<strong>并发度受限、锁等待增加</strong>，高并发下吞吐下降明显。</p>
+<h3 id="4-optimistic">4. <code>optimistic</code> —— 乐观锁（版本号）</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">stock</span><span class="p">,</span><span class="w"> </span><span class="k">version</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_stock</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">product_no</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="p">;</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">t_stock</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="o">?</span><span class="p">,</span><span class="w"> </span><span class="k">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">version</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">product_no</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="k">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">stock</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="o">?</span><span class="p">;</span>
+<span class="c1">-- 影响行数 = 0 表示版本冲突，需重试</span>
+</code></pre></div>
+
+<p>不加锁，通过<strong>版本号比对</strong>判断是否被并发修改，冲突时由应用层重试。适合<strong>读多写少</strong>、冲突不频繁的场景；冲突率高时重试开销会放大。</p>
+<h2 id="_3">三、压测结果（实测）</h2>
+<blockquote>
+<p>压测方式：对 <code>SKU-10002</code>（单行热点）打满 1000 次扣减，并发 20，每种模式前重置库存为 1000。
+运行脚本：<code>loadtester/run-single.ps1</code>（单模式） / <code>run-benchall.ps1</code>（四种模式一次性对比）。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>成功</th>
+<th>冲突/失败</th>
+<th>QPS</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+<th>最终库存</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>oversell</td>
+<td>1000</td>
+<td>0</td>
+<td><strong>1126</strong></td>
+<td>153</td>
+<td>197</td>
+<td>212</td>
+<td>0（可再扣为负）</td>
+<td>❌ 超卖，不可用</td>
+</tr>
+<tr>
+<td>optimistic（重试5）</td>
+<td>261</td>
+<td><strong>739 冲突</strong></td>
+<td>328</td>
+<td>64</td>
+<td>88</td>
+<td>124</td>
+<td>739</td>
+<td>⚠️ 单行高冲突，正确性差</td>
+</tr>
+<tr>
+<td>pessimistic</td>
+<td>1000</td>
+<td>0</td>
+<td>114</td>
+<td>171</td>
+<td>209</td>
+<td>226</td>
+<td>0</td>
+<td>✅ 正确，锁等待</td>
+</tr>
+<tr>
+<td><strong>atomic</strong></td>
+<td><strong>1000</strong></td>
+<td><strong>0</strong></td>
+<td>103</td>
+<td>164</td>
+<td>321</td>
+<td>679</td>
+<td><strong>0</strong></td>
+<td>✅ <strong>推荐</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">关键结论</h3>
+<ol>
+<li><strong>oversell 最快（1126 QPS）但超卖</strong>：先查后减不检查条件，一旦库存见底继续扣就变负数（实测 <code>SKU-10001</code> 100 库存被扣成 <strong>-19</strong>）。<strong>性能最优但错误</strong>。</li>
+<li><strong>optimistic 在单行热点下冲突率高达 74%（739/1000）</strong>：所有请求竞争同一行，版本号频繁自增，即使重试 5 次仍大量失败，最终只成功 261 次。<strong>乐观锁不适合高并发单行热点</strong>。</li>
+<li><strong>atomic 与 pessimistic 均正确（0 超卖、0 冲突）</strong>：都受限于单行 InnoDB 行锁串行化，性能相当（~100 QPS）。</li>
+<li><strong><code>atomic</code> 为最优解</strong>：单条 <code>UPDATE ... WHERE stock &gt;= n</code> 原子完成"检查 + 扣减"，无显式事务/锁/重试开销，代码最简、生产首选。</li>
+</ol>
+<h3 id="_5">补充：多行分布式压测（消除单行热点干扰）</h3>
+<p>单行热点会掩盖各模式的真实性能差异（都被行锁串行化），故用 50 个商品、请求随机分布到各行的方式复测（并发 30，每模式 20000 请求）：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>成功</th>
+<th>冲突/失败</th>
+<th>QPS</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>oversell</td>
+<td>20000</td>
+<td>0</td>
+<td><strong>2289</strong></td>
+<td>10</td>
+<td>25</td>
+<td>43</td>
+<td>❌ 超卖，不可用</td>
+</tr>
+<tr>
+<td><strong>atomic</strong></td>
+<td><strong>20000</strong></td>
+<td><strong>0</strong></td>
+<td><strong>2204</strong></td>
+<td><strong>10</strong></td>
+<td><strong>28</strong></td>
+<td><strong>49</strong></td>
+<td>✅ <strong>推荐（正确且最快）</strong></td>
+</tr>
+<tr>
+<td>optimistic</td>
+<td>19856</td>
+<td>144 冲突(0.7%)</td>
+<td>2054</td>
+<td>11</td>
+<td>31</td>
+<td>52</td>
+<td>✅ 冲突率低，读多写少适用</td>
+</tr>
+<tr>
+<td>pessimistic</td>
+<td>20000</td>
+<td>0</td>
+<td>1765</td>
+<td>13</td>
+<td>35</td>
+<td>62</td>
+<td>✅ 正确，事务+锁开销略大</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：
+- 多行分布下 <code>atomic</code>（2204 QPS）与 <code>oversell</code>（2289 QPS）几乎持平，但 <strong>atomic 正确</strong>（0 超卖），<strong>oversell 不可用</strong>。
+- <code>optimistic</code> 在多行分布下冲突率骤降至 <strong>0.7%</strong>（vs 单行热点 74%），印证其<strong>适合多行、读多写少</strong>，不适合单行热点。
+- <code>pessimistic</code> 因每个请求要 <code>BEGIN + FOR UPDATE + COMMIT</code> 事务开销，吞吐最低（1765 QPS）。
+- <strong><code>atomic</code> 是"保证正确 + 性能最优"的唯一解</strong>，为生产首选。</p>
+<h2 id="_6">四、生产建议</h2>
+<ol>
+<li><strong>首选 <code>atomic</code> 条件更新</strong>：单条 SQL 原子扣减，无锁竞争、无死锁、性能最优。</li>
+<li>悲观锁适合<strong>必须依赖锁保证一致性</strong>且并发不高的写场景；注意控制事务时长，避免长事务持锁。</li>
+<li>乐观锁适合<strong>读多写少</strong>；冲突率高时应考虑 <code>atomic</code> 或消息队列削峰。</li>
+<li>无论哪种策略，最终都要配合<strong>唯一约束</strong>（如订单号唯一）兜底防重复。</li>
+</ol>
+<h2 id="_7">五、面试简述</h2>
+<blockquote>
+<p><strong>超卖问题</strong>：高并发下先查后减会超卖。用 <code>UPDATE ... WHERE stock &gt;= n</code> 条件更新，借助 InnoDB 行锁保证原子性，单条 SQL 杜绝超卖且性能最优；对比悲观锁（FOR UPDATE，并发受限）和乐观锁（版本号+重试，适合读多写少）。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

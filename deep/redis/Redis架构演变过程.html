@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis架构演变过程 · 小番茄程序猿</title>
+<meta name="description" content="Redis架构演变过程 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Redis架构演变过程</h1>
+  </div>
+  <article class="prose">
+<p>下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以及新的瓶颈是什么。每一阶段包含：1) 业务痛点，2) 架构图逻辑文字描述，3) 可承载量级（含 QPS/数据量 上限）和 4) 该架构无法解决的新瓶颈（引出下一阶段）。最后给出高阶总结与从小厂到大厂的落地路线图，并附选型对照表。全篇逻辑连贯、层层递进，便于新手理解。</p>
+<hr />
+<h2 id="single-node"><strong>阶段一：单机单节点阶段（Single Node）</strong></h2>
+<ul>
+<li>
+<p>何时采用：初创期、业务简单、单体应用、团队小、成本敏感。
+1) <strong>当时的业务痛点（为什么要用单机单节点）</strong></p>
+</li>
+<li>
+<p>快速验证业务模型、最小化运维与开发成本。</p>
+</li>
+<li>数据量小、并发低、读写延迟容忍度高，功能优先于可扩展性。</li>
+</ul>
+<p>2) <strong>架构图逻辑文字描述</strong></p>
+<ul>
+<li>单台应用服务器 + 嵌入式或本地运行的数据库（如 MySQL 单实例）+ 本地 Redis 或内存缓存。</li>
+<li>所有业务逻辑、持久化、缓存都集中在一台或极少数独立机器上（通常开发/测试与生产分离）。</li>
+</ul>
+<p>3) <strong>能承载的量级、QPS、数据量上限</strong></p>
+<ul>
+<li>QPS：几十到几百（依据机器配置、框架优化）。</li>
+<li>数据量：GB 级别到十几 GB（单实例磁盘/内存限制）。</li>
+<li>延迟：典型 10ms-100ms 级别，取决于 IO 与锁竞争。</li>
+</ul>
+<p>4) <strong>当前架构无法解决的新瓶颈（引出下一阶段）</strong></p>
+<ul>
+<li>可用性差：单点故障（SPOF），硬盘/内存/进程挂掉即全站不可用。</li>
+<li>扩展性差：无法水平扩展读写能力。</li>
+<li>性能瓶颈：单机 CPU/IO 达顶，运维风险高（备份、恢复代价大）。</li>
+<li>难以做灰度/滚动升级（影响整个服务）。</li>
+</ul>
+<hr />
+<h2 id="master-slave"><strong>阶段二：单机多实例 / 主从（Master-Slave）阶段</strong></h2>
+<ul>
+<li>
+<p>何时采用：流量增长到单机顶部、需要读扩展或灾备、开始关注高可用与扩展。
+1) <strong>当时的业务痛点（为什么要升级）</strong></p>
+</li>
+<li>
+<p>读压力增长（读多写少型业务），单节点读性能不足。</p>
+</li>
+<li>需要异地备份、容灾、减少备份对主库的影响。</li>
+<li>需要降低单点故障风险（但不是完全自动化切换）。</li>
+</ul>
+<p>2) <strong>架构图逻辑文字描述</strong></p>
+<ul>
+<li>数据库：一个主库（Master）负责写请求，若干个从库（Slave）同步主库（基于 binlog/复制协议）。</li>
+<li>应用：读写分离（写走主库，读走从库），或通过中间件（proxy 或 client-side routing）实现读路由。</li>
+<li>缓存：Redis 可以做单机多实例（多个 Redis 实例或虚拟化），一般仍为单主多从或单实例。</li>
+<li>备份：从库可用于备份与离线分析，减轻主库压力。</li>
+</ul>
+<p>3) <strong>能承载的量级、QPS、数据量上限</strong></p>
+<ul>
+<li>QPS：读扩展后可到万级（1万—5万）QPS 取决于从库数量与网络延迟。</li>
+<li>写能力仍受主库限制（几百到几千 QPS，取决于硬件和表设计）。</li>
+<li>数据量：十 GB 到几百 GB 级别（硬件与单实例配置决定）。</li>
+</ul>
+<p>4) <strong>当前架构无法解决的新瓶颈（引出下一阶段）</strong></p>
+<ul>
+<li>写扩展受限：写瓶颈仍在单主，无法水平分散写流量。</li>
+<li>主从延迟：复制延迟导致读到脏数据或读延迟感知（一致性问题）。</li>
+<li>故障切换：通常需人工干预或半自动化（风险高），自动化差。</li>
+<li>热点问题：单表或单分区热点仍集中在主库。</li>
+<li>运维复杂度上升（拓展、备份、延迟监控）。</li>
+</ul>
+<hr />
+<h2 id="sentinel-proxy-ha"><strong>阶段三：哨兵架构（Sentinel / Proxy + HA）阶段</strong></h2>
+<ul>
+<li>
+<p>这里以 Redis Sentinel 与 MySQL MHA/Proxy 或基于 Zookeeper 的自动切换系统为代表。
+1) <strong>当时的业务痛点（为什么要升级）</strong></p>
+</li>
+<li>
+<p>希望实现主库/主缓存的自动故障检测与自动切换，降低人工恢复时间（RTO）。</p>
+</li>
+<li>降低运维负担、提高可用性（HA），避免主节点单点故障对业务中断。</li>
+</ul>
+<p>2) <strong>架构图逻辑文字描述</strong></p>
+<ul>
+<li>Redis：主从复制 + Sentinel 集群负责故障检测与自动选主；客户端或哨兵通知应用切换。</li>
+<li>MySQL：引入 MHA、MGR（MySQL Group Replication）或 Proxy（如 MySQL Router、Atlas）做自动 failover；或者使用 Keepalived + VIP 做主库漂移。</li>
+<li>应用：集成 Sentinel/Proxy 的地址感知或使用连接池可感知主从变更的中间件；读写分离保持。</li>
+<li>监控/告警增强：延迟、切换事件跟踪。</li>
+</ul>
+<p>3) <strong>能承载的量级、QPS、数据量上限</strong></p>
+<ul>
+<li>QPS：Redis 在主从 + Sentinel 场景继续作为缓存，可支撑数万 QPS；MySQL 写能力仍同前阶段，读能力通过从库可跨万级。</li>
+<li>数据量：Redis 仍受单实例内存限制（几十 GB 到百 GB），MySQL 单实例上限数百 GB 到 TB 级（取决于硬件与表分区）。</li>
+</ul>
+<p>4) <strong>当前架构无法解决的新瓶颈（引出下一阶段）</strong></p>
+<ul>
+<li>写扩展仍无本质改变：主仍是写瓶颈。</li>
+<li>单实例内存限制：Redis 单主内存有限，超内存时需要 eviction 或迁移。</li>
+<li>切换抖动与 split-brain 风险：错误触发切换或网络分区导致一致性问题。</li>
+<li>数据分布与扩容能力不足：无法自动分片，面对海量数据/高并发写入会失效。</li>
+<li>热 key、慢查询及大 key（bigvalue）问题仍需人工解决。</li>
+</ul>
+<hr />
+<h2 id="sharding-cluster"><strong>阶段四：集群分片架构（Sharding / Cluster）阶段</strong></h2>
+<ul>
+<li>
+<p>包括 Redis Cluster、MySQL 分库分表（水平拆分）、中间件统一路由（Proxy / Sharding Proxy / Catalog）。
+1) <strong>当时的业务痛点（为什么要升级）</strong></p>
+</li>
+<li>
+<p>单节点内存/CPU/IO 达到上限，写压力持续增长，需要水平扩展写能力。</p>
+</li>
+<li>数据量增长到单实例难以承载（TB+），备份/恢复、GC 难以在原有架构下完成。</li>
+<li>需要更细粒度的容灾与弹性扩容。</li>
+</ul>
+<p>2) <strong>架构图逻辑文字描述</strong></p>
+<ul>
+<li>缓存层（Redis Cluster）：数据按照 hash slot 分片（比如 16384 slot），每个 slot 分配到不同节点；支持跨节点重分片与多副本复制（每分片有主从）。</li>
+<li>数据库层（MySQL 分库分表 + 中间件）：按照业务维度/用户 ID/hash 对数据横向拆分到多个数据库实例（shard），使用中间件（如 ShardingSphere、ProxySQL + 自己的路由表）做路由。</li>
+<li>应用：应用或中间件维护分片规则，支持跨分片事务成本高，通常采用最终一致或业务补偿策略。</li>
+<li>运维：引入自动 re-balance 工具、在线扩容机制、分片监控、冷热分离（hot/cold 数据分层）。</li>
+</ul>
+<p>3) <strong>能承载的量级、QPS、数据量上限</strong></p>
+<ul>
+<li>QPS：通过 N 倍分片线性扩展，单集群可从万级扩展到几十万甚至百万 QPS（取决于分片数、网络与协调开销）。</li>
+<li>数据量：单集群可支撑 TB 到 PB 级别（分片数与硬件决定），Redis Cluster 单分片内存限制依然存在，但整体集群内存可累加到 TB 级。</li>
+<li>写能力：通过分库分表，写吞吐线性扩展（取决于是否能合理 shard）。</li>
+</ul>
+<p>4) <strong>当前架构无法解决的新瓶颈（引出下一阶段）</strong></p>
+<ul>
+<li>跨分片事务与强一致性问题复杂：两阶段提交代价高，可能引入分布式事务开销。</li>
+<li>运维复杂度飞升：分片管理、数据迁移、版本兼容、故障排查困难。</li>
+<li>热 key 与大 key 问题：如果分片策略不合理会导致某个分片过载。</li>
+<li>跨地域延迟：单集群通常仍在单地域（或单机房），面对异地容灾与全球用户会有延迟/一致性权衡。</li>
+<li>业务复杂度：开发需意识分片键限制与跨分片查询成本。</li>
+</ul>
+<hr />
+<h2 id="multi-cluster-geo-distributed-multi-layered-cache"><strong>阶段五：超大规模企业级架构（Multi-cluster / Geo-Distributed / Multi-layered Cache）</strong></h2>
+<ul>
+<li>
+<p>目标：全球化用户、极高 SLA、PB+ 数据、百万 QPS+、低 RTO/RPO、复杂降级策略与流量治理。
+1) <strong>当时的业务痛点（为什么要升级）</strong></p>
+</li>
+<li>
+<p>跨地域用户高并发、低延迟需求与合规/数据主权要求。</p>
+</li>
+<li>单集群已达承载上限，需要跨集群分担流量与提高容灾能力（异地多活）。</li>
+<li>需要更复杂的缓存分层、冷暖数据分离、分级降级与流量弹性策略。</li>
+</ul>
+<p>2) <strong>架构图逻辑文字描述</strong></p>
+<ul>
+<li>多集群：每个区域部署独立的分片集群（DB+Cache），数据按业务/地域或最终一致复制（异步复制、CDC、双写、事件流）。</li>
+<li>异地多活：使用 Paxos/Consensus（少见）或应用层冲突解决（多数采用 CRDT、业务幂等、最后写胜或时间戳策略）来兼顾可用性与一致性。</li>
+<li>分层缓存策略：<ul>
+<li>L1（本地进程/本地机房缓存，如 Guava / local Redis）：极低延迟热点。</li>
+<li>L2（机房级 Redis Cluster）：服务级热点。</li>
+<li>L3（全局 CDN / 分布式缓存或缓存旁路）：跨机房缓存或冷数据近源。</li>
+</ul>
+</li>
+<li>多级降级与熔断：<ul>
+<li>服务熔断、降级方案（返回缓存、默认值、降采样）。</li>
+<li>流量洪峰保护（速率限制、令牌桶、分级排队）。</li>
+</ul>
+</li>
+<li>数据治理与异构存储：冷热分离—热数据放内存，冷数据放分布式对象存储（S3/OSS）或列式 DB，用于分析。</li>
+<li>上游消息总线（Kafka/ Pulsar）用于异步复制、事件溯源、审计与回放。</li>
+</ul>
+<p>3) <strong>能承载的量级、QPS、数据量上限</strong></p>
+<ul>
+<li>QPS：单业务峰值可达数十万到百万 QPS（通过多集群多活和流量分担线性扩展）。</li>
+<li>数据量：TB → PB 级别，数据湖 + OLAP/Archive 分层存储。</li>
+<li>可用性：SLA 可做到 99.99%+（取决于多活实现与业务幂等处理）。</li>
+</ul>
+<p>4) <strong>当前架构无法解决的新瓶颈（未来挑战）</strong></p>
+<ul>
+<li>一致性与冲突解决成本高：跨机房强一致几乎不可行，业务需设计为可接受最终一致或幂等重试。</li>
+<li>运维与成本：多集群资源成本、网络带宽成本、复杂度与团队组织需要匹配（SRE 团队、自动化平台）。</li>
+<li>观测与追踪：在多集群/异地多活下，链路追踪、统一监控、故障排查非常困难。</li>
+<li>数据合规、跨境合规与审计：不同地域法律要求增加复杂度。</li>
+<li>极端负载治理（黑天鹅事件）仍需创新机制（自动降级、全局流控、模型预测流量等）。</li>
+</ul>
+<hr />
+<h2 id="_1"><strong>高阶总结（必补充）</strong></h2>
+<h3 id="1">1) 每一代架构核心解决的痛点差异对比（重点）</h3>
+<ul>
+<li><strong>单机单节点</strong>：解决“快起步、低成本验证业务”问题。</li>
+<li><strong>单机多实例/主从</strong>：解决“读扩展与基本容灾”的问题（减轻主库压力，提供备份）。</li>
+<li><strong>哨兵架构</strong>：解决“自动故障检测与自动切换（HA）”的问题，降低人工 RTO。</li>
+<li><strong>集群分片（Sharding）</strong>：解决“水平扩展写/存储能力”，能扩展到 TB/PB 级别。</li>
+<li><strong>超大规模企业级</strong>：解决“地域分布、全球低延迟、高可用与弹性流量治理”的问题，加入多层缓存与复杂降级机制。</li>
+</ul>
+<h3 id="2">2) 生产环境选型标准：什么规模用什么架构（建议阈值）</h3>
+<ul>
+<li>单机单节点：初创/PoC，团队小，QPS &lt; 1k，数据量 &lt; 20GB。</li>
+<li>单机多实例/主从：成长阶段，读压力 &gt; 单机承载，QPS 1k—10k，数据量 20GB—500GB。</li>
+<li>哨兵/自动切换：具备业务连续性要求，RTO 要求小时级或更短，QPS 5k—50k。</li>
+<li>分片/Cluster：业务成熟且写压力大或数据量大（TB 级），需要水平扩展，QPS 数万起、数据量 TB 级。</li>
+<li>多集群/异地多活：全球业务、合规/容灾、PB 级数据、QPS 百万级或更高。</li>
+</ul>
+<p>（注：阈值为常见经验值，实际选型需结合业务模式、预算、团队能力。）</p>
+<h3 id="3-keykey">3) 各大架构的致命坑、一致性问题、超时、热key、大key、雪崩风险（详尽列出）</h3>
+<ul>
+<li>
+<p>单机/主从：</p>
+</li>
+<li>
+<p>致命坑：单点故障、备份窃取主库 IO 导致主库压力上升。</p>
+</li>
+<li>一致性：主从延迟导致读到陈旧数据（读写不一致）。</li>
+<li>热 key/大 key：热点集中在单主或单 redis 上，OOM 或延迟飙升。</li>
+<li>
+<p>雪崩风险：缓存失效/全体失效导致流量直击 DB。</p>
+</li>
+<li>
+<p>哨兵（Redis Sentinel）：</p>
+</li>
+<li>
+<p>致命坑：误判导致错误主切换（split-brain），Sentinel 的 quorum 配置错误会造成服务抖动。</p>
+</li>
+<li>一致性：切换瞬间的写丢失或双主写入风险。</li>
+<li>超时：客户端对切换不敏感导致连接超时或抛错。</li>
+<li>
+<p>热 key：某 shard 仍可能成为瓶颈。</p>
+</li>
+<li>
+<p>分片/Cluster：</p>
+</li>
+<li>
+<p>致命坑：分片键选得不当导致数据/流量倾斜（单分片过载）。</p>
+</li>
+<li>一致性：跨分片事务复杂（XA/2PC 成本高），推荐业务端补偿或最终一致。</li>
+<li>大 key：单 key 过大导致单分片内存占用崩溃。</li>
+<li>热 key：热点分片成为性能中心，重分片代价大。</li>
+<li>
+<p>雪崩：节点故障导致大量重试/数据回落到后端 DB，引起级联。</p>
+</li>
+<li>
+<p>超大规模多活：</p>
+</li>
+<li>
+<p>致命坑：跨地域冲突（并发写）与一致性保障代价高、成本爆炸。</p>
+</li>
+<li>一致性：强一致几乎不可行，需业务层设计幂等/冲突解决策略。</li>
+<li>超时/网络：跨机房网络波动导致分布式协同失败或切换误触发。</li>
+<li>雪崩/流量风暴：全局流量风控不足导致瞬时资源枯竭。</li>
+</ul>
+<p>共性风险与缓解要点（简要）：</p>
+<ul>
+<li>热 key：使用二级缓存、热点隔离（hot key 单独扩容）、降级策略。</li>
+<li>大 key：限制单 key 大小、分块存储（split bigvalue）、避免单 key scan。</li>
+<li>雪崩：缓存预热、互斥锁（锁穿透）、多级降级与熔断、熔断器+回退值。</li>
+<li>一致性：明确业务一致性边界（强/弱一致），尽可能避免跨分片强事务，采用事件驱动/补偿式事务。</li>
+</ul>
+<h3 id="4">4) 从小厂到大厂：完整落地路线图（按阶段可执行步骤）</h3>
+<ul>
+<li>
+<p>阶段 0 → 1（PoC 到生产）</p>
+</li>
+<li>
+<p>建议：单机单节点，做好日志/监控/备份策略。</p>
+</li>
+<li>
+<p>关键实践：定期备份、慢查询分析、基础容量规划。</p>
+</li>
+<li>
+<p>阶段 1 → 2（读扩展与基础容灾）</p>
+</li>
+<li>
+<p>建议：引入读写分离、搭建从库，用负载均衡或 client-side routing 实现读路由。</p>
+</li>
+<li>
+<p>关键实践：监控复制延迟、定期切换演练、慢 SQL 优化。</p>
+</li>
+<li>
+<p>阶段 2 → 3（可用性改进）</p>
+</li>
+<li>
+<p>建议：部署 Sentinel/MHA/Proxy，实现自动化故障检测与切换；应用集成切换逻辑或使用中间件抽象。</p>
+</li>
+<li>
+<p>关键实践：切换演练、故障注入、连接池与重试策略优化。</p>
+</li>
+<li>
+<p>阶段 3 → 4（容量与写扩展）</p>
+</li>
+<li>
+<p>建议：设计分片策略（按 user_id、tenant、range/hash），引入中间件做透明路由；搭建分片迁移工具。</p>
+</li>
+<li>
+<p>关键实践：选择合适 shard key、避免跨分片事务、做好在线迁移与回滚方案、保证观测与审计。</p>
+</li>
+<li>
+<p>阶段 4 → 5（全球化与超大规模）</p>
+</li>
+<li>
+<p>建议：按地域部署独立集群、使用 CDC/Kafka 做异步复制与事件驱动同步，设计多级缓存、全球流量治理与分层降级。</p>
+</li>
+<li>关键实践：幂等设计、冲突解决策略、统一观测平台、成本/带宽评估、法律合规评估。</li>
+</ul>
+<p>每一步都需同时推进：监控/告警/容量预测/灾备演练/自动化运维（IaC）与团队组织（SRE）。</p>
+<hr />
+<h2 id="_2"><strong>架构选型总结对照表（从小厂到大厂一目了然）</strong></h2>
+<ul>
+<li>
+<p>表格形式（说明）：
+1) 初创（PoC）</p>
+</li>
+<li>
+<p>架构：单机单节点（单实例 DB + 本地/单 Redis）</p>
+</li>
+<li>适用 QPS：&lt; 1k</li>
+<li>数据量：&lt; 20GB</li>
+<li>优点：成本低、上线快</li>
+<li>风险：SPOF、不可用风险高</li>
+</ul>
+<p>2) 成长期</p>
+<ul>
+<li>架构：单主多从（读写分离）</li>
+<li>适用 QPS：1k—10k（读扩展）</li>
+<li>数据量：20GB—500GB</li>
+<li>优点：读扩展、利用从库做备份</li>
+<li>风险：复制延迟、写瓶颈仍在主库</li>
+</ul>
+<p>3) 稳定期（有高可用要求）</p>
+<ul>
+<li>架构：哨兵/自动切换 + 读写分离</li>
+<li>适用 QPS：5k—50k</li>
+<li>数据量：100GB—TB 级</li>
+<li>优点：自动化故障切换、可用性提升</li>
+<li>风险：误触发切换、数据丢失/一致性窗口</li>
+</ul>
+<p>4) 扩展期（写/存储扩容）</p>
+<ul>
+<li>架构：分片/Cluster（Redis Cluster / MySQL 分库分表 + 中间件）</li>
+<li>适用 QPS：数万—数十万</li>
+<li>数据量：TB 级以上</li>
+<li>优点：线性扩展写/存储能力</li>
+<li>风险：分片键设计、跨分片事务复杂、运维成本高</li>
+</ul>
+<p>5) 大厂/全球化</p>
+<ul>
+<li>架构：多集群 + 异地多活 + 分层缓存 + 消息驱动复制</li>
+<li>适用 QPS：数十万—百万+</li>
+<li>数据量：PB 级</li>
+<li>优点：极高可用、低延迟全球覆盖</li>
+<li>风险：一致性、冲突解决、成本与运维复杂度</li>
+</ul>
+<p>（注：表为摘要，选型还需结合业务模型：是否读多写少、是否有强事务、一致性要求、是否有地域合规等。）</p>
+<hr />
+<h2 id="_3"><strong>实施细节补充（工程实践建议、避免致命坑）</strong></h2>
+<ul>
+<li>设计分片键时：</li>
+<li>优先业务自然键（user_id、tenant_id），避免时间序列/顺序 ID 导致写倾斜。</li>
+<li>评估是否存在“热点用户/租户”，对热点做专门分片或隔离（hot shard）。</li>
+<li>缓存策略：</li>
+<li>多级缓存（L1 本地、L2 机房级 Redis、L3 CDN/全局）能有效降低回源压力。</li>
+<li>缓存降级策略：预设兜底值、互斥锁（防击穿）、永不过期的缓存慎用（更新复杂）。</li>
+<li>降级与熔断：</li>
+<li>服务间做熔断，流量超阈值时降级到缓存/默认返回/异步补偿，避免雪崩。</li>
+<li>监控与演练：</li>
+<li>指标：QPS、错误率、延迟 P50/P95/P99、复制延迟、重试率、资源利用率。</li>
+<li>定期演练：故障切换、分片迁移、全链路压测（黑盒和白盒）。</li>
+<li>数据一致性：</li>
+<li>明确给每个操作定义一致性级别（强/弱），尽量将强一致限定在单分片内。</li>
+<li>对需要跨分片的事务使用补偿事务或 saga 模式。</li>
+<li>运维自动化：</li>
+<li>自动化部署/扩缩容/回滚/配置管理，避免人工出错。</li>
+<li>数据迁移工具（在线迁移、双写与验证）及回滚方案。</li>
+</ul>
+<hr />
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

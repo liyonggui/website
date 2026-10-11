@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子 · 小番茄程序猿</title>
+<meta name="description" content="RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../assets/css/style.css"/>
+<link rel="stylesheet" href="../assets/css/article.css"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../index.html">首页</a>
+      <a href="../projects.html">项目</a>
+      <a href="../blog.html" class="active">博客</a>
+      <a href="../deep.html">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../blog.html">← 返回博客索引</a>
+    <h1>RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</h1>
+  </div>
+  <article class="prose">
+<h1 id="rag-precision-055mrr">RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</h1>
+<blockquote>
+<p>「高并发实测」系列第 4 篇。</p>
+<p>环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embedding 走百炼；评测用 Java 复刻的 RAGAS 四指标（LLM-as-judge，5 题 gold 集，temperature=0）。排序质量另用 <code>/evalrank</code> 数答案块在候选池里的首现排名——<strong>这一项是确定性计算，不经过模型裁判</strong>。</p>
+<p><strong>一句话结论</strong>：<code>context-precision@4 = 0.55</code> 这个难看的数字，测的不是"检索好不好"，而是"我的数据里答案占了几块"。<strong>换成 hit@1 / MRR 一测，纯向量排序早就满分（1.0），rerank 一点提升空间都没有。</strong> 我差点花钱去优化一个根本没坏的东西。</p>
+<p>而这篇文章真正想写的，是后面两层：<strong>我纠正了第一次"尺子错"之后，又犯了第二次——而且是在我自己定的判据上犯的。</strong></p>
+</blockquote>
+<h2 id="_1">〇、一分钟带走版</h2>
+<p>同一套 RAG，五种测法，五个结论：</p>
+<table>
+<thead>
+<tr>
+<th>我用的尺子</th>
+<th style="text-align: right;">读数</th>
+<th>它到底在测什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/eval</code> 关键词命中</td>
+<td style="text-align: right;">5/6 = <strong>83%</strong></td>
+<td>召回对不对，粗</td>
+</tr>
+<tr>
+<td>RAGAS <code>context-precision@4</code></td>
+<td style="text-align: right;"><strong>0.55</strong></td>
+<td><strong>不是排序质量</strong>——是"答案块数 ÷ 保留块数"</td>
+</tr>
+<tr>
+<td>RAGAS <code>answer-relevancy</code></td>
+<td style="text-align: right;">0.76 至 0.87</td>
+<td>答案切题度，<strong>LLM 裁判，有噪声</strong></td>
+</tr>
+<tr>
+<td><strong><code>hit@1</code> / <code>mrr_vector</code></strong></td>
+<td style="text-align: right;"><strong>1.0 / 1.0</strong></td>
+<td><strong>排序质量，确定性计算，零噪声</strong></td>
+</tr>
+<tr>
+<td><code>mrr_rerank − mrr_vector</code></td>
+<td style="text-align: right;"><strong>0</strong></td>
+<td>rerank 的净贡献</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三层反转，一层比一层难看：</strong></p>
+<ol>
+<li><strong>第一次反转</strong>：precision 0.55 难看 → 上 rerank → 变成 0.50，<strong>更差了</strong> → 我准备继续加钱换更好的 rerank。<strong>但我先去数了一下排名：<code>hit@1 = 1.0</code>，5 道题答案块全部排第 1，<code>delta_mrr = 0</code>。</strong> 排序早就满分——<strong>0.55 不是检索差，是"答案只在 1 块、我却保留 4 块"的必然结果。我差点优化一个没坏的东西。</strong></li>
+<li><strong>第二次反转</strong>：为了确认 0.55→0.50 是不是真变差，我用 <code>runs=3</code> 取中位数，发现 <strong>temp=0 仍有 ±0.05 抖动</strong>，0.05 的差值正好等于噪声 → <strong>"rerank 让 precision 下降"这个结论作废，它根本没动。</strong></li>
+<li><strong>第三次反转（这篇最该看的一段）</strong>：我拿"比 spread 小的差异不算数"这条自己定的纪律去判第三组数据时，翻出同一配置三次跑的 <code>answer-relevancy</code> 是 <strong>0.76 / 0.85 / 0.87</strong>——<strong>跨批次范围 0.11，是我声明的组内 spread 0.05 的 2.2 倍。我用组内方差，去判了组间差异。</strong> 而"紧 topK=2 让 precision 升到 0.70"这个我写进结论的东西，增量 0.15 只有组间范围的 1.4 倍——<strong>它撑不起"真变化"四个字，只能算趋势。</strong></li>
+</ol>
+<p><strong>判断准则（这篇唯一想让你带走的东西）</strong>：</p>
+<blockquote>
+<p><strong>一个难看的数字，先问"是系统差，还是尺子错"。而判"是不是噪声"，要用同一批次的方差——组内 spread 管不了跨批次比较。</strong></p>
+<p>全文关键词：RAG 评测、RAGAS、precision@k、MRR、hit@1、rerank、LLM-as-judge、指标噪声、组内方差与组间方差。</p>
+</blockquote>
+<h2 id="83">一、场景：一个 83% 让我觉得挺不错</h2>
+<p>先说清楚我做了什么。语料是我自己几份项目文档，按空行粗切成 chunk，塞进内存向量库；用户提问走向量检索，命中的块拼进提示词，模型再作答，<strong>答案句末带 <code>(资料N)</code> 引用，接口同时返回来源和相似度</strong>。</p>
+<p>第一版评测很朴素：手写 <strong>6 道</strong>只有语料里才有答案的题，看 Top-3 检索结果里有没有含正确那段。</p>
+<blockquote>
+<p><strong>先说清题量，因为后面还会冒出另一个数：这一节的 <code>/eval</code> 是 6 题；第二节 RAGAS 四指标的 <code>/evalrag</code> 是另一套 </strong>5 题 gold 集<strong>；第六节的 Agent 链路评测又是 6 题。三套题集互不相同，别把它们当一个。</strong></p>
+</blockquote>
+<p><strong>结果 6 题命中 5，召回准确率 83%。</strong> 唯一 miss 的那题是"数据风暴怎么修复"——Top-3 里没含到讲"错峰"的那段。</p>
+<p>我当时的心态是：<strong>83%，还行啊，剩下那 17% 是 chunk 粒度的历史遗留问题，回头再收拾。</strong></p>
+<p>然后我去上了 RAGAS 四指标。</p>
+<h2 id="_2">二、第一次反转：一个难看的数字，差点让我白花一笔钱</h2>
+<p>Java 复刻的四个指标（LLM-as-judge，5 题 gold 集，每题各跑一次裁判）：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th style="text-align: right;">读数</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>faithfulness（答案是否忠于检索到的内容）</td>
+<td style="text-align: right;"><strong>1.0</strong></td>
+<td>没瞎编</td>
+</tr>
+<tr>
+<td>context-recall（该召回的召回全没有）</td>
+<td style="text-align: right;"><strong>1.0</strong></td>
+<td>覆盖没问题</td>
+</tr>
+<tr>
+<td>answer-relevancy（答案切不切题）</td>
+<td style="text-align: right;">0.85</td>
+<td>基本切题，有一条啰嗦</td>
+</tr>
+<tr>
+<td><strong>context-precision@4（检索到的块里有多少真相关）</strong></td>
+<td style="text-align: right;"><strong>0.55</strong></td>
+<td>🔴 <strong>难看</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>三个 1.0 配一个 0.55，那还说什么，当然是检索精度有问题。</strong></p>
+<p>于是按标准药方上 rerank：候选池放大到 10，用 LLM 做 listwise 重排，再截 topK=4。同池子、只变选择方式，A/B：</p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th style="text-align: right;">faithfulness</th>
+<th style="text-align: right;">recall</th>
+<th style="text-align: right;">relevancy</th>
+<th style="text-align: right;"><strong>precision@4</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>topK=4 不重排（基线）</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;">0.76</td>
+<td style="text-align: right;"><strong>0.55</strong></td>
+</tr>
+<tr>
+<td>topK=4 + rerank</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;">0.85</td>
+<td style="text-align: right;"><strong>0.50</strong></td>
+</tr>
+<tr>
+<td>topK=2 + rerank</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;">0.88</td>
+<td style="text-align: right;"><strong>0.70</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>重排之后 precision 从 0.55 掉到 0.50。</strong> 我当时的第一反应是"这个 rerank 模型不行"，第二反应是<strong>换一个专用的</strong>——README 里那一行 <code>或换 qwen3.7-text-rerank 专用 API</code> 就是这么写下来的，<strong>那是一笔已经准备花出去的钱。</strong></p>
+<p><strong>幸好我在花钱之前，先数了一次排名。</strong></p>
+<p>我另开了一个 <code>/evalrank</code> 端点，不看模型判断，只看<strong>答案块在候选池里的首现排名</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th style="text-align: right;">值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hit@1_vector</code></td>
+<td style="text-align: right;"><strong>1.0</strong></td>
+</tr>
+<tr>
+<td><code>mrr_vector</code></td>
+<td style="text-align: right;"><strong>1.0</strong></td>
+</tr>
+<tr>
+<td><code>mrr_rerank</code></td>
+<td style="text-align: right;"><strong>1.0</strong></td>
+</tr>
+<tr>
+<td><code>delta_mrr</code></td>
+<td style="text-align: right;"><strong>0</strong></td>
+</tr>
+<tr>
+<td>逐 case <code>vectorFirstRelevantRank</code></td>
+<td style="text-align: right;"><strong>全为 1</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>纯向量已经把每道题的答案块排在了第 1 位。满分。没有提升空间。</strong></p>
+<p><strong>那 0.55 是什么？</strong> 它测的根本不是"排得好不好"。我的数据里<strong>每道题的答案只落在 1 个块，而我保留了 4 个块</strong>——precision@k 的分母是"保留了几块"，<strong>这个结构本身就把它压死了</strong>。其中跨主题的那两道题只有 <strong>0.25</strong>。</p>
+<p><strong>换句话说：0.55 是我数据特性的算术结果，不是系统质量的读数。</strong> rerank 改变的是顺序，不改变"相关块的数量"，所以它对 precision@4 几乎无解——<strong>它没变差，它压根就没法变好。</strong></p>
+<p><strong>我差点花钱买一个工具，去优化一个已经满分的环节。</strong></p>
+<h2 id="precisionk-mrr">三、机制：precision@k 和 MRR 到底谁在测排序</h2>
+<p>这段值得单独讲，因为这是八股里不会写、但一踩就是几周工期的东西。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>precision@k</th>
+<th>hit@1 / MRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分子</td>
+<td>检索到的块里"相关"的<strong>数量</strong></td>
+<td>第一个相关块的<strong>排名</strong></td>
+</tr>
+<tr>
+<td>隐含假设</td>
+<td><strong>答案分散在多个块里</strong></td>
+<td>答案至少有一块，越靠前越好</td>
+</tr>
+<tr>
+<td>答案只在 1 块、保留 k 块时</td>
+<td><strong>天花板被 k 压死</strong></td>
+<td>满分可得</td>
+</tr>
+<tr>
+<td>我这个场景</td>
+<td>完全不适用</td>
+<td><strong>适用</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>所以判断规则不是"哪个指标更权威"，而是"我的答案在语料里到底占几块"：</strong></p>
+<ul>
+<li>答案天然分散在多块（长文档问答、跨段综合）→ precision@k / context-recall 有意义，rerank 有活干；</li>
+<li>答案就是孤零零一块（配置项、事实题、FAQ）→ <strong>看 hit@1 / MRR，别用 precision@k 误伤自己。</strong></li>
+</ul>
+<h2 id="055-050">四、第二次反转：0.55 到 0.50 到底是不是"变差了"</h2>
+<p>上面那张 A/B 表我读成了"rerank 反而让 precision 下降 0.05"。<strong>这句话现在得撤回。</strong></p>
+<p>因为 LLM-as-judge 即使 <code>temperature=0</code> 也不是确定性的。我给评测加了 <code>runs=N</code>，同一批题跑三轮，输出 <code>median{}</code> + <code>spread{min,max}</code> + <code>perRun[]</code>：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th style="text-align: right;">中位数</th>
+<th style="text-align: right;">spread</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>faithfulness</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;"><strong>0.0（稳）</strong></td>
+</tr>
+<tr>
+<td>context-recall</td>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;"><strong>0.0（稳）</strong></td>
+</tr>
+<tr>
+<td>answer-relevancy</td>
+<td style="text-align: right;">0.87</td>
+<td style="text-align: right;"><strong>0.05（抖）</strong></td>
+</tr>
+<tr>
+<td>context-precision</td>
+<td style="text-align: right;">0.55</td>
+<td style="text-align: right;"><strong>0.05（抖）</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>temp=0 仍有 ±0.05 的抖动。而 0.55 → 0.50 的差值恰好是 0.05。</strong></p>
+<blockquote>
+<p><strong>纪律：比 spread 小的差异不算数。</strong> 所以"rerank 让 precision 变差了"这个结论作废——<strong>它没变差，它没动。</strong></p>
+</blockquote>
+<p>顺带这条纪律也解释了为什么 faithfulness=1.0 可以当真（spread 0.0），而 relevancy 只能当趋势。</p>
+<h2 id="_3">五、第三次反转：我用组内方差，判了组间差异</h2>
+<p><strong>这一节是这篇真正想写的东西。</strong></p>
+<p>写到这里我以为自己已经会正确使用噪声了。然后我去核对 <code>answer-relevancy</code> 这个数，发现 README 里它出现了三次：</p>
+<table>
+<thead>
+<tr>
+<th>出处</th>
+<th style="text-align: right;">relevancy</th>
+<th>是什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>「已实测结果」节</td>
+<td style="text-align: right;"><strong>0.85</strong></td>
+<td>首次单跑</td>
+</tr>
+<tr>
+<td>「Rerank A/B」表基线行</td>
+<td style="text-align: right;"><strong>0.76</strong></td>
+<td>A/B 时另一次单跑</td>
+</tr>
+<tr>
+<td>「多轮中位数」节</td>
+<td style="text-align: right;"><strong>0.87</strong></td>
+<td>runs=3 的中位数</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三个数来自同一个配置（topK=4、不重排）。</strong>但有一个我必须交代的变量：三次跑之间，我把对话模型从 kimi-k2.7-code 换到了 qwen3.7-flash-2026-07-15（前两次是 kimi，第三次是 qwen3.7-flash）。所以这 0.11 里混着批次噪声和模型差异，分不干净——而这只会让「组间波动比组内大」的结论更稳，不会更松。到这一步都还好——真正的问题是我拿它们去比 spread：</p>
+<ul>
+<li>我声明的 spread = <strong>0.05</strong>，那是<strong>一次 runs=3 内部的极差（组内方差）</strong>；</li>
+<li>而这三次<strong>跨批次</strong>跑的实际范围 = 0.87 − 0.76 = <strong>0.11，是组内 spread 的 2.2 倍。</strong></li>
+</ul>
+<blockquote>
+<p><strong>我拿组内方差，去判了组间差异。</strong></p>
+</blockquote>
+<p><strong>这就是第 2 篇那个坑换了个马甲</strong>：那篇文章里我写过"模式内波动 ±5%，跨批次曾 ±40%"——<strong>我知道组间方差比组内大，然后在自己新写的判据上重犯了一次。</strong></p>
+<p><strong>后果分两头，而且两头不一样：</strong></p>
+<p><strong>① 有一条结论反而更稳了。</strong> <code>rerank 让 precision 0.55→0.50</code>，差 0.05。<strong>按组内 spread 判是噪声，按组间范围 0.11 判更是噪声。</strong> 撤回"变差"这个说法，安全。</p>
+<p><strong>② 但另一条必须降级。</strong> <code>紧 topK=2 → precision 0.70</code>，相对基线 0.55 的增量是 <strong>0.15，只有组间范围 0.11 的 1.4 倍。</strong> 我在 README 里把它写成"才是真变化"——<strong>这句话撑不住，只能说趋势。</strong>（A/B 那节我自己写的"单次有噪声，趋势清晰"其实是对的，是后来回头把它拔高了。）</p>
+<p><strong>③ 而核心结论毫发无损。</strong> <code>hit@1=1.0</code>、<code>mrr=1.0</code>、逐 case 首现排名全为 1——<strong>这些是数排名算出来的，不经过任何模型裁判，零噪声。</strong> "precision@4=0.55 是指标假象"这个反转，站在确定性数据上。</p>
+<p><strong>这条纪律现在被我改成：</strong></p>
+<blockquote>
+<p><strong>判"是不是噪声"，要用同一批次的方差；跨批次比较，要用跨批次方差。两者不是一回事，混用的结果是——你会把噪声读成结论，或者把结论误判成噪声。</strong></p>
+</blockquote>
+<h2 id="_4">六、还有两把尺子，也只有它们能抓到"模型在偷懒"</h2>
+<p>评测这套东西跑到底，给了我一个纯后端视角想不到的结果。</p>
+<p>我把评测加到了完整的 Agent 链路上（关键词硬校验 + LLM 裁判 + <strong>调用轨迹 trajectory</strong>），<strong>6 道只能从数据库查到答案的事实题</strong>，三个维度一起跑：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th style="text-align: right;">收紧提示词前</th>
+<th style="text-align: right;">后</th>
+<th>测什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>keyword（终答含不含关键事实）</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">100%</td>
+<td><strong>答案对不对</strong></td>
+</tr>
+<tr>
+<td><strong>trajectory（有没有调对工具、参数对不对）</strong></td>
+<td style="text-align: right;"><strong>50-67%</strong></td>
+<td style="text-align: right;"><strong>100%</strong></td>
+<td><strong>过程对不对</strong></td>
+</tr>
+<tr>
+<td>judge（LLM 裁判分档）</td>
+<td style="text-align: right;">83-100%</td>
+<td style="text-align: right;">83%</td>
+<td>主观质量</td>
+</tr>
+</tbody>
+</table>
+<p><strong>keyword 满分，trajectory 只有 50-67%。</strong> 差在哪？<strong>模型有几道题根本没调工具，凭常识直接答了——而且答对了。</strong></p>
+<p>这跟本文开头是同一个结构：<strong>只测最终答案，测不出"它有没有去查"。</strong> 这次它蒙对了，下次它就是编。收紧系统提示为"事实题必须先调工具、禁止凭记忆作答"之后，trajectory 复测 100%。</p>
+<h2 id="_5">七、最狠的一次：过不了的是裁判，不是系统</h2>
+<p>中位数门禁稳定报 <code>judge = 83%</code>（<strong>6 题里 1 题持续被判"部分正确"</strong>，3 轮，min 到 max 很窄）。<strong>按第四节的纪律，spread 小 = 这是真问题。</strong> 我准备去修系统。</p>
+<blockquote>
+<p>提醒一下：这个 83% 和第一节 <code>/eval</code> 那个 83% <strong>只是数值巧合</strong>（一个是 6 题命中 5，一个是 6 题里 5 题被判满分），两套题、两个系统、两回事。</p>
+</blockquote>
+<p>归因之后发现是<strong>裁判自己错了</strong>：它拿自己的外部先验否定了数据库里的真值，还要求答案包含这个业务域之外的信息。</p>
+<p><strong>改的是评测器的评分规则，不是系统</strong>：① 数值以系统数据为准，裁判不得用外部知识否定；② 限定在该业务域内，域外信息不扣分；③ 只在真正矛盾或编造时扣分。</p>
+<p>重跑 <code>RUNS=3</code> → <strong>keyword / trajectory / judge 全部 100%，门禁通过。</strong></p>
+<blockquote>
+<p><strong>所以"评测过不了"的正确顺序是：先怀疑量具，再怀疑裁判，最后才怀疑系统。</strong> 本文三层反转，讲的就是这三步。</p>
+</blockquote>
+<h2 id="_6">八、如果继续做，我会排这几件事</h2>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>把 precision@k 从主指标里摘掉</strong>，只留 hit@1 / MRR</td>
+<td>我的答案就是单块，这把尺子的天花板由数据特性决定</td>
+</tr>
+<tr>
+<td><strong>跨批次比较一律跑 runs≥3，并单独报组间极差</strong></td>
+<td>第五节那个 2.2 倍不是巧合，是常态</td>
+</tr>
+<tr>
+<td><strong>切分改成语义/递归切分 + overlap</strong></td>
+<td>那两道 0.25 的题是 chunk 粒度问题，不是排序问题</td>
+</tr>
+<tr>
+<td><strong>rerank 只在"大语料 + 答案分散多块"的场景再测</strong></td>
+<td>现在这个池子里它没有活可干</td>
+</tr>
+<tr>
+<td><strong>接 Langfuse 做数据集版本化 + 每次改动自动回归</strong></td>
+<td>现在 gold 集和指标是我手抄在 README 里的，会漂</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">复现（命令与代码路径）</h2>
+<ul>
+<li>代码：<code>D:\ai-agent-project\phase2-rag</code> —— <code>RagEvalService.java</code>（RAGAS 四指标 + runs 中位数 + rerank 开关）、<code>/evalrank</code>（hit@1 / MRR / precision@k，纯计算不经裁判）；护栏与网关见 <code>phase4-agent-ops</code>（<code>ToolGateway</code> / <code>Breaker</code> 均为手写，缓存用 Caffeine，其余 ChatClient/VectorStore 为 Spring AI 自带）。</li>
+<li>四指标（runs=3 取中位数）：</li>
+</ul>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span><span class="s2">"http://localhost:8082/api/rag/evalrag?topK=4&amp;retrieve=10&amp;rerank=false&amp;runs=3"</span>
+</code></pre></div>
+
+<ul>
+<li>排序质量（向量序 vs rerank 序）：</li>
+</ul>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span><span class="s2">"http://localhost:8082/api/rag/evalrank?pool=10&amp;k=4"</span>
+</code></pre></div>
+
+<ul>
+<li>启动、环境变量、中文传参（UTF-8 文件）等前置步骤见 <code>phase2-rag/README.md</code>。文中每个百分比都能在响应 JSON 里逐项对上。</li>
+</ul>
+<h2 id="_8">九、局限（照例先说）</h2>
+<ul>
+<li><strong>5 题 gold 集，语料是我自己的项目文档。</strong> 这是个小样本上的机制演示，<strong>不是可用的评测基准。</strong> 换语料、换题量，0.55 这个数没有可比性。</li>
+<li><strong>我没有重新推导 RAGAS 的 precision@k 加权公式。</strong> 文中只说"答案占几块会压低它"这个方向性结论，具体 0.55 是怎么加权出来的我没有逐题复算——<strong>所以别拿这篇去解释 RAGAS 的实现细节。</strong></li>
+<li><strong><code>answer-relevancy</code> 报的是区间 0.76 至 0.87，不给点值。</strong> 因为那三次跑本身就是不同批次的单跑，我没法说哪个"才是真的"。</li>
+<li><strong><code>topK=2 → 0.70</code> 降级为趋势</strong>（第五节），<strong>这条是本文自己推翻的结论之一，保留在文里而不是删掉。</strong></li>
+<li><strong>第六、七节的 trajectory 与裁判校准，来自另一个阶段的项目（完整 Agent 链路），不是本篇的 RAG 系统。</strong> 我只借它的结论说明"尺子"这件事在 Agent 上更严重，两组数字不通用。</li>
+<li><strong>第五节那三次 relevancy 读取跨了一次模型替换（kimi → qwen3.7-flash）。</strong> 严格说不是纯批次对比；但方向不变——跨批次的真实波动只会比 0.11 更大，"用组内 spread 判组间"的错更明显。</li>
+<li><strong>我自己的实验笔记里有一处题量没对齐</strong>：第六节的评测，一份记录写"5 条事实题"、另一处写"6 题中 1 题"。83% 这个数只能由 5/6 得出，所以本文按 <strong>6 题</strong> 写，并把它标出来而不是悄悄统一——<strong>笔记自己前后不一致，也是这篇要批评的那类问题。</strong></li>
+<li><strong>rerank 用的是 LLM listwise 重排，不是专用 rerank 模型。</strong> 所以"rerank 无收益"这个结论的适用范围是<strong>这种实现 + 这个池子 + 单块答案</strong>，不外推到专用 rerank 模型。</li>
+</ul>
+<h2 id="_9">写在最后</h2>
+<p>这篇如果只能留一句话，我希望是这个：</p>
+<blockquote>
+<p><strong>一个难看的数字，先问"是系统差，还是尺子错"。</strong></p>
+</blockquote>
+<p>我这次运气好，在花钱之前先数了一次排名。但更有意思的是后面两层——<strong>我纠正了第一次用错尺子，然后立刻在"怎么判断这是不是噪声"上又用错了一次，而且错的那个判据是我自己写下来、还准备拿去用的。</strong></p>
+<p>组内方差和组间方差，这俩词谁都背得出来。<strong>我是自己踩了一遍才知道它们差 2.2 倍。</strong></p>
+<p>八股可以被背，结论只能被跑出来。这是「高并发实测」系列第四篇。</p>
+<p>上一篇：《Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层》。
+再上一篇：《高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%》。
+第一篇：《别再死背 44 字节了：Redis String 三种编码压测》。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

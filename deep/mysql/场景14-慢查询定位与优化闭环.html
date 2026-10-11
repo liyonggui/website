@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景14：慢查询定位与优化闭环 · 小番茄程序猿</title>
+<meta name="description" content="场景14：慢查询定位与优化闭环 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景14：慢查询定位与优化闭环</h1>
+  </div>
+  <article class="prose">
+<h1 id="14">场景14：慢查询定位与优化闭环</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要<strong>完整闭环</strong>：<strong>定位 → 分析 → 优化 → 验证</strong>，而不是拍脑袋改。</p>
+<p>本场景用表 <code>t_slow_demo</code>（20 万行，初态无索引）演示完整闭环。</p>
+<h2 id="_2">二、闭环四步</h2>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>手段</th>
+<th>目的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>定位</strong></td>
+<td><code>performance_schema.events_statements_summary_by_digest</code> / 慢日志</td>
+<td>找出 TOP N 慢语句</td>
+</tr>
+<tr>
+<td><strong>分析</strong></td>
+<td><code>EXPLAIN</code>（type/key/rows/Extra）</td>
+<td>判断是否全表扫描 / 文件排序 / 回表</td>
+</tr>
+<tr>
+<td><strong>优化</strong></td>
+<td>加索引 / 改写 SQL / 覆盖索引</td>
+<td>消除瓶颈</td>
+</tr>
+<tr>
+<td><strong>验证</strong></td>
+<td>优化前后耗时/吞吐对比</td>
+<td>量化收益</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化演示数据（20万行，初态不加索引 → 制造全表扫描慢查询）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/init?rows=200000"</span>
+
+<span class="c1"># 2. 定位慢查询：performance_schema 按 SQL 指纹聚合 TOP N 慢语句</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/diagnose?limit=10"</span>
+
+<span class="c1"># 3. EXPLAIN 分析指定 SQL（看 type/key/rows/Extra）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/explain?sql=SELECT%20*%20FROM%20t_slow_demo%20WHERE%20user_id%20%3D%2015000"</span>
+
+<span class="c1"># 4. 优化：为 order_no 加索引，展示前后 EXPLAIN 对比</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/optimize"</span>
+
+<span class="c1"># 5. 优化前后 吞吐对比（量化收益）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/bench?concurrency=50&amp;total=2000"</span>
+
+<span class="c1"># 6. 慢查询日志状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/slow-log"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<h3 id="1-explain">1. EXPLAIN 定位（优化前）</h3>
+<div class="codehilite"><pre><span></span><code>type=ALL, key=NULL, rows=200000, Extra=Using where
+</code></pre></div>
+
+<p>→ <strong>type=ALL 全表扫描</strong>，rows 扫描 20 万行，这是慢查询主因。</p>
+<h3 id="2-idx_slow_order_noorder_no">2. 优化：加索引 <code>idx_slow_order_no(order_no)</code></h3>
+<div class="codehilite"><pre><span></span><code>type=ref, key=idx_slow_order_no, rows=1
+</code></pre></div>
+
+<p>→ 从 <strong>全表扫描 20 万行</strong> 降到 <strong>索引命中 1 行</strong>。</p>
+<h3 id="3-50">3. 优化前后吞吐对比（并发 50）</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>QPS</th>
+<th>avgMs</th>
+<th>p99Ms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>优化前（全表扫描）</strong></td>
+<td>46</td>
+<td>21</td>
+<td>1967</td>
+</tr>
+<tr>
+<td><strong>优化后（走索引）</strong></td>
+<td>10695</td>
+<td>0</td>
+<td>25</td>
+</tr>
+<tr>
+<td><strong>提升</strong></td>
+<td><strong>约 232 倍</strong></td>
+<td>—</td>
+<td>78 倍</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4-diagnose">4. 定位（diagnose）</h3>
+<p><code>performance_schema</code> 聚合出 TOP 慢语句，全表扫描型 <code>SELECT * FROM t_slow_demo WHERE user_id=?</code>：</p>
+<div class="codehilite"><pre><span></span><code>count=21834, avgMs=989.8, rowsExamined=43.6亿
+</code></pre></div>
+
+<p>→ <strong>avgMs 大 + rows_examined 巨大</strong> = 全表扫描型慢查询，优先优化。</p>
+<h2 id="_5">五、优化准则</h2>
+<ol>
+<li><strong>优先加索引</strong>：为 WHERE/ORDER BY/GROUP BY 过滤列建索引（最左前缀）。</li>
+<li><strong>避免 SELECT *</strong>：只查需要的列，减少回表与 IO，必要时建<strong>覆盖索引</strong>。</li>
+<li><strong>EXPLAIN 看 type</strong>：<code>ALL</code>（全表扫描）/<code>index</code>（全索引扫描）需优化；<code>ref</code>/<code>const</code>/<code>eq_ref</code> 为佳。</li>
+<li><strong>看 Extra</strong>：<code>Using filesort</code>（排序未走索引）、<code>Using temporary</code>（临时表）是隐藏瓶颈。</li>
+<li><strong>看 rows</strong>：扫描行数巨大即使走了索引也可能慢（如低选择性索引），考虑选择性或覆盖索引。</li>
+<li><strong>生产定位</strong>：开 <code>slow_query_log</code> + <code>long_query_time</code>，用 <code>pt-query-digest</code>/<code>mysqldumpslow</code> 分析慢日志，结合 <code>performance_schema</code> 定位。</li>
+<li><strong>验证闭环</strong>：优化后必须压测对比，量化收益并回归（防止优化引入新问题）。</li>
+</ol>
+<h2 id="_6">六、面试简述</h2>
+<blockquote>
+<p><strong>慢查询治理闭环</strong>：定位（慢日志 / performance_schema.events_statements_summary_by_digest 聚合 TOP 慢语句）→ 分析（EXPLAIN 看 type 是否 ALL、rows 扫描行数、Extra 是否有 filesort/temporary）→ 优化（加索引、避免 SELECT <em>、覆盖索引、改写 SQL）→ 验证（压测对比）。实测全表扫描型慢查询优化后 QPS 从 46 提到 10695（约 232 倍），定位信号是 </em><em>avgMs 大 + rows_examined 巨大</em>*。EXPLAIN 的 type=ALL + rows 巨大是该优化最强信号。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

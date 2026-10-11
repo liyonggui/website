@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景16：连接池参数调优（HikariCP） · 小番茄程序猿</title>
+<meta name="description" content="场景16：连接池参数调优（HikariCP） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景16：连接池参数调优（HikariCP）</h1>
+  </div>
+  <article class="prose">
+<h1 id="16hikaricp">场景16：连接池参数调优（HikariCP）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>连接池是应用访问 MySQL 的"水管"，参数直接影响高并发下的吞吐、排队与超时。本项目使用 HikariCP，演示不同连接池大小对高并发性能的影响及调优思路。</p>
+<h2 id="_2">二、关键参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+<th>调优要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maximumPoolSize</code></td>
+<td>最大连接数</td>
+<td>过小→并发排队/超时；过大→浪费资源。经验公式 <code>(核数*2 + 磁盘IO并发)</code>，需 &lt; MySQL <code>max_connections</code> 余量</td>
+</tr>
+<tr>
+<td><code>minimumIdle</code></td>
+<td>最小空闲连接</td>
+<td>低峰时保留的连接，避免频繁建连；过高浪费</td>
+</tr>
+<tr>
+<td><code>connectionTimeout</code></td>
+<td>获取连接超时(ms)</td>
+<td>排队超过此值抛异常，防止请求无限挂起</td>
+</tr>
+<tr>
+<td><code>idleTimeout</code></td>
+<td>空闲连接回收(ms)</td>
+<td>需 &lt; maxLifetime</td>
+</tr>
+<tr>
+<td><code>maxLifetime</code></td>
+<td>连接最大存活(ms)</td>
+<td>避免复用超龄连接，需 &lt; 数据库 wait_timeout</td>
+</tr>
+<tr>
+<td><code>connectionTestQuery</code></td>
+<td>连接有效性校验</td>
+<td>高并发防拿到失效连接</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 查看当前主连接池配置</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/pool/config"</span>
+
+<span class="c1"># 2. HikariCP 参数详解</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/pool/params"</span>
+
+<span class="c1"># 3. 单池大小压测（并发50，持有连接10ms放大排队）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/pool/bench?maxPoolSize=2&amp;concurrency=50&amp;total=3000&amp;holdMs=10"</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/pool/bench?maxPoolSize=20&amp;concurrency=50&amp;total=3000&amp;holdMs=10"</span>
+
+<span class="c1"># 4. 多池大小对吞吐的影响对比（一次性跑 2/10/20/50）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/pool/impact?concurrency=50&amp;total=2000&amp;holdMs=10"</span>
+</code></pre></div>
+
+<h2 id="50-10ms">四、实测结果（并发 50，持有连接 10ms）</h2>
+<table>
+<thead>
+<tr>
+<th>池大小</th>
+<th>QPS</th>
+<th>success</th>
+<th>avgWait</th>
+<th>maxWait</th>
+<th>p99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>2</strong></td>
+<td>186</td>
+<td>1932/2000（<strong>68 失败</strong>）</td>
+<td>85ms</td>
+<td>4880ms</td>
+<td>5000ms</td>
+</tr>
+<tr>
+<td><strong>10</strong></td>
+<td>908</td>
+<td>2000/2000</td>
+<td>43ms</td>
+<td>1466ms</td>
+<td>755ms</td>
+</tr>
+<tr>
+<td><strong>20</strong></td>
+<td>1776</td>
+<td>2000/2000</td>
+<td>16ms</td>
+<td>895ms</td>
+<td>333ms</td>
+</tr>
+<tr>
+<td><strong>50</strong></td>
+<td>3831</td>
+<td>2000/2000</td>
+<td><strong>1ms</strong></td>
+<td>105ms</td>
+<td><strong>67ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：
+- <strong>池过小（2）</strong>：高并发下 68 个请求失败（获取连接超时），吞吐仅 186，p99 高达 5s → 并发瓶颈。
+- <strong>池适中（20）</strong>：无失败，吞吐 1776，延迟明显下降。
+- <strong>池足够（50）</strong>：吞吐 3831（池2 的 20 倍），avgWait 仅 1ms，p99 67ms → 最优。</p>
+<h2 id="_4">五、调优准则</h2>
+<ol>
+<li><strong>先定位瓶颈再调参</strong>：看是连接等待/超时（池小）还是 MySQL CPU 高（池够但 SQL 慢），对症下药。</li>
+<li><strong>池大小匹配并发度</strong>：不是越大越好，过大浪费资源且 MySQL 连接数有限（<code>max_connections</code>）。</li>
+<li><strong>短连接 + 快事务 + 少等待</strong>：真正高并发靠业务 SQL 快、事务短、不持有连接，而非堆池大小。</li>
+<li><strong>connectionTimeout 要合理</strong>：过大请求挂死、过小误杀偶发慢请求。</li>
+<li><strong>maxLifetime &lt; wait_timeout</strong>：防止连接被数据库超时回收后复用。</li>
+<li><strong>连接有效性校验</strong>：<code>connectionTestQuery=SELECT 1</code> 防高并发拿到失效连接。</li>
+<li><strong>多节点多数据源</strong>：分库/读写分离时每个数据源独立调优。</li>
+</ol>
+<h2 id="_5">六、面试简述</h2>
+<blockquote>
+<p><strong>连接池调优（HikariCP）</strong>：<code>maximumPoolSize</code> 不是越大越好，过小高并发排队/超时（实测池2吞吐186、68失败），适中（20）无失败 1776，足够（50）3831（20倍）且延迟极低。调优先定位瓶颈（连接等待/超时 vs MySQL CPU），池大小匹配并发度并 &lt; max_connections，核心是短连接+快事务+少等待，而非堆池大小。<code>connectionTimeout</code> 防挂死、<code>maxLifetime &lt; wait_timeout</code> 防复用失效连接、<code>connectionTestQuery</code> 防拿到失效连接。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

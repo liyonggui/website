@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>phase6 评测代码与原理详解（三路判分·中位数·CI门禁） · 小番茄程序猿</title>
+<meta name="description" content="phase6 评测代码与原理详解（三路判分·中位数·CI门禁） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</h1>
+  </div>
+  <article class="prose">
+<h1 id="phase6-ci">phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</h1>
+<blockquote>
+<p>配套：<code>AI-Agent新手教学.md</code> 第 8 课、<code>phase5-MCP代码与原理详解.md</code>（trajectory 数据来源）。代码在 <code>D:\ai-agent-project\phase6-eval</code>。
+一句话：<strong>Agent 输出非确定、没有标准答案——评测就是把"感觉挺对"变成"可量化、可回归、可门禁"的那套机制。</strong></p>
+</blockquote>
+<h2 id="0">0. 文件总览</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EvalService</code></td>
+<td>三路判分（keyword/judge/trajectory）+ runs 中位数 + 离散度</td>
+</tr>
+<tr>
+<td><code>EvalController</code></td>
+<td><code>/api/eval/run?judge=&amp;runs=</code></td>
+</tr>
+<tr>
+<td><code>gate.sh</code></td>
+<td>CI 门禁：读中位数，任一维 &lt; 阈值 → exit 1</td>
+</tr>
+<tr>
+<td><code>application.yml</code></td>
+<td>被测 agent 地址、裁判模型（temp=0）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>它是"外部评测器"</strong>：通过 HTTP 打被测 Agent（默认 <code>phase5-mcp-client:8086</code> 的 <code>/api/a5/chat</code> + <code>/api/a5/trace</code>），等于<strong>端到端测「模型→MCP→后端」整条链</strong>，而不是测某个内部函数。换被测对象只改 <code>eval.agent-url</code>。</p>
+<h2 id="1">1. 评测集：带"标准答案"的场景</h2>
+<div class="codehilite"><pre><span></span><code><span class="kd">record</span> <span class="nc">Scenario</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">q</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">expect</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">expectTool</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">expectArg</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
+<span class="c1">// 例：("北京排名第一的院校是谁？", "清华", "search_schools", "北京")</span>
+</code></pre></div>
+
+<p>每题带四个标注：<strong>问题、答案应含的关键事实、应该调的工具、工具参数应含的值</strong>。6 题全部是"只有查库才知道"的事实题（排名/省份/学费）——模型背不出来，答对=真调了工具。</p>
+<h2 id="2">2. 三路判分（核心设计）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>怎么判</th>
+<th>测什么</th>
+<th>特性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>keyword</strong></td>
+<td><code>answer.contains(expect)</code></td>
+<td>终答含不含关键事实</td>
+<td><strong>确定性</strong>，零成本，CI 回归基线</td>
+</tr>
+<tr>
+<td><strong>trajectory</strong></td>
+<td>查 <code>/trace</code>：期望工具被调了？参数含期望值？</td>
+<td><strong>过程对不对</strong>（有没有真去查）</td>
+<td><strong>Agent 专属</strong>，keyword/judge 测不出</td>
+</tr>
+<tr>
+<td><strong>judge</strong></td>
+<td>LLM 裁判输出 <code>{score:0-2, correct, reason}</code></td>
+<td>语义对错/完整度/幻觉</td>
+<td>能分"部分正确"，<strong>但有噪声、还会判错</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>trajectory 是这套评测的灵魂</strong>：实测抓到过"模型凭常识直答、根本没调工具却答对"（keyword 满分、trajectory 50-67%）——这种"这次蒙对、下次就编"的风险，只有看过程才能发现。</p>
+<h2 id="3">3. 裁判的写法（校准前后两版）</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 校准后（关键三条规则）：</span>
+<span class="s">"你是严格但克制的评测裁判。只要【Agent回答】正确覆盖【期望要点】且无矛盾即判正确。</span>
+<span class="s"> ① 排名/学费等数值以系统数据为准——你无法访问数据库，不得用自身外部知识否定系统数字；</span>
+<span class="s"> ② 本系统是『考研择校』，本科等域外信息不扣分；</span>
+<span class="s"> ③ 仅明显错误/矛盾/编造时扣分。只输出JSON：{score,correct,reason}"</span>
+</code></pre></div>
+
+<p>解析做了容错（剥 ```json 围栏、取首尾大括号）——<strong>裁判输出格式也是工程问题</strong>。</p>
+<h2 id="4-runs-temp0">4. runs 中位数 + 离散度（temp=0 也压不掉的噪声）</h2>
+<div class="codehilite"><pre><span></span><code><span class="kd">public</span><span class="w"> </span><span class="n">Map</span><span class="o">&lt;</span><span class="n">String</span><span class="p">,</span><span class="n">Object</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">runs</span><span class="p">,</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="n">useJudge</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">runs</span><span class="p">;</span><span class="w"> </span><span class="n">r</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">每个</span><span class="w"> </span><span class="k">case</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">String</span><span class="w"> </span><span class="n">cid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"eval-"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"-r"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">r</span><span class="p">;</span><span class="w">   </span><span class="c1">// 每轮独立会话，防记忆串味</span>
+<span class="w">            </span><span class="p">...</span><span class="na">三路判分</span><span class="p">...</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">samples</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="kt">double</span><span class="o">[]</span><span class="p">{</span><span class="n">kw</span><span class="o">/</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">tr</span><span class="o">/</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">jr</span><span class="o">/</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">avgScore</span><span class="p">});</span><span class="w">   </span><span class="c1">// 本轮各维通过率</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="kt">double</span><span class="o">[]</span><span class="w"> </span><span class="n">med</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">medianEach</span><span class="p">(</span><span class="n">samples</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">);</span><span class="w">   </span><span class="c1">// 逐维取中位数</span>
+<span class="w">    </span><span class="n">out</span><span class="p">.</span><span class="na">put</span><span class="p">(</span><span class="s">"median"</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span><span class="w"> </span><span class="n">out</span><span class="p">.</span><span class="na">put</span><span class="p">(</span><span class="s">"spread"</span><span class="p">,</span><span class="w"> </span><span class="n">minMax</span><span class="w"> </span><span class="n">per</span><span class="w"> </span><span class="n">dim</span><span class="p">);</span><span class="w"> </span><span class="n">out</span><span class="p">.</span><span class="na">put</span><span class="p">(</span><span class="s">"perRun"</span><span class="p">,</span><span class="w"> </span><span class="p">...);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>为什么必须多轮</strong>：实测 temp=0 下 judge 类指标<strong>仍抖 ±0.05</strong>（perRun 0.86/0.87/0.91）。
+<strong>纪律：比 spread 小的差异不算数</strong>——曾用它撤回过"rerank 让 precision 变差"的误判。
+<strong>再深一层（04 号文的第三次反转）</strong>：spread 是<strong>组内</strong>方差；跨批次比较要用<strong>组间</strong>方差（实测组间范围是组内的 2.2 倍）。混用会把噪声读成结论、或把结论误判成噪声。</p>
+<h2 id="5">5. 评测→指标→门禁（闭环）</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">counter</span><span class="p">(</span><span class="s">"keyword"</span><span class="p">,</span><span class="w"> </span><span class="n">kHit</span><span class="p">);</span><span class="w"> </span><span class="n">counter</span><span class="p">(</span><span class="s">"trajectory"</span><span class="p">,</span><span class="w"> </span><span class="n">tHit</span><span class="p">);</span><span class="w"> </span><span class="n">counter</span><span class="p">(</span><span class="s">"judge"</span><span class="p">,</span><span class="w"> </span><span class="n">correct</span><span class="p">);</span>
+<span class="c1">// → Micrometer: agent.eval.result{dimension,pass} → /actuator/metrics 可监控</span>
+</code></pre></div>
+
+<p><code>gate.sh</code>：<code>RUNS=3 MIN=90</code> → 读 median 的 <code>*PassRate</code> → 任一维低于阈值 <strong>exit 1</strong>（CI 阻断合并）。</p>
+<h2 id="6-dbmcp-serverclienteval">6. 实测战果（全栈：DB→后端→mcp-server→client→eval）</h2>
+<table>
+<thead>
+<tr>
+<th>事件</th>
+<th>数字</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>trajectory 暴露"凭常识直答不调工具"</td>
+<td>50-67% → 收紧提示词 → <strong>100%</strong>（eval→fix→复测闭环）</td>
+</tr>
+<tr>
+<td>门禁稳定报 judge 83%（中位数，非噪声）</td>
+<td>归因：<strong>裁判假阴性</strong>（外部先验否定 DB 真值 + 要求域外"本科"）</td>
+</tr>
+<tr>
+<td>校准裁判 rubric（不改系统！）</td>
+<td>judge 83% → <strong>100%，门禁 exit 0 转绿</strong></td>
+</tr>
+<tr>
+<td><strong>评测不过的正确顺序：先怀疑量具，再怀疑裁判，最后才怀疑系统。</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="7">7. 坑清单</h2>
+<ol>
+<li>每轮必须<strong>独立 cid</strong>（<code>eval-i-r{r}</code>）——否则记忆串味，第 2 轮"作弊"知道第 1 轮答案；</li>
+<li>裁判 JSON 要容错解析（围栏/前后缀废话）；</li>
+<li>慢评测 curl <strong>别设短超时 + 别自动重试</strong>（超时→重试=重复烧调用，踩过）；</li>
+<li>门禁读 median 不读单次；跨批次比较用组间方差；</li>
+<li>trajectory 依赖被测方暴露 <code>/trace</code>（phase5 的 RecordingToolCallback）——ChatMemory 不存工具消息。</li>
+</ol>
+<h2 id="8">8. 诚实边界</h2>
+<ul>
+<li>6 题小样本：<strong>当回归绊线可以，当基准不行</strong>（要精确就扩 gold 集）；</li>
+<li>裁判仍是同家族模型，有自我偏好风险——生产要<strong>多裁判/人工抽检校准</strong>；</li>
+<li>无 Langfuse 式数据集版本化（gold 集还在代码里写死）；</li>
+<li>门禁阈值一刀切 90%，实际应<strong>分维度设</strong>（keyword 可 100，judge 80 起步）。</li>
+</ul>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

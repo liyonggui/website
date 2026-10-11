@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>瑞达星 × Agent 全链路（代码级） · 小番茄程序猿</title>
+<meta name="description" content="瑞达星 × Agent 全链路（代码级） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>瑞达星 × Agent 全链路（代码级）</h1>
+  </div>
+  <article class="prose">
+<h1 id="agent">瑞达星 × Agent 全链路（代码级）</h1>
+<blockquote>
+<p>谁接入谁：<strong>只有瑞达星后端 <code>/wxma</code> 被 Agent 接入</strong>（读的是"择校/专业/课程"公开浏览接口）。
+数据源纪律：Agent 打的是<strong>沙盒后端</strong> <code>D:\ai-agent-project\rdx-bx-backend</code>（本机 <code>127.0.0.1/wxma</code>），<strong>永不默认生产</strong> <code>www.ruidaxing.com.cn</code>。</p>
+</blockquote>
+<h2 id="_1">一、涉及的仓库/工程</h2>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>路径</th>
+<th>在本链路里干什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>瑞达星后端(原仓)</td>
+<td><code>D:\rdx-bx-backend</code></td>
+<td><strong>不碰</strong></td>
+</tr>
+<tr>
+<td>瑞达星后端(沙盒)</td>
+<td><code>D:\ai-agent-project\rdx-bx-backend</code></td>
+<td>Agent 的数据源；<code>java -jar target/blade-api.jar --spring.profiles.active=dev</code> 占 80</td>
+</tr>
+<tr>
+<td>瑞达星官网</td>
+<td><code>D:\rdx-website</code></td>
+<td>仅<strong>接口契约来源</strong>(<code>src/utils/{request,school,major,course}.js</code>, BASE_URL <code>/api/wxma/</code>)；Agent 不经过它</td>
+</tr>
+<tr>
+<td>小程序</td>
+<td><code>D:\ruidaxing-mini-program</code></td>
+<td>后端另一消费者，同理不被 Agent 调</td>
+</tr>
+<tr>
+<td>管理端 / 考试系统</td>
+<td><code>rdx-bx-frontend</code> / <code>rdx-exam-system</code></td>
+<td><strong>未涉及</strong></td>
+</tr>
+<tr>
+<td>Agent</td>
+<td><code>D:\ai-agent-project\phase3-agent / phase4-agent-ops / phase5-mcp-server / phase5-mcp-client</code></td>
+<td>消费 <code>/wxma</code>（phase3/4 直连、phase5 经 MCP）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">二、后端侧代码链（沙盒，真类名/方法/缓存键）</h2>
+<p>Base：<code>org.springblade.rdx.normal.wx</code> 下控制器，<code>@RequestMapping("/wxma")</code>。</p>
+<ul>
+<li><code>GET /wxma/school?page,city,name,way,level,major</code>
+  → <code>WxMaSchoolController.getSchool(...)</code>
+  → <code>WxQueryCache.school(RdxCacheKey.SCHOOL, ...)</code>（两级缓存：本地 + Redis，未命中回源）
+  → <code>IWxMaSchoolService</code> → MyBatis-Plus Mapper → <strong>MySQL <code>rdx_school</code></strong>
+  → 返回 <code>R&lt;IPage&lt;Map&gt;&gt;</code> = <code>{code,success,data:{records,total,pages,size,current},msg}</code></li>
+<li><code>GET /wxma/majors/search?page,pageSize,school,region,major,direction,subject,learningStyle</code>
+  → <code>WxMaSchoolController.searchMajors(...)</code> → <code>WxQueryCache.majorsSearch(RdxCacheKey.MAJORS_SEARCH)</code>（JOIN 院校）→ Service → Mapper → MySQL</li>
+<li><code>GET /wxma/course?type,category</code>
+  → <code>WxMaCourseController.getCourse(...)</code> → <code>WxQueryCache.course(RdxCacheKey.COURSE_LIST, () -&gt; courseService.getCoursesByType(type,category))</code> → Mapper → MySQL
+  → 返回 <code>R&lt;List&lt;RdxCourse&gt;&gt;</code>（注意：course 的 <code>data</code> 是<strong>数组</strong>、非分页 <code>records</code>）</li>
+</ul>
+<p>鉴权：上面 3 个是<strong>匿名可访</strong>（走 WxQueryCache，无 token）；<code>/wxma/majors/count</code> 才 <code>WxMaJwtUtil.validateToken</code>。这解释了 Agent 不需要登录态。</p>
+<h2 id="agent-wxma">三、Agent 侧两条等价路径（同一 <code>/wxma</code>，两种接线）</h2>
+<h3 id="aphase34-tool">路径 A：phase3/4 — 本地硬编码 @Tool</h3>
+<div class="codehilite"><pre><span></span><code>HTTP 用户 /api/a3/chat?cid&amp;q (phase3) 或 /api/ops/... (phase4)
+  → ChatClient(defaultTools = RuidaxingTools / ToolGateway包一层)
+  → 模型出 tool_calls → Spring AI 反射执行 @Tool searchSchools(name,city,page)
+     [phase4: ToolGateway = Caffeine缓存 + Breaker熔断 + RestClient超时/降级 → 返回结构化unavailable]
+  → RestClient(baseUrl=http://127.0.0.1/wxma).GET /school → (第二节后端链) → JSON
+  → pick() 裁字段+Top-8 → 作为 tool 结果回填 → 模型 → 答案
+  → phase3 还叠 MessageChatMemoryAdvisor(cid 多轮记忆) + /stream SSE
+</code></pre></div>
+
+<h3 id="bphase5-mcp-agent">路径 B：phase5 — MCP 动态发现（工具与 Agent 解耦）</h3>
+<div class="codehilite"><pre><span></span><code>phase5-mcp-client  /api/a5/chat?cid&amp;q
+  → ChatClient(defaultToolCallbacks = MCP ToolCallbackProvider 的回调, 各包 RecordingToolCallback 记 trajectory)
+  → 模型出 tool_calls → MCP client 经 streamable-http 发 JSON-RPC tools/call
+     端点 http://localhost:8085/mcp（握手 initialize→Mcp-Session-Id→…）
+  → phase5-mcp-server: RdxTools @Tool(search_schools/search_majors/list_courses) 由 MethodToolCallbackProvider 发布
+  → RestClient(http://127.0.0.1/wxma).GET /school → (第二节后端链) → JSON 裁剪 → tool 结果 → 回填 → 模型答
+</code></pre></div>
+
+<p>即：<strong>"哪些工具、参数是什么"从 phase3 的代码里，搬到了 phase5-mcp-server 的协议里</strong>；client 只 <code>tools/list</code> 发现，不写死。</p>
+<h3 id="_3">消费方</h3>
+<ul>
+<li>phase6-eval：用 RestClient 打 <code>phase5-mcp-client:/api/a5/chat</code> + <code>/api/a5/trace</code>，做关键词/judge/<strong>trajectory</strong> 评测，<code>gate.sh</code> 卡 CI 门禁（下一步可加 runs 中位数）。</li>
+</ul>
+<h2 id="phase5">四、一张时序图（一次 phase5 全链问答）</h2>
+<div class="codehilite"><pre><span></span><code>用户 →(HTTP /api/a5/chat cid,q) phase5-mcp-client
+      →(LLM 请求含 tools schema) 百炼MaaS kimi
+      ←(tool_calls search_schools{city:北京}) 
+      →(MCP tools/call, HTTP /mcp + Mcp-Session-Id) phase5-mcp-server
+      →(RestClient GET /wxma/school?city=北京) 沙盒后端
+      →(WxMaSchoolController→WxQueryCache[Redis]→Service→Mapper→MySQL)
+      ←(R&lt;IPage&gt; JSON)→ 裁字段Top8 →(MCP tool结果)→ 回填
+      →(再请求 MaaS)  kimi 生成带事实答案
+      ←(answer + tool轨迹存 RecordingToolCallback) 返回用户；/trace 可查轨迹；Langfuse 有 span
+</code></pre></div>
+
+<h2 id="_4">五、要点回顾（后端视角）</h2>
+<ul>
+<li>模型 = 不靠谱下游；工具/检索 = 给它外挂能力；<code>/wxma</code> = 唯一真实业务数据源；</li>
+<li>phase3 vs phase5 = 写死 @Tool vs MCP 动态发现（演进对照，面试素材）；</li>
+<li>phase4 的缓存/熔断/舱壁、phase5 的 MCP、phase6 的评测——全是把"能跑"做到"能扛、能量化"。</li>
+</ul>
+<h2 id="_5">配图</h2>
+<ul>
+<li><code>assets/phase3-vs-phase5.png</code>（源 <code>assets/phase3-vs-phase5.svg</code>，Chrome headless 2x 导出，右下留白避掘金水印）：两条接入路径对比图，可直接作文2配图。</li>
+</ul>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

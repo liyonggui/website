@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景4：锁的工程实践、选型与规避（开发视角） · 小番茄程序猿</title>
+<meta name="description" content="场景4：锁的工程实践、选型与规避（开发视角） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景4：锁的工程实践、选型与规避（开发视角）</h1>
+  </div>
+  <article class="prose">
+<h1 id="4">场景4：锁的工程实践、选型与规避（开发视角）</h1>
+<p>在掌握 InnoDB 锁机制（S/X、意向锁、间隙锁、Next-Key）后，补充工程落地经验：<strong>锁的降级、开发注意事项、高并发下如何选锁、如何规避锁</strong>。</p>
+<h2 id="lock-practicedegradation">一、锁的降级（半一致性读）— 实测 <code>/lock-practice/degradation</code></h2>
+<p>InnoDB 在 <strong>READ COMMITTED</strong> 下对 UPDATE 使用<strong>半一致性读（Semi-Consistent Read）</strong>，实现锁的降级：</p>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>UPDATE 产生的锁</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>REPEATABLE READ</td>
+<td><code>IX + X,GAP + X×3 + X,REC_NOT_GAP×3</code></td>
+<td>锁记录 + 间隙（Next-Key），范围大</td>
+</tr>
+<tr>
+<td>READ COMMITTED</td>
+<td><code>IX + X,REC_NOT_GAP×6</code></td>
+<td><strong>只锁匹配行（降级），无间隙锁</strong>，范围小</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实测结论</strong>：READ COMMITTED 下 UPDATE 先做一致性读找到真正要更新的行，<strong>只对这些行加记录锁</strong>（锁降级），不加间隙锁 → 阻塞范围小、并发更高。这是 READ COMMITTED 相比 REPEATABLE READ 在写并发上的优势。</p>
+<h2 id="_1">二、高并发下如何选择锁（决策框架）</h2>
+<div class="codehilite"><pre><span></span><code>                    高并发写同一资源？
+                          │
+              ┌───────────┴───────────┐
+              │ 冲突频繁              │ 冲突少
+              ▼                       ▼
+        原子 UPDATE            乐观锁
+      (WHERE 条件)            (version CAS)
+              │                       │
+              │ 需多语句读改写         │ 需强一致性
+              ▼                       ▼
+         悲观锁 FOR UPDATE        分布式锁/事务
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>简单扣减/状态机</td>
+<td><strong>原子 UPDATE</strong></td>
+<td>单条 SQL 原子，无锁等待（实测 7ms）</td>
+</tr>
+<tr>
+<td>读多写少、冲突少</td>
+<td><strong>乐观锁</strong></td>
+<td>无锁开销，冲突率低时重试代价小</td>
+</tr>
+<tr>
+<td>读改写多语句、强一致</td>
+<td><strong>悲观锁</strong></td>
+<td>FOR UPDATE 阻塞保证，可靠</td>
+</tr>
+<tr>
+<td>跨行/跨库强一致</td>
+<td><strong>分布式锁 + 事务</strong></td>
+<td>配合业务幂等</td>
+</tr>
+</tbody>
+</table>
+<p><strong>判据</strong>：冲突率 &gt; ~10% 时乐观锁的重试风暴反而拖垮系统，应改用原子 UPDATE 或悲观锁。</p>
+<h2 id="_2">三、规避锁的策略（不解决锁问题，而是减少锁竞争）</h2>
+<ol>
+<li><strong>原子操作代替锁</strong>：<code>UPDATE ... WHERE 条件</code> 单条完成读改写（实测 7ms，无锁等待）。</li>
+<li><strong>减小锁范围</strong>：用主键/唯一索引等值查询（记录锁）替代范围/无索引查询（间隙/全表锁）。</li>
+<li><strong>拆分热点行</strong>：单行热点拆多行（分桶），分散行锁竞争（场景1多行分布式实测 qps 提升 21 倍）。</li>
+<li><strong>读写分离</strong>：读走从库，主库专注写，减少读写锁争抢。</li>
+<li><strong>降级隔离级别</strong>：READ COMMITTED 的半一致性读只锁匹配行，写并发更高（见上文）。</li>
+<li><strong>缓存 + 异步</strong>：Redis 预热热点 + 消息队列削峰，DB 只做最终落库。</li>
+<li><strong>合理索引</strong>：让 WHERE/UPDATE 走索引，避免全表锁。</li>
+</ol>
+<h2 id="_3">四、锁的开发注意事项（避坑清单）</h2>
+<h3 id="1-lock-practiceordered-lock">1. 死锁规避（实测 <code>/lock-practice/ordered-lock</code>）</h3>
+<ul>
+<li><strong>固定加锁顺序</strong>：多行更新按主键升序加锁，避免交叉等待（实测两个事务同序加锁，deadlock=0）。</li>
+<li>缩短事务时长：减少持锁时间，降低死锁概率。</li>
+<li>避免"先查后插"跨范围操作。</li>
+</ul>
+<h3 id="2">2. 事务边界</h3>
+<ul>
+<li>控制事务内 SQL 数量，<strong>避免长事务</strong>（长时间持锁阻塞其它事务）。</li>
+<li>尽早 COMMIT，及时释放锁。</li>
+</ul>
+<h3 id="3">3. 隔离级别选择</h3>
+<ul>
+<li>默认 REPEATABLE READ 适合多数场景（MVCC 快照读无锁）。</li>
+<li>需要"读最新已提交"或更高写并发时用 READ COMMITTED（锁降级）。</li>
+</ul>
+<h3 id="4_1">4. 锁超时与死锁检测</h3>
+<ul>
+<li><code>innodb_lock_wait_timeout</code> 默认 50s，可通过 <code>innodb_lock_wait_timeout</code> 调小快速失败。</li>
+<li>死锁不可怕，<strong>应用层要捕获 1213/40001 并重试</strong>。</li>
+</ul>
+<h3 id="5">5. 索引设计</h3>
+<ul>
+<li>更新/删除尽量用<strong>唯一索引或主键</strong>（记录锁，范围最小）。</li>
+<li>避免无索引条件 UPDATE（锁全表，实测阻塞任意插入 2s）。</li>
+</ul>
+<h3 id="6">6. 诊断工具</h3>
+<ul>
+<li><code>performance_schema.data_locks</code>：当前锁</li>
+<li><code>performance_schema.data_lock_waits</code>：锁等待关系</li>
+<li><code>information_schema.innodb_trx</code>：事务状态</li>
+<li><code>SHOW ENGINE INNODB STATUS</code>：死锁详情</li>
+</ul>
+<h2 id="lock-practiceatomic">五、原子操作规避锁（实测 <code>/lock-practice/atomic</code>）</h2>
+<p>单条 <code>UPDATE t_stock SET stock=stock-1 WHERE product_no=? AND stock&gt;=1</code>：
+- <strong>原子完成"检查 + 扣减"</strong>，无需显式 BEGIN/FOR UPDATE
+- 无跨语句持锁窗口，锁等待最小
+- 实测单次执行约 7ms</p>
+<p>对比：悲观锁需要 <code>BEGIN + SELECT FOR UPDATE + UPDATE + COMMIT</code> 多语句持锁，锁窗口大。</p>
+<h2 id="_4">六、面试简述</h2>
+<blockquote>
+<p><strong>锁的工程实践</strong>：高并发选锁看冲突率——冲突高用原子 UPDATE（WHERE条件，无锁等待），冲突少用乐观锁，多语句读改写用悲观锁。规避锁的常用手段：原子操作、缩小锁范围（主键等值）、拆分热点行、读写分离、降级隔离级别（READ COMMITTED 半一致性读只锁匹配行，实测锁范围从 Next-Key 降为记录锁）。开发注意：固定加锁顺序防死锁、缩短事务、捕获 1213 重试、避免无索引 UPDATE 锁全表。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

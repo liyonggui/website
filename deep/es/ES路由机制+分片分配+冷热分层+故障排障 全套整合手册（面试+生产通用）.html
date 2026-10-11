@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ES路由机制\+分片分配\+冷热分层\+故障排障 全套整合手册（面试\+生产通用） · 小番茄程序猿</title>
+<meta name="description" content="ES路由机制\+分片分配\+冷热分层\+故障排障 全套整合手册（面试\+生产通用） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>ES路由机制\+分片分配\+冷热分层\+故障排障 全套整合手册（面试\+生产通用）</h1>
+  </div>
+  <article class="prose">
+<h1 id="es">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）</h1>
+<h2 id="_1">前言</h2>
+<p>本文打通ES<strong>文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障</strong>全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：<strong>路由数据倾斜（分片内数据不均）、节点分片分配倾斜（分片个数摆放不均）</strong>，全覆盖日常开发、面试、线上运维场景。</p>
+<hr />
+<h1 id="es_1">一、ES核心路由底层原理（必背）</h1>
+<h2 id="1">1. 路由寻址固定公式（源码不可变）</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 1.确定路由key：无自定义routing则用文档_id</span>
+<span class="n">String</span><span class="w"> </span><span class="n">routingKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">routing</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">routing</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">docId</span><span class="p">;</span>
+<span class="c1">// 2.固定32位哈希运算</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3HashFunction</span><span class="p">.</span><span class="na">hash</span><span class="p">(</span><span class="n">routingKey</span><span class="p">);</span>
+<span class="c1">// 3.取模得到目标主分片</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">hash</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">number_of_primary_shards</span><span class="p">;</span>
+</code></pre></div>
+
+<h2 id="2">2. 核心硬性规则</h2>
+<ol>
+<li>
+<p><strong>主分片数创建索引后永久不可修改</strong>，分片一变，所有文档路由全部错乱，数据无法查找</p>
+</li>
+<li>
+<p>副本数可随时动态调整，不影响路由寻址</p>
+</li>
+<li>
+<p>同一条文档，路由key不变，分片位置永远不变</p>
+</li>
+</ol>
+<h2 id="3">3. 路由字符串长度规范（避坑）</h2>
+<ul>
+<li>
+<p><strong>不是越长越好</strong>：MurmurHash固定输出32位整数，超长字符串不会降低哈希碰撞，只会增加CPU计算开销、触发URI超长报错</p>
+</li>
+<li>
+<p>不是越短越好：过短路由key样本空间小，容易哈希扎堆</p>
+</li>
+<li>
+<p>生产最优：6\~30字符，业务可读+性能均衡</p>
+</li>
+</ul>
+<hr />
+<h1 id="murmurhash3">二、MurmurHash3 哈希算法全解（面试高频）</h1>
+<h2 id="1_1">1. 两个版本及使用场景</h2>
+<table>
+<thead>
+<tr>
+<th>算法版本</th>
+<th>输出位数</th>
+<th>ES使用场景</th>
+<th>核心说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MurmurHash3_x86_32</td>
+<td>32位int</td>
+<td><strong>分片路由（唯一）</strong></td>
+<td>速度快，哈希碰撞无害，只负责打散有序数据</td>
+</tr>
+<tr>
+<td>MurmurHash3_x64_128</td>
+<td>128位</td>
+<td>cardinality基数去重聚合</td>
+<td>超大哈希空间，极致降低碰撞，保证统计准确</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2_1">2. 哈希碰撞核心答疑</h2>
+<ul>
+<li>
+<p>碰撞现象：不同路由key，算出相同哈希，进入同一个分片</p>
+</li>
+<li>
+<p><strong>碰撞完全无害</strong>：分片内部依靠原始文档_id区分数据，不会出现文档覆盖、更新错乱</p>
+</li>
+<li>
+<p>算法核心目的：<strong>解决有序ID分片倾斜</strong>，不是消除哈希碰撞</p>
+</li>
+</ul>
+<h2 id="3_1">3. 高频误区纠正</h2>
+<ol>
+<li>
+<p>❌ 误区：路由用128位哈希 → ✅ 纠正：路由永远只用32位</p>
+</li>
+<li>
+<p>❌ 误区：哈希碰撞会丢数据 → ✅ 纠正：无任何业务影响</p>
+</li>
+<li>
+<p>❌ 误区：路由字符串越长打散越好 → ✅ 纠正：长度适中即可</p>
+</li>
+</ol>
+<hr />
+<h1 id="_2">三、两类分片倾斜根源+解决方案（核心重难点）</h1>
+<h2 id="1-1">1. 倾斜1：路由数据倾斜（业务层，分配算法无法解决）</h2>
+<h3 id="_3">产生原因</h3>
+<p>业务为了减少跨分片聚合，自定义路由key：<strong>日期、地区、品牌、商家</strong>，一个热点key永久绑定一个分片，头部热点数据量过大，导致单分片爆满。</p>
+<h3 id="_4">典型场景</h3>
+<ul>
+<li>
+<p>日期路由：当日写入分片压力爆炸，历史分片闲置</p>
+</li>
+<li>
+<p>地区路由：广东/浙江等大省分片热点，偏远省份分片空闲</p>
+</li>
+<li>
+<p>品牌路由：头部爆款商家单分片打爆</p>
+</li>
+</ul>
+<h3 id="_5">根治方案：路由二次打散（生产通用）</h3>
+<p>给原始业务路由拼接数字后缀，拆分热点流量，一个业务key分散到多个分片：</p>
+<ul>
+<li>
+<p>原始路由：guangdong → 固定1个分片</p>
+</li>
+<li>
+<p>打散路由：guangdong_0 / guangdong_1 / guangdong_2 → 分散至多个分片</p>
+</li>
+</ul>
+<h3 id="_6">完整可用工具类</h3>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">java.util.ArrayList</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">java.util.List</span><span class="p">;</span>
+
+<span class="cm">/**</span>
+<span class="cm"> * ES路由二次打散工具类，适配雪花ID，路由永久固定</span>
+<span class="cm"> */</span>
+<span class="kd">public</span><span class="w"> </span><span class="kd">class</span> <span class="nc">RoutingSplitUtil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 写入：生成打散路由</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">getSplitRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="n">Long</span><span class="w"> </span><span class="n">snowflakeId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">splitNum</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">suffix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">snowflakeId</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">splitNum</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">suffix</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="c1">// 查询：获取该维度全部路由，并行查询多分片</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">listAllRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ArrayList</span><span class="o">&lt;&gt;</span><span class="p">(</span><span class="n">splitNum</span><span class="p">);</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">splitNum</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="n">list</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">list</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="mysql">关键答疑：打散后能否关联MySQL原始数据？</h3>
+<p><strong>完全可以</strong>：仅修改ES内部_routing寻址字段，<strong>不改动文档_id、不改动业务字段</strong>，ES和MySQL依靠雪花ID主键关联，无任何影响。</p>
+<h2 id="2-2es">2. 倾斜2：节点分片分配倾斜（集群层，ES内置算法可解决）</h2>
+<h3 id="_7">产生原因</h3>
+<p>分片在集群节点上摆放数量不均，比如3节点、9主9副本（18分片），理论每节点6分片，实际节点A10片、节点B5片、节点C3片。</p>
+<h3 id="es_2">ES三大前置过滤规则（优先级最高）</h3>
+<ol>
+<li>
+<p>主分片和对应副本分片<strong>禁止同节点部署</strong>，防止单机宕机双丢</p>
+</li>
+<li>
+<p>磁盘水位超限节点，直接拒绝分片迁入</p>
+</li>
+<li>
+<p>冷热分层节点角色匹配校验，分片不能跨冷热池乱跑</p>
+</li>
+</ol>
+<h3 id="_8">两大分片打分均衡算法</h3>
+<ol>
+<li>
+<p><strong>索引均衡算法（权重0.55）</strong>：保证同一个索引的分片均匀打散到各个节点</p>
+</li>
+<li>
+<p><strong>全局分片均衡算法（权重0.45）</strong>：保证集群所有节点总分片数量均衡</p>
+</li>
+</ol>
+<p>ES打分规则：<strong>分数越低，节点越空闲，越优先分配分片</strong></p>
+<hr />
+<h1 id="esilm">四、ES冷热分层+ILM全自动方案（节约机器成本）</h1>
+<h2 id="1_2">1. 四层节点角色划分</h2>
+<ul>
+<li>
+<p>hot热节点：SSD高配，承接实时写入、高频查询</p>
+</li>
+<li>
+<p>warm温节点：普通SSD，无写入、低频查询，合并分片、缩分片数</p>
+</li>
+<li>
+<p>cold冷节点：HDD大容量机械盘，归档极少访问数据</p>
+</li>
+<li>
+<p>frozen冻结节点：超低成本归档，几乎无查询</p>
+</li>
+</ul>
+<h2 id="2-ilm">2. 完整ILM生命周期策略（直接复制上线）</h2>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT</span><span class="w"> </span><span class="err">_ilm/policy/order_ho</span><span class="kc">t</span><span class="err">_cold_policy</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">"policy"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"phases"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"hot"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0ms"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"rollover"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"max_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span><span class="nt">"max_primary_shard_size"</span><span class="p">:</span><span class="w"> </span><span class="s2">"45gb"</span><span class="p">}}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"warm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"allocate"</span><span class="p">:{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="s2">"warm"</span><span class="p">}},</span><span class="nt">"forcemerge"</span><span class="p">:{</span><span class="nt">"max_num_segments"</span><span class="p">:</span><span class="mi">1</span><span class="p">}}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"cold"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"30d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"allocate"</span><span class="p">:{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="s2">"cold"</span><span class="p">}},</span><span class="nt">"freeze"</span><span class="p">:{}}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"90d"</span><span class="p">,</span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{}}}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="3_2">3. 冷热分层核心结论</h2>
+<ul>
+<li>
+<p>冷热分层<strong>只解决存储成本问题</strong>，无法解决热数据路由分片倾斜</p>
+</li>
+<li>
+<p>只有热数据需要做路由二次打散，温/冷数据极少访问，倾斜无需处理</p>
+</li>
+</ul>
+<hr />
+<h1 id="_9">五、索引分片规划黄金规范（前期避坑，拒绝后期重构）</h1>
+<h2 id="1_3">1. 分片数量计算公式</h2>
+<p><strong>推荐主分片数 = 业务3年预估总数据量 ÷ 40GB</strong></p>
+<p>单分片最优容量：30\~50GB，热数据建议偏小，冷数据可适当放大</p>
+<h2 id="2_2">2. 核心选型建议</h2>
+<ol>
+<li>
+<p><strong>前期分片宁可多，不可少</strong>：主分片无法修改，偏少后期只能重建索引、双写迁移，成本极高</p>
+</li>
+<li>
+<p>无聚合查询需求：直接使用<strong>雪花ID作为默认路由</strong>，天然均匀，零分片倾斜（最优方案）</p>
+</li>
+<li>
+<p>必须自定义路由：强制配套路由二次打散</p>
+</li>
+<li>
+<p>时序数据：放弃单索引分片，采用滚动索引+ILM冷热分离</p>
+</li>
+</ol>
+<h2 id="3_3">3. 分片副本配置说明</h2>
+<p>示例：9主分片 + 1副本 = 总分片18片，<strong>一对一主副配对</strong>，副本数可随时动态修改，主分片永久固定</p>
+<hr />
+<h1 id="_10">六、线上分片故障一页速查手册（现象→命令→解决方案）</h1>
+<table>
+<thead>
+<tr>
+<th>故障现象</th>
+<th>根因</th>
+<th>一键排查命令</th>
+<th>快速解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节点分片数量分布不均</td>
+<td>集群均衡阈值保守、搬迁并发过低</td>
+<td>GET _cat/nodes?v\&amp;h=name,shards</td>
+<td>低峰调大rebalance并发，降低均衡阈值</td>
+</tr>
+<tr>
+<td>集群黄/红，分片未分配</td>
+<td>磁盘水位超标、主副同节点、冷热层级不匹配</td>
+<td>GET _cluster/allocation/explain</td>
+<td>清理磁盘/调高水位、临时调低副本、修正索引冷热约束</td>
+</tr>
+<tr>
+<td>分片搬迁极慢</td>
+<td>分片恢复并发过小、传输限速</td>
+<td>GET _cluster/settings?include_defaults=true</td>
+<td>调高迁入/迁出并发，放开传输带宽限制</td>
+</tr>
+<tr>
+<td>分片个数均衡，但单分片数据爆满</td>
+<td>自定义routing热点key，路由数据倾斜</td>
+<td>GET 索引/_search 聚合_routing</td>
+<td>路由二次打散，新建高分片索引reindex迁移</td>
+</tr>
+<tr>
+<td>热分片跑到冷节点</td>
+<td>索引冷热分层约束丢失</td>
+<td>GET 索引/_settings?filter_path=*.data_tier</td>
+<td>强制绑定索引hot节点分配规则</td>
+</tr>
+<tr>
+<td>高峰期分片搬迁打满IO</td>
+<td>自动均衡后台搬迁分片</td>
+<td>GET _cat/recovery?v</td>
+<td>高峰期临时关闭集群rebalance均衡</td>
+</tr>
+</tbody>
+</table>
+<h2 id="dsl">高峰期应急常用DSL</h2>
+<div class="codehilite"><pre><span></span><code><span class="err"># 1.高峰期关闭分片自动均衡（防IO雪崩）</span>
+<span class="err">PUT _cluster/settings</span>
+<span class="err">{"transient":{"cluster.routing.allocation.allow_rebalance":"none"}}</span>
+
+<span class="err"># 2.低峰加快分片均衡速度</span>
+<span class="err">PUT _cluster/settings</span>
+<span class="err">{"transient":{"cluster.routing.allocation.cluster_concurrent_rebalance":4}}</span>
+
+<span class="err"># 3.临时调高磁盘水位，应急解决分片无法分配</span>
+<span class="err">PUT _cluster/settings</span>
+<span class="err">{"transient":{"cluster.routing.allocation.disk.watermark.high":"92%"}}</span>
+</code></pre></div>
+
+<hr />
+<h1 id="esmysqlrediskafka">七、全技术栈通用分片思想（ES+MySQL+Redis+Kafka）</h1>
+<ol>
+<li>
+<p>所有中间件、数据库分片底层逻辑一致：<strong>分片键→哈希/取模→固定分片</strong></p>
+</li>
+<li>
+<p>只要分片键是热度不均的字段（时间、地区、商家），无论哈希算法多优秀，必然出现分片倾斜</p>
+</li>
+<li>
+<p>通用最优解：优先选用高离散主键（雪花ID）；业务必须绑定热点维度，统一做<strong>分片键二次打散</strong></p>
+</li>
+<li>
+<p>分布式架构通用原则：<strong>前期分片预留充足余量，永远好过后期拆分迁移</strong></p>
+</li>
+</ol>
+<hr />
+<h1 id="3_4">八、面试3分钟口述万能总结（直接背诵）</h1>
+<p>ES分片分为路由数据倾斜和节点分配倾斜两类。首先ES路由采用MurmurHash3_32位哈希，核心作用是打散有序ID避免倾斜，哈希碰撞无害；业务为了减少跨分片查询，使用日期、地区做自定义路由，会产生热点分片倾斜，解决方案是路由二次打散。</p>
+<p>然后ES分片分配依靠两大均衡算法，只能均衡节点上分片的摆放个数，解决不了分片内部的数据容量倾斜。同时ES支持原生冷热分层ILM，自动迁移冷热数据节约成本，但冷热分层无法解决热数据热点倾斜。</p>
+<p>另外ES主分片创建后不可修改，所以前期一定要预估3年数据量设置充足分片，宁可多不可少；和MySQL分库分表、Redis集群分片逻辑完全一致，热点分片问题统一通过分片键二次打散解决。</p>
+<blockquote>
+<p>（注：部分内容可能由 AI 生成）</p>
+</blockquote>
+<h1 id="es_3">ES 路由&amp;分片全套面试极简背诵提纲（纯考点，快速记忆）</h1>
+<h2 id="_11">一、路由核心原理</h2>
+<ol>
+<li>分片路由公式：<code>shardId = abs(Murmur3Hash(routing/_id)) % 主分片数</code></li>
+<li>关键规则：<strong>主分片创建后不可修改</strong>，副本数可随时动态调整；同一条文档路由不变，分片位置永久不变。</li>
+<li>路由字符串不是越长越好：适中（6~30字符）最优，过长耗CPU、易URI超长；过短容易哈希扎堆。</li>
+</ol>
+<p>## 二、MurmurHash3 考点
+4. 两个版本
+- MurmurHash3_x86_32：ES分片路由专用，32位int，速度快
+- MurmurHash3_x64_128：仅 cardinality 基数统计，降低哈希碰撞
+2. 哈希碰撞：不同key哈希相同进同一个分片，<strong>无害</strong>，分片内部靠<code>_id</code>区分文档，不会覆盖数据。
+3. 算法初衷：打散有序ID，解决基础分片倾斜，<strong>不是消除哈希碰撞</strong>。</p>
+<p>## 三、两种分片倾斜（必区分）</p>
+<p>### 1）路由数据倾斜（业务问题，分配算法解决不了）
+- 成因：自定义routing用省份、日期、商家等热度不均字段，一个热点key固定一个分片
+- 方案：路由二次打散（原key拼接后缀分流）；存量数据Reindex迁移
+- 补充：打散仅修改<code>_routing</code>，<code>_id</code>不变，和MySQL主键关联完全不受影响</p>
+<p>### 2）节点分片分配倾斜（集群层面，ES可自动均衡）
+- 表现：节点上分片总数有多有少
+- 两大打分算法
+  ① IndexBalance（权重0.55）：同一个索引分片在节点均匀分布
+  ② ShardBalance（权重0.45）：集群全局总分片数量均衡
+- 前置硬性过滤优先级最高：
+  ① 主、副本不能同节点；② 磁盘水位超限禁止迁入；③ 冷热节点角色匹配校验</p>
+<p>## 四、冷热分层 ILM
+1. 四层节点：hot热（写入高频查询）→ warm温（低频查询、合并分段缩分片）→ cold冷（归档少访问）→ frozen冻结归档
+2. ILM自动流转，定时迁移、收缩、删除索引，降低存储成本
+3. 核心结论：冷热分层只省存储成本，<strong>解决不了热数据路由倾斜</strong>，只有热分片需要做热点打散。</p>
+<p>## 五、分片前期规划原则
+4. 计算公式：推荐主分片数 ≈ 预估3年总数据量 ÷ 40GB，单分片合理区间30~50GB
+5. 策略：<strong>分片宁多勿少</strong>，主分片后期不能改，分片偏少后期只能重建索引+双写迁移，成本极高
+6. 最优路由选型：无跨分片聚合需求，直接雪花ID当<code>_id</code>，天然均衡无倾斜；必须自定义路由则配套二次打散
+7. 副本配置：<code>9主+9副本</code> = 副本数=1，一对一主副配对</p>
+<p>## 六、线上故障快速判断口诀
+8. 节点分片数量不均：调大rebalance并发、收窄均衡阈值，等待自动收敛
+9. 集群黄/红分片未分配：用<code>allocation explain</code>排查，常见原因磁盘水位、主副同节点、冷热层级不匹配、节点不足放不下副本
+10. 分片迁移太慢：调高迁入迁出并发、放开恢复带宽限速
+11. 分片个数均衡、单分片容量爆满：路由热点倾斜，做路由打散重建索引
+12. 高峰期IO暴涨：临时关闭集群分片自动均衡</p>
+<div class="codehilite"><pre><span></span><code>## 七、跨中间件通用思想（面试拔高）
+</code></pre></div>
+
+<ol>
+<li>ES、MySQL分库分表、Redis集群、Kafka分区底层分片逻辑完全一致：分片键→哈希/取模→绑定固定分片</li>
+<li>分片键是热度不均衡字段，再好哈希也会倾斜</li>
+<li>
+<p>通用解法：优先高离散主键；必须用热点维度则做分片键二次打散；前期分片预留余量，避免后期重构</p>
+<h2 id="3_5">八、3分钟口述总结（背这个即可应对连环提问）</h2>
+<p>ES路由基于MurmurHash3 32位哈希取模定位分片，哈希碰撞不会造成数据覆盖，算法主要用来打散有序ID。分片倾斜分两类：一是自定义省份、日期路由带来的热点数据倾斜，用路由二次打散解决；二是节点分片摆放不均，依靠ES两套均衡算法自动调节。ES主分片创建后无法修改，上线前要按3年数据预估充足分片，宁多勿少。同时可搭配ILM冷热分层节约存储，但冷热分层不能解决热分片热点问题。这套分片逻辑在MySQL分库分表、Redis、Kafka通用，热点分片统一采用分片键打散思路治理。
+需要我再压缩成<strong>半页纸极简版（仅300字内考场速背）</strong>吗？</p>
+</li>
+</ol>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

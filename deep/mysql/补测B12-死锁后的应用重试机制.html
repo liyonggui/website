@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B12：死锁后的应用重试机制 · 小番茄程序猿</title>
+<meta name="description" content="补测B12：死锁后的应用重试机制 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B12：死锁后的应用重试机制</h1>
+  </div>
+  <article class="prose">
+<h1 id="b12">补测B12：死锁后的应用重试机制</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>死锁（错误码 <strong>1213</strong>）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是<strong>正常现象</strong>，应用需<strong>捕获 1213/1205 + 自动重试</strong>，否则业务失败率高。</p>
+<h2 id="_2">二、重试原理</h2>
+<div class="codehilite"><pre><span></span><code>并发转账（反向更新两行）
+    │
+    ├── 死锁(1213) / 锁等待超时(1205)
+    │       │
+    │       └── 捕获 → 回滚 → 指数退避 → 自动重试(最多N次)
+    │
+    └── 成功提交
+</code></pre></div>
+
+<ul>
+<li><strong>捕获</strong>：<code>e.getErrorCode()==1213(死锁)</code> 或 <code>40001</code>。</li>
+<li><strong>重试</strong>：回滚后按指数退避重试，直到成功或达最大次数。</li>
+<li><strong>对比</strong>：不重试（失败率高）vs 重试（成功率显著提升）。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化临界区资源（两行 id=1,2）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/retry/init?balance=100000"</span>
+
+<span class="c1"># 2. 触发死锁（两个事务反向锁两行 → 一方 1213）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/retry/deadlock"</span>
+
+<span class="c1"># 3. 死锁自动重试（捕获 1213 指数退避重试）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/retry/retry?maxRetries=3"</span>
+
+<span class="c1"># 4. 并发转账：不重试 vs 重试 成功率对比</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/retry/bench?concurrency=20&amp;total=2000"</span>
+
+<span class="c1"># 5. 状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/retry/status"</span>
+</code></pre></div>
+
+<h2 id="202000">四、实测结果（并发20，总量2000 转账）</h2>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>失败数</th>
+<th>成功率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>不重试</strong></td>
+<td>1157/2000</td>
+<td><strong>42.2%</strong></td>
+</tr>
+<tr>
+<td><strong>重试</strong>（最多3次）</td>
+<td>674/2000</td>
+<td><strong>66.3%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心</strong>：并发反向转账产生大量锁冲突，<strong>不重试失败 1157 次（成功率42.2%），重试后失败降到 674 次（成功率66.3%）</strong>。重试机制把死锁/锁等待导致的失败大幅降低。</p>
+<h2 id="_4">五、重试框架要点</h2>
+<ol>
+<li><strong>只重试可恢复错误</strong>：死锁(1213)/锁等待超时(1205)，不重试业务错误（如参数错）。</li>
+<li><strong>指数退避</strong>：<code>20ms → 40ms → 80ms</code>，避免重试风暴加剧竞争。</li>
+<li><strong>限制次数</strong>：最大重试 N 次，防止无限重试。</li>
+<li><strong>幂等</strong>：重试的事务必须幂等（用唯一键/版本号），防止重复扣减。</li>
+<li><strong>随机抖动</strong>：重试间隔加随机，避免多线程同步重试。</li>
+<li><strong>监控</strong>：记录重试次数、死锁率，优化 SQL 减少死锁。</li>
+</ol>
+<h2 id="_5">六、踩坑记录（编译错误）</h2>
+<p>Lambda 内 <code>CountDownLatch.await()</code> 抛 <code>InterruptedException</code>，但 catch 只捕获 <code>SQLException</code>，导致<strong>编译报错 Unhandled InterruptedException</strong>，应用启动失败。<strong>修复：lambda 内 catch <code>Exception</code></strong>。注意 Maven 增量编译可能用旧 class 掩盖问题，需 <code>clean</code> 完整编译。</p>
+<h2 id="_6">七、面试简述</h2>
+<blockquote>
+<p><strong>死锁重试机制</strong>：死锁(1213)是正常现象，应用需捕获+自动重试。实测并发20转账2000：不重试失败1157(42.2%)，重试后失败674(66.3%)。要点：只重试死锁/锁等待、指数退避、限次数、幂等、随机抖动、监控死锁率。踩坑：lambda 内 await 抛 InterruptedException 需 catch Exception。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

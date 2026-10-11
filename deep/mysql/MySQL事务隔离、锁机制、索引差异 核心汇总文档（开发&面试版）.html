@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版） · 小番茄程序猿</title>
+<meta name="description" content="MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）</h1>
+  </div>
+  <article class="prose">
+<h1 id="mysql">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&amp;面试版）</h1>
+<blockquote>
+<p>本文为《MySQL事务隔离、锁机制、索引差异 核心汇总文档》与《间隙锁、临键锁 区间详解》两份文档的合并精简版，<strong>只保留结论</strong>，重复内容已去重整合。覆盖：事务隔离/MVCC、InnoDB 三类锁、锁降级规则、普通 vs 唯一索引、多表 JOIN、RC vs RR、生产规避、分表选型、线上排查。可直接用于面试背诵 + 项目优化。</p>
+</blockquote>
+<hr />
+<h2 id="mysql-innodb-rr">一、MySQL 事务隔离级别（InnoDB 默认 RR）</h2>
+<h3 id="11">1.1 三大并发读写问题</h3>
+<ul>
+<li><strong>脏读</strong>：读取其他事务<strong>未提交</strong>的数据，对方回滚后数据无效</li>
+<li><strong>不可重复读</strong>：同一事务内两次读取同一行，该行被其他事务 <strong>UPDATE/DELETE 并提交</strong>，两次结果不一致（针对<strong>单条已有行</strong>，不含新增）</li>
+<li><strong>幻读</strong>：同一事务范围查询，被其他事务 INSERT/DELETE 提交，行数前后不一致（针对新增/删除）</li>
+</ul>
+<h3 id="12">1.2 四大隔离级别（从低到高）</h3>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>脏读</th>
+<th>不可重复读</th>
+<th>幻读</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>读未提交 RU</td>
+<td>允许</td>
+<td>允许</td>
+<td>允许</td>
+<td>几乎不用</td>
+</tr>
+<tr>
+<td>读已提交 RC</td>
+<td>禁止</td>
+<td>允许</td>
+<td>允许</td>
+<td>无间隙锁，并发高，Oracle默认</td>
+</tr>
+<tr>
+<td>可重复读 RR（MySQL默认）</td>
+<td>禁止</td>
+<td>禁止</td>
+<td>特殊处理</td>
+<td>MVCC+临键锁解决物理幻读</td>
+</tr>
+<tr>
+<td>串行化 Serializable</td>
+<td>禁止</td>
+<td>禁止</td>
+<td>禁止</td>
+<td>并发性能极低，极少使用</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Serializable</strong>：InnoDB 把普通一致性读视为锁定读（类似 FOR SHARE），产生额外锁争用，并发性能显著下降。</p>
+</blockquote>
+<h3 id="13-mvcc">1.3 核心隔离机制：MVCC</h3>
+<p>MVCC 用于<strong>快照读（普通 SELECT）</strong>，无锁读写，提升并发。InnoDB 行头含隐藏列 <strong>trx_id</strong>（最后修改该行的事务 id）和 <strong>roll_ptr</strong>（指向 undo 版本链）。</p>
+<ul>
+<li><strong>RC</strong>：每次 SELECT 生成新 ReadView，可读已提交数据，存在不可重复读</li>
+<li><strong>RR</strong>：事务第一次 SELECT 生成 ReadView，全程复用，解决不可重复读</li>
+</ul>
+<p><strong>ReadView 生成规则（核心盲区、必考）</strong></p>
+<ul>
+<li><strong>ReadView 仅由普通 SELECT（快照读）生成</strong>；UPDATE、DELETE、FOR UPDATE、LOCK IN SHARE MODE 属于当前读，读取最新数据、加锁，<strong>不生成 ReadView</strong></li>
+<li><strong>事务全程只做增删改、无任何 SELECT</strong>：永不生成 ReadView，MVCC 不启动，RR 退化为"伪 RR"，表现与 RC 一致</li>
+<li><strong>带 WHERE/分页/排序/聚合的普通 SELECT 同样生成 ReadView</strong>；唯一不生成 ReadView 的 SELECT 只有加锁当前读（FOR UPDATE / LOCK IN SHARE MODE）</li>
+<li><strong>分页快照读</strong>会看到事务开始时的结果（逻辑幻读）；<strong>分页当前读（FOR UPDATE）</strong> 在 RR 下靠 gap/next-key 锁阻止插入，避免物理幻读</li>
+</ul>
+<p><strong>ReadView 生命周期与清理</strong></p>
+<ul>
+<li>事务 COMMIT/ROLLBACK 瞬间立即销毁，自动清理，无需人工干预</li>
+<li><strong>RC</strong>：每次 SELECT 新建、查询结束即失效；<strong>RR</strong>：首次 SELECT 生成、全程常驻，直到事务结束</li>
+<li><strong>长事务长期持有 ReadView</strong> → 阻塞 undo purge、历史版本链增长、ibdata1 暴涨。因此高并发读写混合场景下 RC 往往更稳；金融强一致业务保留 RR 并控制长事务</li>
+<li><strong>误区</strong>：ReadView 不是全库/全表快照，是<strong>单事务级可见性规则</strong>，只存内存不拷数据；<strong>一个事务永远只有一份 ReadView</strong>，与查询表数、JOIN 表数无关（RR 一事务一视图，RC 一 SQL 一视图）</li>
+</ul>
+<p><strong>事务开始与结束</strong></p>
+<ul>
+<li>手动事务：<code>START TRANSACTION</code> / <code>BEGIN</code> 显式开启</li>
+<li>autocommit=ON：第一条读写 SQL 隐性开启；<strong>每条语句（含 SELECT）是单语句事务</strong>，语句结束自动提交</li>
+<li>结束：COMMIT / ROLLBACK；DDL 会隐式 COMMIT</li>
+<li><strong>误区纠正</strong>：不写 START 不等于无事务，而是<strong>一 SQL 一事务</strong>；自动提交的单 SQL SELECT 同样生成瞬时 ReadView；极短事务几乎不阻塞 purge，但单 SQL 慢查询仍会短暂持锁</li>
+<li>Spring：不加 <code>@Transactional</code> = 数据库原生 autocommit；加 <code>@Transactional</code> = 方法内所有 SQL 同属一个事务、整体原子提交，同时拉长事务持有锁和 ReadView</li>
+</ul>
+<p><strong>高并发频繁 SELECT 下的选型</strong></p>
+<ul>
+<li><strong>纯读（0 写入）</strong>：RC/RR 几乎无差距</li>
+<li><strong>高频读 + 写</strong>：RC 碾压 RR。RR 长期持 ReadView 阻塞 undo purge、版本链变长、回溯成本高；RC 每查即销、purge 顺畅、版本链极短、无间隙锁开销</li>
+<li><strong>工程准则</strong>：高 QPS 读写混合、报表/列表/分页 → 强制 RC；只读静态/配置/字典表 → RC/RR 均可；金融核心强一致 → 保留 RR</li>
+</ul>
+<p><strong>开发实践与 Spring 映射</strong></p>
+<ul>
+<li>
+<p>单线程方法内 SQL 严格串行同步执行（JDBC 单连接不支持并行），事务边界由 autocommit 或 @Transactional 决定；复杂框架需注意连接延迟获取/切换</p>
+</li>
+<li>
+<p>事务包裹多条 SQL = 拉长事务，方法内禁止冗余逻辑、远程调用；纯查询禁止加事务</p>
+</li>
+<li>
+<p><strong>切换 RC 的三种方式</strong>（优先级：方法级注解 &gt; 连接池 init SQL &gt; 框架级默认配置 &gt; 数据库全局配置）：</p>
+</li>
+<li>
+<p>方法级：<code>@Transactional(isolation = Isolation.READ_COMMITTED)</code></p>
+</li>
+<li>
+<p>连接层：Hikari <code>spring.datasource.hikari.connection-init-sql: SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED</code></p>
+</li>
+<li>
+<p>框架级：自定义 <code>PlatformTransactionManager</code> 设置默认隔离</p>
+<blockquote>
+<p><code>spring.transaction.isolation</code> 并非标准 Spring Boot 通用键，请以所用版本文档为准。切换前务必回归测试。</p>
+</blockquote>
+</li>
+</ul>
+<h3 id="14">1.4 隔离级别工程选型</h3>
+<ul>
+<li>互联网高并发：推荐 <strong>RC</strong>（无间隙锁，锁冲突少，容忍不可重复读）</li>
+<li>金融/强一致：使用 <strong>RR</strong>（默认级别，防不可重复读）</li>
+<li>RU、Serializable：线上基本不用</li>
+</ul>
+<hr />
+<h2 id="innodb-next-key-lock">二、InnoDB 锁机制核心（Next-Key Lock 临键锁）</h2>
+<h3 id="21-rrserializable-rc-gap">2.1 三类锁（RR/SERIALIZABLE 下发挥作用；RC 下搜索类当前读通常不用 gap）</h3>
+<ol>
+<li><strong>记录锁 Record Lock</strong>：只锁真实存在的单行索引数据，阻塞修改/删除/当前读，不阻塞插入</li>
+<li><strong>间隙锁 Gap Lock</strong>：锁两相邻索引记录之间的区间 <code>(前值, 后值)</code>，<strong>仅阻止向该区间 INSERT</strong>，不阻止修改已存在记录</li>
+<li><strong>临键锁 Next-Key Lock</strong> = 记录锁 + 其前面的 gap，格式 <code>(前值, 当前值]</code>，用于防幻读（RR 当前读默认先加临键锁）</li>
+</ol>
+<h3 id="22-vs">2.2 快照读 VS 当前读</h3>
+<ul>
+<li><strong>快照读（普通 SELECT）</strong>：走 MVCC，不加 S/X 锁、不阻塞并发 DML，RR 下受 ReadView 影响（可重复读/逻辑幻读）</li>
+<li><strong>当前读（UPDATE/DELETE/SELECT ... FOR UPDATE / FOR SHARE）</strong>：对读取记录加锁、读最新版本，不依赖 ReadView。FOR SHARE 是共享锁的当前读形式（MySQL 8.0 已用 FOR SHARE 替代 LOCK IN SHARE MODE）</li>
+</ul>
+<h3 id="23-rc-rr">2.3 RC 与 RR 锁最大区别</h3>
+<ul>
+<li><strong>RC</strong>：搜索类当前读通常只加记录锁（不加 gap），插入阻塞少、并发高，但<strong>放弃幻读防护，应用需能容忍幻读/不可重复读</strong></li>
+<li><strong>RR</strong>：防幻读，使用完整 next-key（记录+gap）策略，更易大范围锁阻塞</li>
+</ul>
+<h3 id="24">2.4 核心要点总结</h3>
+<ol>
+<li>快照读不加锁，无视 S/X 锁，直接读取 MVCC 历史版本，不会阻塞</li>
+<li>S 锁与 S 锁共享；S 锁阻挡 X 锁</li>
+<li>X 锁排斥一切 S 锁、X 锁</li>
+<li><code>UPDATE/DELETE/FOR UPDATE</code> = 申请 X 锁；<code>LOCK IN SHARE MODE</code> = 申请 S 锁</li>
+</ol>
+<blockquote>
+<p>⚠️ <strong>S 锁存在死锁风险（SELECT ... LOCK IN SHARE MODE）</strong>：</p>
+<p>事务 A、事务 B 同时获取同一条记录 S 锁，双方都想升级为 X 锁修改，互相等待 → 死锁。</p>
+<p>生产环境<strong>极少使用 S 锁</strong>，大多数场景直接用 X 锁（FOR UPDATE）规避死锁。</p>
+</blockquote>
+<p><strong>S 锁死锁典型场景</strong></p>
+<div class="codehilite"><pre><span></span><code>事务A：SELECT * FROM t WHERE id=1 LOCK IN SHARE MODE;
+事务B：SELECT * FROM t WHERE id=1 LOCK IN SHARE MODE;
+事务A：UPDATE t SET v=2 WHERE id=1; -- 等待B释放
+事务B：UPDATE t SET v=3 WHERE id=1; -- 等待A释放
+==&gt; 死锁
+</code></pre></div>
+
+<hr />
+<h2 id="_1">三、锁降级终极规则（唯一考点）</h2>
+<p><strong>统一流程：RR 下所有当前读初始都是临键锁！只有"唯一等值命中"能降级为纯记录锁，其余全部不降级。</strong></p>
+<h3 id="_2">唯一可降级场景（仅此一种）</h3>
+<p><strong>唯一索引 / 主键索引 + 等值查询 + 命中数据</strong>，且无隐式类型转换、无函数/表达式导致索引失效 → 临键锁、间隙锁全部消失，退化为<strong>纯单行记录锁</strong>。</p>
+<h3 id="_3">所有不降级场景（全覆盖）</h3>
+<ul>
+<li><strong>所有普通索引</strong>：等值、范围、IN、未命中 → 永不降级</li>
+<li><strong>唯一/主键 范围查询</strong>（&gt;、&lt;、between）→ 不降级</li>
+<li><strong>唯一/主键 等值未命中</strong> → 退化成间隙锁</li>
+<li><strong>唯一/主键 IN 多值</strong> → 视为范围/多次等值 → 不降级</li>
+<li><strong>无索引字段更新</strong> → 全表扫描加大量临键锁，不降级</li>
+</ul>
+<blockquote>
+<p>补充：<code>IN(单值)</code> 等价等值，唯一索引可降级；<code>IN(多值)</code> 生产按不降级保守处理。唯一索引等值命中降级前提是<strong>数据唯一、无幻读风险</strong>；普通索引允许多行同值、必须锁区间防幻读。</p>
+</blockquote>
+<h3 id="_4">临键锁降级为<strong>单行记录锁</strong>的完整充要条件（缺一不可）</h3>
+<ol>
+<li>RR 隔离级别</li>
+<li>查询条件：<strong>主键索引 / 唯一二级索引</strong></li>
+<li><strong>等值查询</strong> <code>=</code></li>
+<li>SQL 有效使用索引（无函数、无运算、无隐式转换、优化器不走全表）</li>
+<li><strong>查询命中一条真实存在的数据</strong></li>
+</ol>
+<h3 id="_5">全场景锁机制汇总表（背诵版）</h3>
+<table>
+<thead>
+<tr>
+<th>查询场景</th>
+<th>普通索引(RR)</th>
+<th>唯一/主键(RR)</th>
+<th>无索引(RR)</th>
+<th>RC(所有索引)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>等值命中</td>
+<td>临键锁、不降级</td>
+<td>单行锁、降级</td>
+<td>全表临键锁</td>
+<td>仅锁命中行（索引失效则锁扫描行）</td>
+</tr>
+<tr>
+<td>等值未命中</td>
+<td>间隙锁</td>
+<td>间隙锁</td>
+<td>全表间隙锁</td>
+<td>通常不加 gap（不阻塞插入）；无索引则锁扫描行</td>
+</tr>
+<tr>
+<td>范围/IN多值</td>
+<td>临键锁、不降级</td>
+<td>临键锁、不降级</td>
+<td>全表锁死</td>
+<td>仅锁命中行（无 gap）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="normal-vs-unique">四、普通索引(NORMAL) VS 唯一索引(UNIQUE) 全维度对比</h2>
+<h3 id="41">4.1 基础特性</h3>
+<ul>
+<li><strong>普通索引 NORMAL</strong>：允许重复值、允许多个 NULL，仅加速查询、无约束，默认类型</li>
+<li><strong>唯一索引 UNIQUE</strong>：约束列值在非 NULL 下唯一；<strong>MySQL/InnoDB 中唯一索引允许多个 NULL</strong>（NULL 视为互不相等）；主键则不允许 NULL</li>
+<li>主键索引：特殊唯一索引，不允许 NULL，一张表仅一个</li>
+</ul>
+<h3 id="42">4.2 查询 / 写入性能差异</h3>
+<ul>
+<li><strong>查询</strong>：唯一索引等值命中立即终止扫描，更稳；普通索引等值定位到多行范围并扫描，性能取决于基数/选择性；范围查询、覆盖索引场景二者差距极小</li>
+<li><strong>写入</strong>：唯一索引插入需校验唯一性，有轻微开销；普通索引写入略快</li>
+</ul>
+<h3 id="43">4.3 锁行为差异（线上最大坑点）</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>唯一索引</th>
+<th>普通索引</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>等值命中全部列、记录存在</td>
+<td>锁降级为行锁</td>
+<td>不降级，临键锁+向后锁间隙</td>
+</tr>
+<tr>
+<td>等值未命中 / 未匹配全部列</td>
+<td>gap/next-key 锁</td>
+<td>gap/next-key 锁</td>
+</tr>
+<tr>
+<td>所有范围查询</td>
+<td>临键锁不降级</td>
+<td>临键锁不降级</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44">4.4 索引失效差异</h3>
+<p>索引失效规则与是否唯一<strong>无关联</strong>：隐式转换、函数操作、or、最左前缀失效对两者完全一致；唯一索引不更不易失效，失效由数据筛选率、优化器决定。</p>
+<hr />
+<h2 id="join">五、多表 JOIN 专项优化 &amp; 锁/索引坑</h2>
+<h3 id="51">5.1 执行机制</h3>
+<p>优化器基于代价估算选择连接顺序/驱动表（通常倾向小表或结果基数小的表，但非"永远"小表驱动）。<strong>被驱动表必须有有效索引</strong>，否则雪崩。</p>
+<h3 id="52">5.2 索引失效高频坑</h3>
+<ul>
+<li><strong>关联字段类型不一致</strong>（最常见）：tinyint 关联 varchar、int 关联 char → 隐式转换，被驱动表索引失效</li>
+<li>JOIN 字段函数操作（如 <code>ON DATE(a.time)=b.day</code>）→ 索引失效</li>
+<li>大表无索引 JOIN → 笛卡尔积，数据量爆炸、CPU 打满</li>
+<li>联合索引不满足最左前缀 → 无法走索引</li>
+</ul>
+<h3 id="53">5.3 锁机制（极易忽略）</h3>
+<p>JOIN + UPDATE/DELETE/FOR UPDATE（当前读）时<strong>多表都会加锁</strong>：</p>
+<ul>
+<li><strong>锁顺序不可控</strong>：由优化器决定，非 SQL 书写顺序，极易死锁；生产固定 SQL 模板/表顺序或业务层一致更新顺序</li>
+<li>无索引 JOIN = 被驱动表全表扫描逐行加锁（连锁全表锁）</li>
+<li>普通索引 JOIN 锁范围放大：多表联查+普通索引不降级，间隙锁叠加</li>
+</ul>
+<h3 id="54">5.4 幻读/不可重复读表现</h3>
+<ul>
+<li>等值 JOIN：单行被改/删 → 不可重复读</li>
+<li>范围/全表 JOIN：区间新增 → 幻读</li>
+<li>RC 下多表 JOIN 数据一致性波动更大，RR 更稳但锁更重</li>
+</ul>
+<h3 id="55">5.5 工程落地规范</h3>
+<ol>
+<li>关联字段类型严格一致，杜绝隐式转换</li>
+<li>被驱动表关联字段必建索引，优先唯一索引/主键，缩小锁范围</li>
+<li>禁止大范围/无过滤多表 JOIN，必须 WHERE 精准缩小数据集</li>
+<li>多表更新/删除固定加锁顺序，规避随机死锁</li>
+<li>高并发多表写尽量拆单表单事务，放弃复杂 JOIN 更新</li>
+<li>只读多表查询优先 RC，锁开销更低</li>
+</ol>
+<hr />
+<h2 id="_6">六、生产规避 &amp; 分表选型</h2>
+<h3 id="61">6.1 锁避坑核心</h3>
+<ol>
+<li><strong>所有加锁 SQL 必须走索引</strong>（用 EXPLAIN 确认是 index/range/ref 而非全表扫描），否则锁全表</li>
+<li>悲观锁 FOR UPDATE 优先用<strong>主键/唯一索引</strong>，杜绝普通索引大范围锁</li>
+<li>禁止大范围更新（时间/状态范围），避免锁海量间隙</li>
+<li>缩短事务：不做网络请求、复杂计算，尽早 COMMIT</li>
+<li>多表更新固定 SQL 执行顺序，防死锁</li>
+<li>高并发优先乐观锁（版本号）替代悲观锁</li>
+</ol>
+<h3 id="62">6.2 索引选型准则</h3>
+<ul>
+<li>业务唯一字段（手机号、账号、唯一编码）：必建 <strong>UNIQUE 索引</strong></li>
+<li>普通/可重复字段（名称、分类、状态）：建 <strong>NORMAL 普通索引</strong></li>
+<li>锁查询场景优先唯一索引，减少锁范围</li>
+</ul>
+<h3 id="63">6.3 临键锁/间隙锁 全场景规避方案</h3>
+<p>规避本质分两类：<strong>彻底消除区间锁机制（切 RC）</strong> 或 <strong>改写 SQL 避开不降级场景</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>高危场景</th>
+<th>规避方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>普通索引等值更新（最高频坑）</td>
+<td>字段唯一时升级唯一/主键索引等值降级；切 RC；拆分大分类数据</td>
+</tr>
+<tr>
+<td>等值未命中（隐形间隙锁）</td>
+<td>代码层先快照读判空，空则跳过更新；切 RC</td>
+</tr>
+<tr>
+<td>范围查询（&gt;、&lt;、BETWEEN）</td>
+<td>严禁大范围更新/删除，改精准等值；必须范围时分页批量；切 RC</td>
+</tr>
+<tr>
+<td>IN 查询</td>
+<td>唯一索引拆单值 IN（可降级）；禁普通索引 IN 多值批量；控制 IN 参数数量</td>
+</tr>
+<tr>
+<td>无索引字段更新（致命锁表）</td>
+<td>硬性规范所有 UPDATE/DELETE 条件字段必须建索引；禁无条件批量更新</td>
+</tr>
+</tbody>
+</table>
+<p><strong>通用万能规避手段（优先级从高到低）</strong>：① 切 RC（最优解，依赖 MVCC 规避幻读，需评估影响）→ ② 索引优化（业务唯一字段用唯一/主键索引等值降级）→ ③ SQL 规范优化（杜绝范围/无索引/普通索引 IN 多值更新）→ ④ 代码层优化（先查后改、拦截空更新）。</p>
+<h3 id="64">6.4 大数据量分表选型（生产终极答疑）</h3>
+<p><strong>锁机制优化只能解决"锁规则导致的无故阻塞"，无法根治大表 IO、索引遍历性能；数据量极大时必须分表。</strong></p>
+<ul>
+<li><strong>为什么单表锁爆炸</strong>：索引层高、加锁遍历耗时暴增；普通索引区间锁范围被动扩大；MVCC 版本链长放大锁等待；索引失效 = 全表锁死雪崩</li>
+<li><strong>必须分表判定</strong>：单表超 <strong>800w~1000w</strong>；更新/删除/加锁查询 QPS 高、频繁锁等待超时；大量分类/范围/IN 批量更新；索引多、常规优化降不了耗时</li>
+<li><strong>分表核心原理</strong>：<strong>锁区间物理隔离</strong>——子表数据量小、索引扁平加锁快，竞争从"全局"变"局部"，一张子表锁阻塞不影响其他子表</li>
+<li><strong>层级优化优先级</strong>：SQL规范 → 索引优化 → 隔离级别优化 → 分库分表（锁是治标，分表是治本）</li>
+</ul>
+<p><strong>分表按什么字段？</strong></p>
+<ul>
+<li><strong>核心原则</strong>：谁频繁更新、谁频繁加锁，就按谁分表，把热点索引区间物理拆散</li>
+<li><strong>单热点字段</strong>（如大量按 category 更新）→ 按该字段分表（锁优化⭐⭐⭐⭐⭐）</li>
+<li><strong>多热点字段</strong>（多索引均高频更新，交叉锁区间 → 随机死锁第一元凶）→ 统一按<strong>最小隔离单元分片（绝大多数为 user_id 哈希/模分片）</strong>，同一用户数据永远落同一子表，物理隔离不同用户的锁竞争、根治交叉死锁</li>
+<li><strong>严禁</strong>：按自增 ID 分表、按时间粗略分表（不解决锁冲突，⭐⭐）</li>
+<li><strong>注意事项</strong>：分片后需保证应用层把相同用户路由到同一分片，否则引入分布式事务/补偿；跨用户聚合需额外 OLAP 汇总层；分表需处理查询/运维复杂度</li>
+<li><strong>完整优化链路</strong>：规范SQL → 加唯一索引 → 开RC → 单热点按业务字段分片 / 多热点按用户哈希分片</li>
+</ul>
+<hr />
+<h2 id="_7">七、高频面试终极问答</h2>
+<p><strong>Q1：多表 JOIN 谁需要建索引？</strong>
+被驱动表关联字段必建索引，驱动表无需强制。</p>
+<p><strong>Q2：多表 JOIN 无索引会发生什么？</strong>
+被驱动表全表扫描逐行加锁，引发大范围阻塞、锁表、死锁、慢查询雪崩。</p>
+<p><strong>Q3：多表 JOIN 为什么更容易死锁？</strong>
+多表加锁顺序由优化器动态决定、不固定，多事务并发易形成循环等待。</p>
+<p><strong>Q4：JOIN 会不会幻读？</strong>
+等值 JOIN 无幻读；带范围、全表 JOIN 属范围查询，仍有幻读。</p>
+<p><strong>Q5：MySQL RR 到底有没有解决幻读？</strong>
+快照读：存在逻辑幻读；当前读：通过临键锁彻底解决物理幻读。</p>
+<p><strong>Q6：普通索引和唯一索引加锁最大区别？</strong>
+唯一索引等值命中可降级行锁；普通索引等值命中不降级，持续持有临键锁，极易锁大片区间。</p>
+<p><strong>Q7：RC 和 RR 核心区别？</strong>
+RC 无间隙锁/临键锁、并发高但存在幻读、不可重复读；RR 有完整锁机制、一致性高、并发略低。</p>
+<p><strong>Q8：RC 和 RR 真实吞吐差距多少？</strong>
+<strong>高度依赖具体业务与 SQL 模型</strong>，必须基准测试，不宜硬性宣称单一数值。根源：RR 的 gap/next-key 大量区间锁阻塞并发 INSERT/UPDATE；RC 关闭间隙锁、仅保留记录锁、锁范围最小。纯查询业务几乎无差距。</p>
+<p><strong>Q9：隔离级别可以单独设置到某张表吗？</strong>
+<strong>不可以</strong>。生效粒度只有全局、会话（连接）两级；要"部分表 RC、部分表 RR"只能通过事务拆分变相实现。</p>
+<p><strong>Q10：SESSION 会话隔离级别需要手动设置吗？</strong>
+默认继承全局配置，只有差异化才需设置；设置后新开启事务生效，已开启未提交事务沿用旧值；连接断开/连接池回收后配置消失。</p>
+<p><strong>Q11：SpringBoot 如何配置会话隔离级别？</strong>
+三种可行方式：① 方法级 <code>@Transactional(isolation=...)</code>；② 连接池 <code>connection-init-sql</code>（覆盖所有会话含裸 SQL）；③ 自定义 <code>PlatformTransactionManager</code> 默认隔离。优先级：方法级 &gt; 连接池 init SQL &gt; 框架级默认 &gt; 数据库全局。注意 <code>spring.transaction.isolation</code> 非标准通用键，以所用版本文档为准。</p>
+<p><strong>Q12：普通索引等值更新会不会只锁单行？</strong>
+<strong>不会</strong>。RR 下普通索引等值不降级，全程临键锁（锁多行+锁间隙）；唯有"唯一索引/主键+等值定位+命中一行+索引未失效"才能降级为单行记录锁。</p>
+<p><strong>Q13：临键锁会不会阻塞普通 SELECT？</strong>
+<strong>不会</strong>。普通 SELECT 是快照读，读取历史版本不上锁；只有当前读会被阻塞。</p>
+<p><strong>Q14：间隙锁/临键锁会不会阻塞已存在记录的修改？</strong>
+间隙锁只阻塞该区间 INSERT，不阻止修改已存在记录（那是记录锁职责）；临键锁的记录锁部分才阻塞该行修改/删除/加锁查询。</p>
+<p><strong>Q15：无索引字段 UPDATE 等于锁表吗？</strong>
+不是单一全表锁（非 MyISAM table lock），但会全表扫描并为每条记录加临键锁（RR 下大量 next-key lock），<strong>效果近似锁表</strong>，实务应杜绝无索引更新。</p>
+<p><strong>Q16：数据量大是不是必须分表？</strong>
+单纯优化锁机制无法根治并发阻塞/超时/死锁；数据量极大（&gt;800w~1000w）且并发高时必须分表，从根源缩小索引范围、拆分锁竞争区间。</p>
+<p><strong>Q17：多字段高频更新怎么分表避锁？</strong>
+不能按单一业务字段分表。最优为<strong>用户维度哈希分片</strong>，同一用户数据收敛同一子表，物理隔离不同用户锁竞争，缩小所有字段临键锁区间；配合 RC、唯一索引降级、规范 SQL 彻底根治交叉死锁。</p>
+<hr />
+<h2 id="_8">八、终极面试秒杀口诀</h2>
+<div class="codehilite"><pre><span></span><code>RR默认有三锁，记录间隙临键锁；
+初始统一临键锁，唯一等值命中可降级；
+普通无索引不降级，范围IN多锁区间；
+间隙只堵插入动作，快照查询不受锁影响；
+想要规避区间锁，RC隔离最稳最强；
+单热字段按业务，多热字段按用户；
+小优锁、大分片，并发瓶颈全搞定。
+</code></pre></div>
+
+<hr />
+<h2 id="_9">九、线上排查与监控（可直接落地）</h2>
+<h3 id="91">9.1 排查命令速查（首诊断入口）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 死锁详情（LATEST DETECTED DEADLOCK 段）</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">ENGINE</span><span class="w"> </span><span class="n">INNODB</span><span class="w"> </span><span class="n">STATUS</span><span class="err">\</span><span class="k">G</span>
+
+<span class="c1">-- 当前未提交事务 / 锁</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">INFORMATION_SCHEMA</span><span class="p">.</span><span class="n">INNODB_TRX</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">data_locks</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">data_lock_waits</span><span class="p">;</span>
+
+<span class="c1">-- 当前连接 / 长查询</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">PROCESSLIST</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">threads</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="k">TYPE</span><span class="o">=</span><span class="s1">'FOREGROUND'</span><span class="p">;</span>
+</code></pre></div>
+
+<h3 id="92-undo">9.2 快速排查长事务 / undo 堆积步骤</h3>
+<ol>
+<li><code>SELECT * FROM INFORMATION_SCHEMA.INNODB_TRX;</code> 定位 <code>trx_state=RUNNING</code> 的长事务（看 <code>trx_started</code>）</li>
+<li>通过 <code>trx_mysql_thread_id</code> 定位连接</li>
+<li>分析未提交原因（长事务？慢查询？未提交只读事务？）</li>
+<li><strong>先分析再 kill</strong>：确认可接受后 <code>KILL &lt;thread_id&gt;</code>，避免直接 kill 造成数据不一致</li>
+<li>观察 undo 表空间/版本链是否恢复</li>
+</ol>
+<h3 id="93">9.3 监控指标与告警</h3>
+<ul>
+<li><strong>指标</strong>：active transactions、transaction age、undo tablespace size、innodb_row_lock_time、innodb_trx_age</li>
+<li><strong>告警建议</strong>：未提交事务 <code>trx_age &gt; N</code> 秒；undo 空间快速增长；长时间锁等待数上升</li>
+<li><strong>测试建议</strong>：切 RC/分表前务必在目标版本做<strong>并发压测</strong>（对比 RR/RC 的 QPS、事务冲突率、幻读情况）与<strong>业务一致性验证</strong>（是否出现重复/漏计/幻读影响）</li>
+</ul>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

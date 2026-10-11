@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景18：锁等待与死锁监控治理 · 小番茄程序猿</title>
+<meta name="description" content="场景18：锁等待与死锁监控治理 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景18：锁等待与死锁监控治理</h1>
+  </div>
+  <article class="prose">
+<h1 id="18">场景18：锁等待与死锁监控治理</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>高并发下，多个事务争用同一行/间隙锁会产生<strong>锁等待</strong>（事务串行化、吞吐下降），更严重的是<strong>死锁</strong>（事务互相持有对方需要的锁，死循环等待）。治理需要"制造 → 监控 → 诊断 → 治理"闭环。</p>
+<h2 id="_2">二、核心概念</h2>
+<ul>
+<li><strong>锁等待</strong>：事务 A 持锁，事务 B 等待同一锁，直到 A 释放或超时（<code>innodb_lock_wait_timeout</code>）。</li>
+<li><strong>死锁</strong>：事务 A 锁行1 等行2，事务 B 锁行2 等行1，互相等待。InnoDB 检测到死锁后<strong>自动回滚其中一个事务</strong>（错误码 1213），其余继续。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 锁相关参数</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lock-monitor/params"</span>
+
+<span class="c1"># 2. 制造锁等待（事务 A 持锁，事务 B 等待）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lock-monitor/create-wait?holdMs=1500&amp;waitMs=3000"</span>
+
+<span class="c1"># 3. 制造死锁（InnoDB 自动回滚一个事务）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lock-monitor/create-deadlock"</span>
+
+<span class="c1"># 4. 锁等待监控概览（sys.innodb_lock_waits：谁阻塞谁）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lock-monitor/status"</span>
+
+<span class="c1"># 5. 当前事务与锁明细（information_schema.innodb_trx + performance_schema.data_locks）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lock-monitor/current"</span>
+
+<span class="c1"># 6. 治理方案</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lock-monitor/governance"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<h3 id="1">1. 锁参数</h3>
+<div class="codehilite"><pre><span></span><code>innodb_lock_wait_timeout = 50（秒）
+innodb_deadlock_detect   = ON（自动检测死锁）
+innodb_deadlocks         = 有死锁记录（SHOW ENGINE INNODB STATUS 检测）
+</code></pre></div>
+
+<h3 id="2">2. 制造锁等待</h3>
+<p>事务 A 持锁 1500ms，事务 B 等待 <strong>1502ms</strong> 后获得锁。
+→ 并发下锁等待会串行化，需监控定位阻塞者。</p>
+<h3 id="3">3. 制造死锁</h3>
+<p>事务 A 成功，事务 B 返回：</p>
+<div class="codehilite"><pre><span></span><code>死锁回滚: Deadlock found when trying to get lock; try restarting transaction
+</code></pre></div>
+
+<p>→ InnoDB 检测到死锁后自动回滚一个事务（错误码 1213），应用需捕获并重试。</p>
+<h3 id="4">4. 监控诊断</h3>
+<ul>
+<li><code>sys.innodb_lock_waits</code>：当前锁等待关系（waiting_pid 被 blocking_pid 阻塞）</li>
+<li><code>information_schema.innodb_trx</code>：当前活动事务状态</li>
+<li><code>performance_schema.data_locks</code>：当前数据锁明细（表/索引/锁类型/模式）</li>
+</ul>
+<h2 id="_5">五、治理方案</h2>
+<ol>
+<li><strong>监控定位</strong>：<code>performance_schema.data_locks</code> + <code>sys.innodb_lock_waits</code> 找阻塞者/被阻塞者。</li>
+<li><strong>减小锁粒度</strong>：用唯一索引/主键精确命中，避免间隙锁/全表锁。</li>
+<li><strong>缩短事务</strong>：事务内只做必要操作，避免慢查询/外部调用占锁。</li>
+<li><strong>固定加锁顺序</strong>：多行更新按主键升序，避免交叉等待死锁。</li>
+<li><strong>控制并发</strong>：热点行削峰，队列/乐观锁代替悲观锁。</li>
+<li><strong>超时兜底</strong>：调小 <code>innodb_lock_wait_timeout</code>，快速失败避免长等待。</li>
+</ol>
+<h2 id="_6">六、面试简述</h2>
+<blockquote>
+<p><strong>锁等待与死锁治理</strong>：锁等待=并发争用串行化（A 持锁 B 等待），死锁=事务互相持有对方所需锁、InnoDB 自动检测回滚一个（错误码 1213，需应用重试）。监控用 <code>performance_schema.data_locks</code> + <code>sys.innodb_lock_waits</code> 定位阻塞者/被阻塞者。治理核心：减小锁粒度（主键/唯一索引命中）、缩短事务、固定加锁顺序（防死锁）、控制并发、<code>innodb_lock_wait_timeout</code> 超时兜底。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>高并发压测执行清单 · 小番茄程序猿</title>
+<meta name="description" content="高并发压测执行清单 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>高并发压测执行清单</h1>
+  </div>
+  <article class="prose">
+<h1 id="_1">高并发压测执行清单</h1>
+<p>本文用于 Java + Redis + MySQL + MQ 类系统的压测设计、执行、分析和复盘。目标不是只得到一个最高 QPS，而是建立一条可追溯的证据链：</p>
+<blockquote>
+<p>实验目标 → 假设 → 控制变量 → 观测指标 → 结果 → 归因 → 结论 → 下一轮实验</p>
+</blockquote>
+<h2 id="_2">一、压测前准备</h2>
+<h3 id="1">1. 明确实验目标</h3>
+<ul>
+<li>[ ] 明确本轮属于哪类测试：</li>
+<li>[ ] 功能正确性</li>
+<li>[ ] 性能基线</li>
+<li>[ ] 稳定性</li>
+<li>[ ] 极限容量</li>
+<li>[ ] 故障恢复</li>
+<li>[ ] 写清楚需要回答的核心问题：</li>
+<li>[ ] 在什么并发量下系统稳定？</li>
+<li>[ ] 瓶颈位于业务代码、JVM、数据库、缓存、消息队列、网络还是内核？</li>
+<li>[ ] 方案的吞吐、尾延迟和资源消耗是否满足要求？</li>
+<li>[ ] 超过容量边界后，系统是否能限流、降级和恢复？</li>
+</ul>
+<h3 id="2">2. 写出实验假设</h3>
+<p>示例：</p>
+<ul>
+<li>异步写库可以提升接口吞吐，但可能引入消息堆积和最终一致性延迟。</li>
+<li>Redis 将热点库存拆分为 32 个 Key 后，可以降低单 Key 竞争。</li>
+<li>增大线程池只有在下游仍有处理能力时才会提升吞吐。</li>
+</ul>
+<p>记录以下内容：</p>
+<ul>
+<li>[ ] 研究假设</li>
+<li>[ ] 预期收益</li>
+<li>[ ] 可能副作用</li>
+<li>[ ] 失败判定标准</li>
+<li>[ ] 需要验证的边界条件</li>
+</ul>
+<h3 id="3">3. 固定实验条件</h3>
+<ul>
+<li>[ ] 代码版本和 Git 提交号</li>
+<li>[ ] 配置文件版本</li>
+<li>[ ] JVM 版本和启动参数</li>
+<li>[ ] 操作系统、CPU、内存、磁盘和网络</li>
+<li>[ ] 容器 CPU/内存限制及 cgroup 配置</li>
+<li>[ ] MySQL、Redis、MQ 版本及拓扑</li>
+<li>[ ] 测试数据规模、分布和热点比例</li>
+<li>[ ] 压测脚本版本</li>
+<li>[ ] 并发模型、请求比例和持续时间</li>
+<li>[ ] 日志级别、采样率和输出位置</li>
+</ul>
+<h3 id="4">4. 控制变量</h3>
+<ul>
+<li>[ ] 每轮实验只改变一个主要变量。</li>
+<li>[ ] 保留基线组（Baseline）。</li>
+<li>[ ] 每个实验至少重复 3 次，避免偶然抖动。</li>
+<li>[ ] 每次实验前清理或记录缓存、队列、数据库和消费位点状态。</li>
+<li>[ ] 记录预热时间，不把 JVM 预热阶段作为正式结果。</li>
+</ul>
+<h2 id="_3">二、环境和可观测性</h2>
+<h3 id="1_1">1. 应用侧</h3>
+<ul>
+<li>[ ] 请求总量、成功量、失败量</li>
+<li>[ ] QPS/TPS</li>
+<li>[ ] p50、p90、p95、p99、p999 和最大延迟</li>
+<li>[ ] 线程池活跃线程、队列长度、拒绝次数</li>
+<li>[ ] 数据库连接池活跃数、等待数、超时数</li>
+<li>[ ] Redis 连接池等待和命令耗时</li>
+<li>[ ] MQ 生产、消费、重试和死信数量</li>
+<li>[ ] 业务幂等命中数、重复请求数、补偿数</li>
+</ul>
+<h3 id="2-jvm">2. JVM 和操作系统</h3>
+<ul>
+<li>[ ] CPU 使用率及 load average</li>
+<li>[ ] 堆使用率、老年代使用率、直接内存</li>
+<li>[ ] Young GC、Full GC 次数和停顿时间</li>
+<li>[ ] 线程数、上下文切换、阻塞和锁竞争</li>
+<li>[ ] 磁盘吞吐、IO wait、磁盘空间</li>
+<li>[ ] 网络连接数、重传、丢包和 socket 状态</li>
+<li>[ ] 文件描述符和端口使用情况</li>
+<li>[ ] 容器 CPU throttling、内存限制和 OOM 事件</li>
+</ul>
+<h3 id="3-mysql">3. MySQL</h3>
+<ul>
+<li>[ ] QPS、TPS、活跃连接数</li>
+<li>[ ] 慢 SQL 和执行计划</li>
+<li>[ ] 行锁等待、死锁和锁冲突</li>
+<li>[ ] Buffer Pool 命中率</li>
+<li>[ ] redo/binlog 刷盘和写入压力</li>
+<li>[ ] 主从延迟及复制异常</li>
+<li>[ ] 磁盘空间和 I/O 等待</li>
+</ul>
+<h3 id="4-redis">4. Redis</h3>
+<ul>
+<li>[ ] 命令吞吐和命令延迟</li>
+<li>[ ] 命中率、miss、eviction</li>
+<li>[ ] 热 Key 和大 Key</li>
+<li>[ ] 内存碎片率</li>
+<li>[ ] 连接数、阻塞命令和超时</li>
+<li>[ ] 主从复制延迟或 Cluster 分片倾斜</li>
+</ul>
+<h3 id="5-mq">5. MQ</h3>
+<ul>
+<li>[ ] 生产速率和消费速率</li>
+<li>[ ] Topic/Queue 积压量</li>
+<li>[ ] Consumer lag</li>
+<li>[ ] 重试、重复消费和死信数量</li>
+<li>[ ] 分区/队列负载是否均衡</li>
+<li>[ ] Broker 磁盘、网络和请求延迟</li>
+</ul>
+<h2 id="_4">三、标准执行流程</h2>
+<h3 id="1_2">阶段 1：功能和数据正确性</h3>
+<ul>
+<li>[ ] 低并发验证正常链路。</li>
+<li>[ ] 校验库存、订单、支付状态和消息状态。</li>
+<li>[ ] 验证重复请求、超时重试和重复消费。</li>
+<li>[ ] 压测前后核对数据库、缓存、队列和业务统计。</li>
+</ul>
+<h3 id="2_1">阶段 2：性能基线</h3>
+<ul>
+<li>[ ] 关闭非必要的实验变量，建立最小链路基线。</li>
+<li>[ ] 逐步增加并发，观察吞吐和尾延迟曲线。</li>
+<li>[ ] 记录第一个明显瓶颈出现的并发点。</li>
+<li>[ ] 记录 CPU、GC、线程池和下游依赖状态。</li>
+</ul>
+<h3 id="3_1">阶段 3：单变量实验</h3>
+<ul>
+<li>[ ] 每轮只调整一个参数。</li>
+<li>[ ] 例如：线程池大小、连接池大小、Redis Key 数量、批量大小或同步/异步模式。</li>
+<li>[ ] 保持请求比例、数据分布和测试时长一致。</li>
+<li>[ ] 对比收益、尾延迟、资源消耗和副作用。</li>
+</ul>
+<h3 id="4_1">阶段 4：稳定性测试</h3>
+<ul>
+<li>[ ] 目标流量持续 10～30 分钟。</li>
+<li>[ ] 观察吞吐是否逐步下降。</li>
+<li>[ ] 观察堆、老年代、连接池和 MQ 积压是否持续增长。</li>
+<li>[ ] 检查是否出现周期性 GC、线程池抖动或慢请求堆积。</li>
+</ul>
+<h3 id="5">阶段 5：极限和过载测试</h3>
+<ul>
+<li>[ ] 以目标流量的 1.2 倍、1.5 倍、2 倍逐级增加。</li>
+<li>[ ] 记录系统进入过载的边界。</li>
+<li>[ ] 验证限流、熔断、降级和快速失败是否生效。</li>
+<li>[ ] 停止压测后，检查积压、资源和错误率是否恢复。</li>
+</ul>
+<h3 id="6">阶段 6：故障注入和恢复</h3>
+<ul>
+<li>[ ] Redis 延迟、超时或短暂不可用</li>
+<li>[ ] MySQL 连接耗尽、写入变慢或主库不可用</li>
+<li>[ ] MQ 停止消费、消费变慢或重复投递</li>
+<li>[ ] 单个应用实例下线</li>
+<li>[ ] 网络延迟、丢包或连接重置</li>
+<li>[ ] 线程池、连接池或磁盘空间达到上限</li>
+<li>[ ] 验证重试上限、死信、补偿和对账机制</li>
+</ul>
+<h2 id="_5">四、核心实验清单</h2>
+<h3 id="1_3">1. 同步与异步写入</h3>
+<ul>
+<li>[ ] 同步写库</li>
+<li>[ ] 异步写库</li>
+<li>[ ] 异步写库 + 重试</li>
+<li>[ ] 异步写库 + 限流</li>
+<li>[ ] 异步写库 + 补偿/对账</li>
+<li>[ ] 对比接口响应、消息积压、数据一致性和恢复时间</li>
+</ul>
+<h3 id="2-redis-key-key">2. Redis 单 Key 与分片 Key</h3>
+<ul>
+<li>[ ] 单热点 Key</li>
+<li>[ ] 8 个分片 Key</li>
+<li>[ ] 32 个分片 Key</li>
+<li>[ ] 随机分布与用户/商品 Hash 分布</li>
+<li>[ ] 对比单 Key 延迟、热度分布、命令吞吐和管理复杂度</li>
+</ul>
+<h3 id="3_2">3. 线程池</h3>
+<ul>
+<li>[ ] 20、50、100、200 线程逐级测试</li>
+<li>[ ] 记录队列等待、拒绝、上下文切换和 CPU</li>
+<li>[ ] 判断吞吐提升是否以 p99 恶化为代价</li>
+<li>[ ] 验证下游连接池是否成为新的瓶颈</li>
+</ul>
+<h3 id="4_2">4. 连接池</h3>
+<ul>
+<li>[ ] 小连接池、基线连接池、大连接池</li>
+<li>[ ] 观察连接等待和数据库实际处理能力</li>
+<li>[ ] 验证连接池过大是否引起数据库线程、锁和 CPU 争用</li>
+</ul>
+<h3 id="5_1">5. 日志和输出</h3>
+<ul>
+<li>[ ] 无日志</li>
+<li>[ ] 控制台同步输出</li>
+<li>[ ] 文件同步输出</li>
+<li>[ ] 异步日志</li>
+<li>[ ] 降低采样率</li>
+<li>[ ] 对比 CPU、磁盘 I/O、GC、吞吐和尾延迟</li>
+</ul>
+<h3 id="6_1">6. 数据库写入</h3>
+<ul>
+<li>[ ] 单条写入</li>
+<li>[ ] 批量 10</li>
+<li>[ ] 批量 50</li>
+<li>[ ] 批量 200</li>
+<li>[ ] 高冲突更新</li>
+<li>[ ] 唯一索引冲突</li>
+<li>[ ] 大事务和小事务</li>
+<li>[ ] 对比锁等待、刷盘压力、吞吐和失败重试</li>
+</ul>
+<h3 id="7-mq">7. MQ 积压</h3>
+<ul>
+<li>[ ] 生产速率低于消费速率</li>
+<li>[ ] 生产速率接近消费速率</li>
+<li>[ ] 生产速率高于消费速率</li>
+<li>[ ] 消费者降速或暂停</li>
+<li>[ ] 重试消息增加</li>
+<li>[ ] 消费者扩容</li>
+<li>[ ] 验证积压告警、限流、扩容和恢复时间</li>
+</ul>
+<h2 id="_6">五、结果判定标准</h2>
+<p>一次实验不能只写“QPS 提升”。至少回答：</p>
+<ul>
+<li>[ ] 是否支持原始假设？</li>
+<li>[ ] QPS/TPS 如何变化？</li>
+<li>[ ] p99/p999 如何变化？</li>
+<li>[ ] 成功率和业务正确性是否保持？</li>
+<li>[ ] CPU、内存、GC、I/O 是否出现新瓶颈？</li>
+<li>[ ] MQ、Redis、MySQL 是否出现积压或异常？</li>
+<li>[ ] 收益是否稳定且可复现？</li>
+<li>[ ] 是否引入一致性、恢复和运维成本？</li>
+<li>[ ] 是否值得进入下一轮或生产方案？</li>
+</ul>
+<p>推荐结论格式：</p>
+<blockquote>
+<p>在固定硬件、代码版本、数据分布和请求模型下，仅将 X 从 A 调整为 B。吞吐从 ___ 提升到 <strong><em>，p99 从 ___ 变化为 </em></strong>，CPU 从 ___ 变化为 <strong><em>。同时观察到 </em></strong>，说明主要瓶颈位于 ___。因此该方案在 ___ 条件下有效，但需要通过 ___ 控制副作用。</p>
+</blockquote>
+<h2 id="_7">六、实验记录模板</h2>
+<div class="codehilite"><pre><span></span><code>实验名称：
+日期：
+代码提交号：
+执行人：
+
+实验目标：
+研究假设：
+成功标准：
+
+固定条件：
+- 机器/容器：
+- JVM：
+- 中间件版本和拓扑：
+- 数据量与数据分布：
+- 压测工具和脚本版本：
+- 并发模型和请求比例：
+- 预热时间与正式时长：
+
+唯一变化项：
+
+实验结果：
+- QPS/TPS：
+- 成功率/错误率：
+- p50/p95/p99/p999：
+- CPU/内存：
+- GC：
+- 线程池/连接池：
+- MySQL：
+- Redis：
+- MQ：
+- 其他异常：
+
+归因：
+- 主要瓶颈：
+- 支撑证据：
+- 是否存在噪声或混杂变量：
+
+结论：
+- 是否支持假设：
+- 收益：
+- 副作用：
+- 是否达到成功标准：
+- 下一轮实验：
+</code></pre></div>
+
+<h2 id="_8">七、最终检查</h2>
+<ul>
+<li>[ ] 结果可复现</li>
+<li>[ ] 控制变量清晰</li>
+<li>[ ] 业务正确性已校验</li>
+<li>[ ] 尾延迟而非只有平均值已记录</li>
+<li>[ ] 资源和中间件指标完整</li>
+<li>[ ] 过载边界已识别</li>
+<li>[ ] 故障后可以恢复</li>
+<li>[ ] 结论包含证据和适用条件</li>
+</ul>
+<blockquote>
+<p>压测的最终目标不是找到最高吞吐，而是找到在正确性、延迟、稳定性、恢复能力和成本之间可接受的系统边界。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

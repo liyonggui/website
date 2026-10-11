@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Spring Cloud → K3s 极简落地：用最小子集认识 K8s · 小番茄程序猿</title>
+<meta name="description" content="Spring Cloud → K3s 极简落地：用最小子集认识 K8s —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Spring Cloud → K3s 极简落地：用最小子集认识 K8s</h1>
+  </div>
+  <article class="prose">
+<h1 id="spring-cloud-k3s-k8s">Spring Cloud → K3s 极简落地：用最小子集认识 K8s</h1>
+<blockquote>
+<p><strong>目标定位</strong>：本方案的目的<strong>不是验证微服务全功能</strong>（分布式事务 / 消息队列 / 定时任务 / 链路追踪都不在目标内），而是<strong>借助 spring-cloud 这个现成项目，在已搭好的 K3s 上认识 K8s 核心概念</strong>。因此尽量精简：只保留最少服务和最少依赖，把注意力放在 K8s 本身。
+<strong>状态</strong>：§4、§5 已于 2026-10-07 实跑通。落地载体<strong>不是原项目</strong>，而是新建的独立最小项目 <code>k3s-project/sc-user</code>（<code>spring-cloud</code> 源码一行未改，<code>git status</code> 已核）；清单在 <code>k3s-project/manifests/sc-user/</code>，命名空间 <code>sc-demo</code>。
+<strong>衔接</strong>：K3s 底座、<code>compose-vs-k8s.md</code>、<code>manifests/</code>（nginx 替身那套示例）、<code>scripts/</code>（装 K3s / 自检 / 演练 / 清理）均已就绪；本次新增 <code>sc-user/</code>（代码+镜像+外部库）与 <code>manifests/sc-user/</code>（五份清单）。</p>
+</blockquote>
+<hr />
+<h2 id="1-k8s">1. 还能省什么（从"完整方案"砍到"极简 K8s 学习方案"）</h2>
+<table>
+<thead>
+<tr>
+<th>原组件</th>
+<th>在"认识 K8s"里是否必需</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5 个业务服务</td>
+<td>否，1 个就够演示 Pod/Deployment/Service</td>
+<td>新建 <code>sc-user</code>，只抄 user 相关 4 个类 + 1 个新 Controller，<strong>不动原项目</strong>（原因见 §4.1）</td>
+</tr>
+<tr>
+<td>Nacos（注册发现 + 配置）</td>
+<td>否，<strong>K8s 自带 Service 做服务发现</strong>，Nacos 在 K8s 里是冗余</td>
+<td>新项目 pom 里根本不引入</td>
+</tr>
+<tr>
+<td>Seata（分布式事务）</td>
+<td>否，单服务用不到</td>
+<td>同上，不引入</td>
+</tr>
+<tr>
+<td>Redis（缓存）</td>
+<td>可选</td>
+<td>不引入；想学 StatefulSet 再单独上 K8s（§6）</td>
+</tr>
+<tr>
+<td>Dubbo</td>
+<td>否，K8s 里用 Service 名调用即可</td>
+<td>不引入（原项目里它<strong>有消费方</strong>，见 §4.1 第 1 条）</td>
+</tr>
+<tr>
+<td>RocketMQ / XXL-JOB / SkyWalking / Sentinel / OpenFeign</td>
+<td>否</td>
+<td>不引入</td>
+</tr>
+<tr>
+<td>MySQL</td>
+<td><strong>是</strong>（datasource 必需，否则起不来）</td>
+<td><strong>外置</strong>，用 <code>sc-user/docker-compose.mysql.yml</code> 只起 mysql，不上 K8s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：上 K8s 的只有 <code>sc-user</code> 一个 <strong>Deployment + Service</strong>；外部只留一个 <strong>MySQL 容器</strong>。其余组件一律不碰——它们既不是 K8s 概念，也不影响你认识 K8s。（已按此实跑：2 副本 <code>1/1 Running</code>、0 重启。）</p>
+<hr />
+<h2 id="2">2. 最小依赖与端口</h2>
+<ul>
+<li><strong>外部（docker 起）</strong>：<code>sc-mysql</code>（<code>mysql:8.4</code>）3306，容器内自动执行 <code>sc-user/sql/init-user.sql</code> 建 <code>user_db</code></li>
+<li><strong>K8s（本方案核心）</strong>：ns <code>sc-demo</code>，Deployment/Service 都叫 <code>service-user</code>，<code>containerPort 8081</code>，Service <code>ClusterIP</code> 且 <code>port 8081 → targetPort http</code></li>
+<li><strong>可打的端点</strong>：<code>GET /user/info/{userId}</code>（查库，正/反例都能验）、<code>GET /user/whoami</code>（返回 Pod 名，用来看 Service 负载均衡和"滚动更新到底换了哪批 Pod"）、<code>/actuator/health/{liveness,readiness}</code></li>
+<li><strong>可选上 K8s</strong>：Redis → <code>redis:6379</code>（StatefulSet + PVC，§6，未做）</li>
+</ul>
+<hr />
+<h2 id="3-2026-10-07">3. 环境前置（2026-10-07 实测）</h2>
+<ul>
+<li><strong>WSL2 + Docker</strong>：<code>docker</code> 与 <code>docker compose</code> 可用；<code>redis:7 / mysql:8.4 / busybox / clickhouse</code> 在本机镜像里。</li>
+<li><strong>K3s</strong>：节点 <code>lyg</code> / <code>v1.36.5+k3s1</code> / <code>Ready</code>。</li>
+<li>⚠ <strong>本机 kubectl 入口是 <code>sudo k3s kubectl</code></strong>（没有独立 kubectl），§5.4 的命令都按这个写。</li>
+<li><strong>JDK 8</strong>：Windows 侧 <code>java version "1.8.0_481"</code>（<code>D:\jdk-8u481</code>）。</li>
+<li><strong>Maven</strong>：<code>D:\apache-maven-3.6.1</code>（PATH 默认）与 <code>D:\apache-maven-3.9.16</code> 都在，两个 <code>conf/settings.xml</code> 都把本地仓写死成 <code>D:\repo\repository</code>；本次构建用 3.9.16。</li>
+<li><strong>MySQL 是空的</strong>：起之前 <code>docker ps -a</code> 里没有任何 mysql 容器/镜像/卷，所以 §4.3 那次 <code>up -d</code> 是全新初始化（不是覆盖旧库）。</li>
+</ul>
+<hr />
+<h2 id="4-sc-user">4. 落地载体：独立最小项目 <code>sc-user</code>（原项目零改动）</h2>
+<h3 id="41">4.1 为什么不改在原项目上（三条当场核到的事实）</h3>
+<ol>
+<li><strong><code>@DubboService</code> 有消费方</strong>（原文这里判断错了）。三处 <code>@DubboReference</code>：</li>
+<li><code>spring-cloud/service-order/src/main/java/com/gui/controller/OrderController.java:30</code> → <code>@DubboReference(timeout = 5000)</code></li>
+<li><code>spring-cloud/service-order/src/main/java/com/gui/job/TimeoutOrderJob.java:44</code> → <code>@DubboReference(timeout = 5000, check = false)</code></li>
+<li><code>spring-cloud/service-pay/src/main/java/com/gui/service/impl/PayServiceImpl.java:36</code> → 同上
+   所以"顺手把 service-user 的 Dubbo 剥掉"= 打断整条 5 服务链路，代价不该由学习方案来付。</li>
+<li><strong><code>spring.cache.type=none</code> 不会让 <code>@Cacheable</code> 变 no-op</strong>（原文药方在本项目不成立）。<code>service-user/src/main/java/com/gui/config/RedisCacheConfig.java:22-23</code> 显式声明 <code>@Bean RedisCacheManager</code>，显式 bean 让缓存自动配置让位，运行期照样打 Redis；要彻底不依赖 Redis，必须连这个类（连同 <code>@EnableCaching</code>）一起去掉。</li>
+<li><strong>原项目没有 fat jar</strong>。6 个 pom 里 grep <code>spring-boot-maven-plugin</code> 零命中（模块靠 <code>start-all.bat</code> 的 <code>mvn spring-boot:run</code> 起），<code>mvn package</code> 只产出普通 jar（MANIFEST 无 <code>Main-Class</code>，我当时打出的 <code>service-user-1.0-SNAPSHOT.jar</code> 仅 7.9 KB——那是减法 pom 的产物，但根因相同：没有 repackage 执行）。上镜像必须自己加这个插件。</li>
+</ol>
+<blockquote>
+<p>结论：与其在原项目上做减法（还牵动 order/pay），不如把 user 这条最小闭环抄成一个新项目，两边互不干扰。</p>
+</blockquote>
+<h3 id="42">4.2 新项目内容</h3>
+<div class="codehilite"><pre><span></span><code>sc-user/pom.xml                       parent 直接是 spring-boot-starter-parent 2.7.18；依赖只有 4 个：
+                                      web / actuator / mysql-connector-java / mybatis-plus-boot-starter 3.5.3.1
+                                      + spring-boot-maven-plugin（repackage 出可执行 jar）
+                                      ⚠ Boot 2.7.18 已不再管理 mysql:mysql-connector-java 的版本，必须显式写 8.0.33，
+                                        否则构建报 'dependencies.dependency.version ... is missing'（本轮踩过）
+sc-user/src/main/java/com/gui/        UserApplication / entity.User / mapper.UserMapper /
+                                      service.UserService(+impl) / controller.UserController
+sc-user/src/main/resources/application.yml   只有 datasource（全走 ${MYSQL_*}）+ 探针 + mybatis-plus；
+                                      密码故意不给默认值：漏挂 Secret 要立刻失败而不是拿空密码去连库
+sc-user/sql/init-user.sql             建 user_db + t_user + 2 行种子（数据与原项目一致，便于对照；无 undo_log）
+sc-user/docker-compose.mysql.yml      外部 MySQL 8.4，把 init 脚本挂进 /docker-entrypoint-initdb.d，首次起自动建库
+sc-user/Dockerfile                    temurin 8-jre + 非 root uid 10001 + EXPOSE 8081 + MaxRAMPercentage=70
+</code></pre></div>
+
+<p><code>UserService</code> 接口从 <code>api-common</code> 复制进本项目，所以不再依赖 <code>api-common</code>；provider 侧也不再有 Dubbo。<code>@Cacheable/@CacheEvict</code> 直接不带（没有 <code>@EnableCaching</code>，注解本来就是死的，留着只会误导）。</p>
+<h3 id="43">4.3 构建与外部依赖（本轮实跑过的命令）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1) 打 fat jar（Windows）</span>
+<span class="nb">cd</span><span class="w"> </span>/d/high-concurrency-projects/k3s-project/sc-user
+/d/apache-maven-3.9.16/bin/mvn<span class="w"> </span>-B<span class="w"> </span>package<span class="w">        </span><span class="c1"># → target/sc-user-1.0-SNAPSHOT.jar，26.6 MB，Main-Class=JarLauncher</span>
+
+<span class="c1"># 2) 起外部 MySQL（WSL，全新卷会自动执行 init-user.sql）</span>
+wsl<span class="p">;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/mnt/d/high-concurrency-projects/k3s-project/sc-user
+docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose.mysql.yml<span class="w"> </span>up<span class="w"> </span>-d
+
+<span class="c1"># 3) 镜像（第二个 tag 只为演示滚动更新/回滚，内容其实同一个 digest）</span>
+docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>sc-user:0.1.0<span class="w"> </span>.
+docker<span class="w"> </span>tag<span class="w">  </span>sc-user:0.1.0<span class="w"> </span>sc-user:0.1.1
+</code></pre></div>
+
+<hr />
+<h2 id="5-k8s">5. K8s 落地（核心，已实跑）</h2>
+<h3 id="51-manifestssc-user-sc-demo">5.1 清单（<code>manifests/sc-user/</code>，命名空间 <code>sc-demo</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>对象</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>00-namespace.yaml</code></td>
+<td>Namespace <code>sc-demo</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>10-configmap-user.yaml</code></td>
+<td>ConfigMap <code>user-env</code></td>
+<td><code>MYSQL_HOST/PORT/DB/USER</code>，键名对上 <code>application.yml</code> 的 <code>${MYSQL_*}</code></td>
+</tr>
+<tr>
+<td><code>15-secret-user.yaml</code></td>
+<td>Secret <code>user-secret</code></td>
+<td><code>MYSQL_PASSWORD</code>；本地开发值，<strong>别 commit 到外部可读的仓库</strong></td>
+</tr>
+<tr>
+<td><code>20-deployment-user.yaml</code></td>
+<td>Deployment <code>service-user</code></td>
+<td>2 副本；<code>maxSurge 1 / maxUnavailable 0</code>；startup+liveness+readiness 三探针；<code>envFrom</code> configmap+secret；<code>requests 100m/256Mi</code>、<code>limits.memory 512Mi</code>；<code>runAsNonRoot</code>+<code>drop ALL</code>+<code>readOnlyRootFilesystem</code>（<code>/tmp</code> 挂 emptyDir，<code>fsGroup 10001</code>）；<code>preStop sleep 5</code> + <code>terminationGracePeriodSeconds 35</code>（这条是 §5.5 实测逼出来的）</td>
+</tr>
+<tr>
+<td><code>25-service-user.yaml</code></td>
+<td>Service <code>service-user</code></td>
+<td>ClusterIP，<code>port 8081 → targetPort http</code></td>
+</tr>
+</tbody>
+</table>
+<p>镜像在 containerd 里的名字是 <code>docker.io/library/sc-user:0.1.0</code>（§5.3）。</p>
+<h3 id="52-pod-mysql-localhost">5.2 Pod 里的 MySQL 地址不能写 localhost</h3>
+<p>Pod 的 <code>localhost</code> 是它自己的网络命名空间，而 MySQL 在宿主（WSL）的 docker 里。本机用 busybox 探针 Pod 实测（<code>nc -z -w2 &lt;ip&gt; 3306</code>，2026-10-07），四个候选地址<strong>全部可连</strong>：<code>192.168.0.104</code>（节点 LAN/IPVS 前置的 WSL 地址）、<code>172.18.0.1</code>（docker0 网关）、<code>172.17.0.1</code>、<code>10.42.0.1</code>（cni0）。清单选了 <code>192.168.0.104</code>。</p>
+<p>⚠ 这是 WSL 重启后可能变的地址：变了只改 <code>10-configmap-user.yaml</code> 那一行，再 <code>sudo k3s kubectl -n sc-demo rollout restart deploy/service-user</code>（ConfigMap 改动默认不触发重建）。更稳的做法是再建一个手写 Endpoints 的 Service，让应用只认服务名、不绑宿主机 IP（本方案未做，留作 §6 之后的进阶）。</p>
+<h3 id="53">5.3 单节点镜像获取的坑（必看）</h3>
+<p>K3s 用 containerd，不是 docker，本地 <code>docker build</code> 的镜像默认拉不到：</p>
+<div class="codehilite"><pre><span></span><code>docker<span class="w"> </span>save<span class="w"> </span>sc-user:0.1.0<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>k3s<span class="w"> </span>ctr<span class="w"> </span>images<span class="w"> </span>import<span class="w"> </span>-
+<span class="c1"># 核对是否真进去了——必须点名 k8s.io 命名空间：</span>
+sudo<span class="w"> </span>k3s<span class="w"> </span>ctr<span class="w"> </span>-n<span class="w"> </span>k8s.io<span class="w"> </span>images<span class="w"> </span>ls<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-f1<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">'^docker.io/library/sc-user'</span>
+</code></pre></div>
+
+<p>⚠ 不加 <code>-n k8s.io</code> 时 <code>ctr images ls</code> 有可能看不到刚导入的镜像，<strong>别据此断定"没导进去"</strong>。tag 用明确的 <code>0.1.0/0.1.1</code> 配 <code>imagePullPolicy: IfNotPresent</code>，别用 <code>latest</code>。</p>
+<h3 id="54-kubectl-sudo-k3s-kubectl">5.4 kubectl 实操清单（本机入口 <code>sudo k3s kubectl</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">K</span><span class="o">=</span><span class="s2">"sudo k3s kubectl"</span>
+<span class="nv">$K</span><span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>manifests/sc-user/<span class="w"> </span>-n<span class="w"> </span>sc-demo
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-o<span class="w"> </span>wide<span class="w">            </span><span class="c1"># 2/2 Running</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>rollout<span class="w"> </span>status<span class="w"> </span>deploy/service-user
+
+<span class="c1"># 排错三板斧</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>describe<span class="w"> </span>pod<span class="w"> </span>&lt;pod&gt;<span class="w">          </span><span class="c1"># Events：调度 / 镜像 / 探针</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>logs<span class="w"> </span>&lt;pod&gt;<span class="w"> </span>--tail<span class="o">=</span><span class="m">50</span><span class="w">        </span><span class="c1"># 连不上 MySQL 会在这里暴露</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/service-user<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'echo HOST=$MYSQL_HOST DB=$MYSQL_DB'</span><span class="w">   </span><span class="c1"># envFrom 是否真注入</span>
+
+<span class="c1"># 扩缩容</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>scale<span class="w"> </span>deploy<span class="w"> </span>service-user<span class="w"> </span>--replicas<span class="o">=</span><span class="m">4</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-l<span class="w"> </span><span class="nv">app</span><span class="o">=</span>service-user<span class="w"> </span>--no-headers
+
+<span class="c1"># 滚动更新与回滚（需要第二个 tag，见 §4.3）</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>rollout<span class="w"> </span><span class="nb">history</span><span class="w"> </span>deploy/service-user
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span><span class="nb">set</span><span class="w"> </span>image<span class="w"> </span>deploy/service-user<span class="w"> </span>service-user<span class="o">=</span>sc-user:0.1.1
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-l<span class="w"> </span><span class="nv">app</span><span class="o">=</span>service-user<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{range .items[*]}{.metadata.name}{" = "}{.spec.containers[0].image}{"\n"}{end}'</span><span class="w">   </span><span class="c1"># 直接看每个 Pod 跑的是哪个 tag</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>rollout<span class="w"> </span>undo<span class="w"> </span>deploy/service-user
+
+<span class="c1"># 本机访问</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>port-forward<span class="w"> </span>svc/service-user<span class="w"> </span><span class="m">18081</span>:8081<span class="w">     </span><span class="c1"># 端口若与本机进程冲突就换号，见 §7</span>
+curl<span class="w"> </span>-s<span class="w"> </span>localhost:18081/user/info/1
+curl<span class="w"> </span>-s<span class="w"> </span>localhost:18081/user/whoami
+
+<span class="c1"># 看真实负载均衡必须在集群内发请求（port-forward 只会固定打到一个 Pod）</span>
+<span class="nv">$K</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>run<span class="w"> </span>lbprobe<span class="w"> </span>--image<span class="o">=</span>busybox:1.36<span class="w"> </span>--restart<span class="o">=</span>Never<span class="w"> </span>--rm<span class="w"> </span>-i<span class="w"> </span>--command<span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'for i in 1 2 3 4 5 6 7 8 9 10; do wget -qO- http://service-user.sc-demo.svc.cluster.local:8081/user/whoami; echo; done'</span>
+</code></pre></div>
+
+<h3 id="55-maxunavailable-0">5.5 实测：<code>maxUnavailable: 0</code> 不等于零请求失败</h3>
+<p>打点方式：ns 内一个 busybox Pod，每秒 <code>wget -T2 http://service-user.sc-demo.svc.cluster.local:8081/user/info/1</code>（走 ClusterIP → IPVS，且这条请求真的会查 MySQL）。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>4 副本，<strong>没有</strong> <code>preStop</code>：正向 <code>set image</code> + 一次 <code>rollout undo</code></td>
+<td>计数 <code>82 ok / 2 FAIL</code>，另有 1 行 <code>wget: can't connect to remote host (10.43.183.240): Connection refused</code> 被脚本记成了 ok ⇒ 实际 ≥3 次失败</td>
+</tr>
+<tr>
+<td>同样 4 副本，<strong>加了</strong> <code>preStop sleep 5</code> + <code>terminationGracePeriodSeconds 35</code></td>
+<td>正向 + 回滚两次替换期间 <code>111</code> 次打点全 ok，<code>grep -v '^ok$'</code> 无输出</td>
+</tr>
+</tbody>
+</table>
+<p>原因同 <code>manifests/20-deployment.yaml:84</code> 那条注释：Endpoint 摘除是异步的，进程先死、转发规则后到，中间那批请求会 refused；<code>maxUnavailable: 0</code> 只保证"新 Pod Ready 之前不杀旧的"，管不住"杀的那一刻"。</p>
+<p>⚠ 方法论两条：① busybox 的 <code>wget</code> 失败时也可能返回 0，靠 <code>&amp;&amp;/||</code> 计数会漏，判失败要连日志里的报错行一起看；② <code>port-forward</code> 由 kubectl 自己挑后端、只连一个 Pod（<code>manifests/21-service.yaml:24</code> 已写），拿它观察负载均衡必然失真。</p>
+<hr />
+<h2 id="6-redis-k8s-statefulset-pvc">6. 进阶：把 Redis 也放上 K8s（学 StatefulSet + PVC，未做）</h2>
+<p>若想多看一个 K8s 概念，把 Redis 用 <code>manifests/40-redis-statefulset.yaml</code>（已有范本）起在 K8s，配 PVC 持久化 + <code>redis</code> Service。再把 <code>sc-user</code> 的 Redis 配置指向 <code>redis:6379</code>（经 ConfigMap，并需要把缓存相关代码/依赖加回来）。这样你一次见过 <strong>无状态(Deployment) + 有状态(StatefulSet) + 配置(ConfigMap/Secret) + 网络(Service) + 存储(PVC)</strong> 五类核心对象——足够建立 K8s 的整体直觉。</p>
+<hr />
+<h2 id="7">7. 本机常见坑（精简）</h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>处置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>port-forward</code> 报 <code>Unable to listen on port 8081 ... address already in use</code></td>
+<td>本机 <code>java -jar</code> 还占着同一个 localhost（WSL mirrored 网络下 Windows 与 WSL 共用）。<strong>此时你 curl 到的响应来自本机进程、不是集群</strong>——先停本机进程或换端口号再验</td>
+</tr>
+<tr>
+<td>Pod CrashLoopBackOff，但同一个 jar 本机跑得好</td>
+<td>十有八九 <code>MYSQL_HOST</code> 写了 <code>localhost</code>（Pod 里那连的是它自己），见 §5.2</td>
+</tr>
+<tr>
+<td><code>kubectl apply</code> 把我 scale 出来的副本数打回原值</td>
+<td>正常行为：apply 以清单为准。演练态与声明态冲突时，以清单为准</td>
+</tr>
+<tr>
+<td><code>rollout undo</code> 提示 <code>last-applied-configuration</code> 不更新</td>
+<td>混用 <code>apply</code> 与 <code>set image</code> 的后果；回滚后建议再 <code>apply</code> 一次对齐</td>
+</tr>
+<tr>
+<td>探针一直失败</td>
+<td>没引 actuator（新项目已加）；或路径写成 <code>/actuator/health</code>——探针要用 <code>/actuator/health/liveness</code> 与 <code>/readiness</code>（默认那个 health 不含探针组语义）</td>
+</tr>
+<tr>
+<td>镜像拉不到 / 以为没导入成功</td>
+<td>见 §5.3，导入要 <code>-n k8s.io</code> 才看得见</td>
+</tr>
+<tr>
+<td>只读根文件系统起不来？</td>
+<td>本应用实测只需挂 <code>/tmp</code> emptyDir（<code>fsGroup: 10001</code>），没复现失败</td>
+</tr>
+<tr>
+<td>Pod 一直 Pending</td>
+<td>单节点资源不够；<code>describe</code> 看 Events，调小 limits 或减副本</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8">8. 进度与下一步</h2>
+<p>已完成（2026-10-07 实跑）：§3 环境核对 → §4 <code>sc-user</code> 项目与 fat jar → 外部 MySQL（空库自动建 <code>user_db</code>）→ 镜像导入 containerd → §5 五份清单部署、<code>2/2 Ready</code>、经 Service 的正/反例、<code>envFrom</code> 注入、scale 2→4、<code>set image</code> 滚动、<code>rollout undo</code> 回滚、§5.5 的 preStop 前后对照。</p>
+<p>未做，按性价比排序：
+1. §6 Redis StatefulSet + PVC（补上"有状态 + 存储"这一类对象，是这套方案里唯一还没见过的核心概念）。
+2. 手写 Endpoints 把 <code>MYSQL_HOST</code> 从"宿主机 IP"变成"集群内的服务名"（§5.2 那个会变IP的根因）。
+3. <code>scripts/90-fault-drills.sh</code> 是围绕 <code>rdx-demo</code> 的 nginx 替身写的，要不要给 <code>sc-user</code> 复制一份对应演练（OOMKilled、探针失败、镜像拉不到）。
+4. 演练完记得 <code>kubectl delete ns sc-demo</code> + <code>docker compose -f docker-compose.mysql.yml down</code>。</p>
+<blockquote>
+<p>一句话：<strong>上 K8s 的只有一个 Spring Boot 服务（独立新项目 <code>sc-user</code>）+（可选）一个 Redis；外部只有一个 MySQL 容器。原项目一行没改，专注把 K8s 的核心对象和操作摸熟。</strong></p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sysbench 单体 MySQL 硬件上限压测 · 小番茄程序猿</title>
+<meta name="description" content="Sysbench 单体 MySQL 硬件上限压测 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Sysbench 单体 MySQL 硬件上限压测</h1>
+  </div>
+  <article class="prose">
+<h1 id="sysbench-mysql">Sysbench 单体 MySQL 硬件上限压测</h1>
+<h2 id="_1">一、背景与目标</h2>
+<p>用 Sysbench 测出<strong>单体 MySQL（无集群、无主从）</strong>的硬件性能上限：
+- <strong>读上限</strong>：<code>oltp_read_only</code>（纯查询）
+- <strong>读写混合上限</strong>：<code>oltp_read_write</code>（OLTP 混合）
+- <strong>找拐点</strong>：加大并发，找出吞吐不再提升（甚至下降）的临界并发数</p>
+<h2 id="_2">二、环境</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MySQL</td>
+<td>mysql:8.4（单机，无主从）</td>
+</tr>
+<tr>
+<td>配置</td>
+<td>max_connections=1000，innodb_buffer_pool_size=1G</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>sbtest 库，16 表 × 100 万行 ≈ 1600 万行</td>
+</tr>
+<tr>
+<td>Sysbench</td>
+<td>1.0.17（Docker <code>docker.1ms.run/severalnines/sysbench</code>）</td>
+</tr>
+<tr>
+<td>账号</td>
+<td>sbuser（mysql_native_password）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">三、压测方法</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># prepare 数据（16表×100万）</span>
+sysbench<span class="w"> </span>--db-driver<span class="o">=</span>mysql<span class="w"> </span>--mysql-host<span class="o">=</span>mysql<span class="w"> </span>--mysql-user<span class="o">=</span>sbuser<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--mysql-password<span class="o">=</span>sbpass<span class="w"> </span>--mysql-db<span class="o">=</span>sbtest<span class="w"> </span>--tables<span class="o">=</span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--table-size<span class="o">=</span><span class="m">1000000</span><span class="w"> </span>--threads<span class="o">=</span><span class="m">16</span><span class="w"> </span>oltp_read_write<span class="w"> </span>prepare
+
+<span class="c1"># 压测（递增并发找拐点）</span>
+sysbench<span class="w"> </span>--db-driver<span class="o">=</span>mysql<span class="w"> </span>...<span class="w"> </span>--threads<span class="o">=</span>N<span class="w"> </span>--time<span class="o">=</span><span class="m">20</span><span class="w"> </span>oltp_read_only<span class="w"> </span>run
+sysbench<span class="w"> </span>--db-driver<span class="o">=</span>mysql<span class="w"> </span>...<span class="w"> </span>--threads<span class="o">=</span>N<span class="w"> </span>--time<span class="o">=</span><span class="m">20</span><span class="w"> </span>oltp_read_write<span class="w"> </span>run
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<h3 id="41-oltp_read_only">4.1 只读 (oltp_read_only)</h3>
+<table>
+<thead>
+<tr>
+<th>线程</th>
+<th>TPS</th>
+<th>QPS</th>
+<th>avg(ms)</th>
+<th>95th(ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>162</td>
+<td>2595</td>
+<td>6.16</td>
+<td>10.46</td>
+</tr>
+<tr>
+<td>4</td>
+<td>501</td>
+<td>8023</td>
+<td>7.97</td>
+<td>16.41</td>
+</tr>
+<tr>
+<td>8</td>
+<td>763</td>
+<td>12212</td>
+<td>10.47</td>
+<td>23.10</td>
+</tr>
+<tr>
+<td>16</td>
+<td>1469</td>
+<td>23505</td>
+<td>10.87</td>
+<td>25.28</td>
+</tr>
+<tr>
+<td><strong>32</strong></td>
+<td><strong>1684</strong></td>
+<td><strong>26953</strong></td>
+<td>18.94</td>
+<td>50.11</td>
+</tr>
+<tr>
+<td>64</td>
+<td>1615</td>
+<td>25847</td>
+<td>39.48</td>
+<td>110.66</td>
+</tr>
+<tr>
+<td>128</td>
+<td>1579</td>
+<td>25272</td>
+<td>80.75</td>
+<td>219.36</td>
+</tr>
+<tr>
+<td>256</td>
+<td>1555</td>
+<td>24893</td>
+<td>163.35</td>
+<td>411.96</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-oltp_read_write">4.2 读写混合 (oltp_read_write)</h3>
+<table>
+<thead>
+<tr>
+<th>线程</th>
+<th>TPS</th>
+<th>QPS</th>
+<th>avg(ms)</th>
+<th>95th(ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>134</td>
+<td>2690</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>8</td>
+<td>308</td>
+<td>6174</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>16</td>
+<td>308</td>
+<td>6174</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>32</td>
+<td>505</td>
+<td>10104</td>
+<td>63.17</td>
+<td>130.13</td>
+</tr>
+<tr>
+<td>64</td>
+<td>713</td>
+<td>14271</td>
+<td>89.42</td>
+<td>176.73</td>
+</tr>
+<tr>
+<td><strong>128</strong></td>
+<td><strong>898</strong></td>
+<td><strong>17957</strong></td>
+<td>141.41</td>
+<td>277.21</td>
+</tr>
+<tr>
+<td>256</td>
+<td>861</td>
+<td>17233</td>
+<td>290.60</td>
+<td>539.71</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-oltp_write_only">4.3 纯写 (oltp_write_only)</h3>
+<table>
+<thead>
+<tr>
+<th>线程</th>
+<th>TPS</th>
+<th>QPS</th>
+<th>avg(ms)</th>
+<th>95th(ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>182</td>
+<td>1094</td>
+<td>5.47</td>
+<td>8.43</td>
+</tr>
+<tr>
+<td>4</td>
+<td>367</td>
+<td>2203</td>
+<td>10.88</td>
+<td>27.66</td>
+</tr>
+<tr>
+<td>8</td>
+<td>249</td>
+<td>1497</td>
+<td>32.02</td>
+<td>74.46</td>
+</tr>
+<tr>
+<td>16</td>
+<td>477</td>
+<td>2867</td>
+<td>33.41</td>
+<td>74.46</td>
+</tr>
+<tr>
+<td>32</td>
+<td>788</td>
+<td>4731</td>
+<td>40.46</td>
+<td>84.47</td>
+</tr>
+<tr>
+<td>64</td>
+<td>1258</td>
+<td>7553</td>
+<td>50.73</td>
+<td>106.75</td>
+</tr>
+<tr>
+<td>128</td>
+<td>1721</td>
+<td>10331</td>
+<td>73.77</td>
+<td>164.45</td>
+</tr>
+<tr>
+<td><strong>256</strong></td>
+<td><strong>2215</strong></td>
+<td><strong>13294</strong></td>
+<td>114.28</td>
+<td>244.38</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>纯写说明：QPS/TPS 持续增长到 256 并发（2215 TPS），无明显下降拐点——因纯写操作分散到 16 张表、锁竞争较小，高并发下吞吐仍能提升；但<strong>延迟快速增长</strong>（avg 5ms→114ms，95th 达 244ms），达到一定并发后收益递减。</p>
+</blockquote>
+<h3 id="44-vs">4.4 写入"管道"模式提速对比（批量 vs 单条）</h3>
+<p>纯写单条事务（sysbench oltp_write_only）约 1.3万 QPS。用<strong>批量管道</strong>（多值 INSERT / LOAD DATA）可指数级提升写入吞吐。同一张表 <code>t_write_compare</code> 实测：</p>
+<table>
+<thead>
+<tr>
+<th>写入模式</th>
+<th>数据量</th>
+<th>耗时</th>
+<th>吞吐</th>
+<th>相对单条</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单条 INSERT（autocommit）</td>
+<td>1万行</td>
+<td>90s</td>
+<td><strong>111 行/s</strong></td>
+<td>1x</td>
+</tr>
+<tr>
+<td>多值批量 INSERT（batch 1000）</td>
+<td>10万行</td>
+<td>1.07s</td>
+<td><strong>9.3万 行/s</strong></td>
+<td><strong>840x</strong></td>
+</tr>
+<tr>
+<td>LOAD DATA INFILE</td>
+<td>100万行</td>
+<td>5.27s</td>
+<td><strong>19万 行/s</strong></td>
+<td><strong>1700x</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>原理</strong>：单条 INSERT 每条是独立 SQL + 独立网络往返 + 独立提交（fsync），开销极大。批量管道（多值 INSERT、LOAD DATA）把<strong>多条写合并成一条 SQL/一次提交</strong>，大幅减少解析、网络、fsync 开销。</p>
+</blockquote>
+<p><strong>严格同基准验证（同一工具 sysbench + 同一自定义 lua 脚本，仅改 <code>batch_size</code>）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>batch_size</th>
+<th>事务/s</th>
+<th>每事务行数</th>
+<th><strong>行/s</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1（单条）</td>
+<td>445</td>
+<td>1</td>
+<td><strong>445</strong></td>
+</tr>
+<tr>
+<td>100</td>
+<td>358</td>
+<td>100</td>
+<td><strong>35862</strong></td>
+</tr>
+<tr>
+<td>1000</td>
+<td>177</td>
+<td>1000</td>
+<td><strong>177940</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>同一工具、同一协议、同一表，仅控制批量行数：<strong>batch=1000 比 batch=1 快约 400 倍</strong>（177940 vs 445 行/s）。注意事务数反而下降（每条 SQL 插更多行），但<strong>总行吞吐</strong>暴涨——这就是批量"管道"的价值。</p>
+<p><strong>对比 sysbench 纯写（13294 QPS）</strong>：批量管道快 <strong>7~14 倍</strong>。生产高吞吐写入（日志、埋点、批量导入）应优先用 LOAD DATA 或 JDBC <code>rewriteBatchedStatements</code> 多值批量。</p>
+</blockquote>
+<h4 id="load-data">生产写入方式选型（LOAD DATA 为什么生产很少用）</h4>
+<p>LOAD DATA INFILE 在本压测中验证了 MySQL 原生写入上限，但<strong>生产常规写入很少用</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>写入方式</th>
+<th>适用场景</th>
+<th>是否生产常用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JDBC 批量（rewriteBatchedStatements / 多值）</td>
+<td>常规业务批量写入（订单/流水）</td>
+<td>✅ 常用</td>
+</tr>
+<tr>
+<td>消息队列异步落库（Kafka→消费端批量）</td>
+<td>高并发写入削峰</td>
+<td>✅ 常用</td>
+</tr>
+<tr>
+<td>INSERT ... ON DUPLICATE KEY UPDATE / REPLACE</td>
+<td>幂等 upsert</td>
+<td>✅ 常用</td>
+</tr>
+<tr>
+<td>LOAD DATA INFILE</td>
+<td>数仓批量导入、数据迁移、离线灌库</td>
+<td>⚠️ 特定场景</td>
+</tr>
+<tr>
+<td>DataX / Flink CDC / mysqldump</td>
+<td>数据迁移、同步</td>
+<td>✅ 数据工程</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>LOAD DATA 生产少用的原因</strong>：① 需服务端本地文件 + <code>secure-file-priv</code> 限制，跨机器（应用与 DB 分离）不现实；② 绕过业务校验/转换逻辑；③ 需 DBA 介入、文件落盘、权限管理，不符合应用流程。</p>
+<p><strong>结论</strong>：LOAD DATA 是"批量装载专用工具"而非通用写入方案。生产常规写入优先 <strong>JDBC 批量</strong>，数据迁移/数仓才用 LOAD DATA 或 DataX 类工具。压测测 LOAD DATA 是为了量化 MySQL 写入理论极限。</p>
+</blockquote>
+<h2 id="_5">五、核心结论（硬件上限 &amp; 拐点）</h2>
+<ol>
+<li><strong>读上限 ≈ 26953 QPS</strong>（并发 32 达峰值），<strong>读拐点在并发 32</strong>：并发超过 32 后吞吐不增反降。</li>
+<li><strong>读写混合上限 ≈ 17957 QPS / 898 TPS</strong>（并发 128 达峰值），<strong>读写拐点在并发 128</strong>：256 时降到 861 TPS。</li>
+<li><strong>纯写上限于并发 256 时 ≈ 13294 QPS / 2215 TPS</strong>（多表分散、锁竞争小，仍在增长），但延迟已失控（avg 114ms、95th 244ms）。</li>
+<li><strong>性能排序（同机）</strong>：只读 2.7万 QPS &gt; 读写混合 1.8万 QPS &gt; 纯写 1.3万 QPS，符合"读快写慢"的硬件特性。</li>
+<li><strong>延迟随并发暴涨</strong>（关键 trade-off）：</li>
+<li>读：并发 32 时 avg 19ms，256 时 avg 163ms（8.6 倍）。</li>
+<li>读写：并发 128 时 avg 141ms，256 时 avg 290ms。</li>
+<li>纯写：并发 128 时 avg 74ms，256 时 avg 114ms。</li>
+<li><strong>硬件瓶颈表现</strong>：低并发下吞吐近线性扩展，达到上限后增长停滞并回落，延迟快速恶化——典型的资源饱和（CPU/锁/刷盘/网络）拐点。</li>
+<li><strong>最大连接数（max_connections=1000）</strong>：压测到并发 256 仍未触及，说明当前瓶颈在 CPU/IO 而非连接数。</li>
+</ol>
+<h2 id="_6">六、容量参考（推算）</h2>
+<p>以并发 32 读峰值 26953 QPS、128 读写 898 TPS、256 纯写 2215 TPS 为基准：
+- <strong>读场景</strong>：单机可支撑约 <strong>2.7 万读 QPS</strong>（再高延迟不可接受）。
+- <strong>写场景（读写混合）</strong>：单机可支撑约 <strong>900 TPS</strong>，超过则延迟显著恶化。
+- <strong>纯写场景</strong>：单机可支撑约 <strong>2000+ TPS</strong>，但需接受较高延迟（avg 100ms+）。
+- <strong>并发建议</strong>：读并发不宜超 32，读写并发不宜超 128；纯写并发可放宽但需权衡延迟。</p>
+<h2 id="_7">七、踩坑记录</h2>
+<ol>
+<li><strong>Docker Hub 不可达</strong>：<code>severalnines/sysbench</code> 无法从 docker.io 拉取，改用 <code>docker.1ms.run</code> 镜像源。</li>
+<li><strong>MySQL 8.4 默认禁用 <code>mysql_native_password</code></strong>：sysbench 客户端基于 mariadb 库不支持 <code>caching_sha2_password</code>。解决：MySQL 加 <code>--mysql-native-password=ON</code>，创建 sbuser 用 native password。</li>
+<li><strong><code>max_prepared_stmt_count</code> 达上限（16382）</strong>：高并发压测累积 prepared statements 报错 1461。解决：<code>SET GLOBAL max_prepared_stmt_count=65536</code>。</li>
+<li><strong>shell 历史污染</strong>：Windows PowerShell 会话反复重放旧命令，改用 <code>.ps1</code> 脚本文件批量执行 + 文件输出结果。</li>
+</ol>
+<h2 id="_8">八、面试简述</h2>
+<blockquote>
+<p><strong>单机 MySQL 硬件上限</strong>（16 表 × 100 万行，8.4）：只读上限约 <strong>2.7 万 QPS</strong>（并发 32 达峰值，之后下降）；读写混合上限约 <strong>17957 QPS / 900 TPS</strong>（并发 128 达峰值）；纯写上限于并发 256 达 <strong>13294 QPS / 2200 TPS</strong>（多表分散仍在增长，但延迟失控 avg 114ms）。性能排序：只读 &gt; 读写混合 &gt; 纯写。拐点后延迟暴增（读 256 并发 avg 163ms），这是典型的资源饱和拐点：低并发近线性扩展，到上限后增长停滞回落。为满足更高吞吐需加索引优化、读写分离（读上限翻倍）、分库分表（横向扩容）。</p>
+<p><strong>写入提速（管道/批量）</strong>：单条 INSERT 仅 111 行/s；多值批量 INSERT 提升到 9.3 万行/s（840x）；LOAD DATA INFILE 达 19 万行/s（1700x）。<strong>同工具 sysbench 严格对比</strong>：同一 lua 脚本仅改 batch_size，batch=1 时 445 行/s → batch=1000 时 17.8 万行/s（快约 400 倍）。生产高吞吐写入应优先批量管道。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

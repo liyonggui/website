@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>my.cnf [mysqld] · 小番茄程序猿</title>
+<meta name="description" content="my.cnf [mysqld] —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>my.cnf [mysqld]</h1>
+  </div>
+  <article class="prose">
+<h2 id="mysqlinnodb">MySQL（InnoDB）事务与锁排查治理手册</h2>
+<blockquote>
+<p>适用环境：生产 <strong>MySQL 8.4.10</strong>（经实测为<strong>裁剪/云版本</strong>——标准 8.4 应有的 <code>idle_transaction_timeout</code> 在本实例报 <code>1193 Unknown system variable</code>，故<strong>所有参数务必先探针确认存在，再 <code>SET PERSIST</code></strong>）。
+本手册覆盖：生产可执行配置基线、事务与锁原理、排查工具箱（可直接粘贴的 SQL）、治理与处置、预防最佳实践。
+整理日期：2026-09-22</p>
+</blockquote>
+<hr />
+<h3 id="_1">目录</h3>
+<ol>
+<li>使用说明与环境判定</li>
+<li>生产常用配置基线（可执行 SQL）</li>
+<li>事务、MVCC 与 undo/purge</li>
+<li>InnoDB 锁体系（含 MDL）</li>
+<li>排查工具箱（可执行 SQL）</li>
+<li>治理与处置（KILL / MDL / 死锁 / 生产红线）</li>
+<li>预防与最佳实践（开发侧 + DBA 侧）</li>
+<li>常见坑与注意事项</li>
+<li>附录：与 KingbaseES/PostgreSQL 对照</li>
+</ol>
+<hr />
+<h2 id="1">1. 使用说明与环境判定</h2>
+<p><strong>三条使用纪律</strong>：</p>
+<ol>
+<li><strong>先探针，再设置</strong>。本实例是裁剪版，别假设「标准 8.4 参数都在」。任何 <code>SET PERSIST</code> 前，先用 <code>SHOW GLOBAL VARIABLES LIKE 'xxx';</code> 或 <code>SELECT @@xxx;</code> 确认存在，否则报 <code>1193</code>。</li>
+<li><strong>动态 vs 只读</strong>。多数超时/日志/事务参数是<strong>动态</strong>的，可 <code>SET PERSIST</code>（写 <code>mysqld-auto.cnf</code>，重启保留）；<code>performance_schema</code>、<code>innodb_buffer_pool_size</code> 之外的部分底层参数、复制架构参数需改 <strong>my.cnf + 重启</strong>。</li>
+<li><strong>生产红线</strong>：为处理单个卡死会话，<strong>绝不重启整库</strong>；<code>SET GLOBAL</code>/<code>SET PERSIST</code> 会影响<strong>新建连接</strong>，改前评估、改后观察。</li>
+</ol>
+<p><strong>权限</strong>：<code>SET PERSIST</code>/<code>SET GLOBAL</code> 需 <code>SYSTEM_VARIABLES_ADMIN</code>（或 SUPER）。云库通常去<strong>控制台「参数设置」</strong>改最稳，不受此限。</p>
+<p><strong>一键体检</strong>（先看现状，再决定配什么）：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">d</span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="err">参数</span><span class="p">,</span>
+<span class="w">       </span><span class="n">IFNULL</span><span class="p">(</span><span class="n">gv</span><span class="p">.</span><span class="n">VARIABLE_VALUE</span><span class="p">,</span><span class="s1">'(不存在)'</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="err">当前值</span><span class="p">,</span>
+<span class="w">       </span><span class="n">d</span><span class="p">.</span><span class="n">default_value</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="err">默认值</span><span class="p">,</span>
+<span class="w">       </span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">gv</span><span class="p">.</span><span class="n">VARIABLE_VALUE</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="s1">'✗ 本build无此参数'</span>
+<span class="w">            </span><span class="k">WHEN</span><span class="w"> </span><span class="n">gv</span><span class="p">.</span><span class="n">VARIABLE_VALUE</span><span class="w"> </span><span class="o">&lt;=&gt;</span><span class="w"> </span><span class="n">d</span><span class="p">.</span><span class="n">default_value</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="s1">'⚠ 未配置(=默认)'</span>
+<span class="w">            </span><span class="k">ELSE</span><span class="w"> </span><span class="s1">'✓ 已配置'</span><span class="w"> </span><span class="k">END</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="err">判定</span>
+<span class="k">FROM</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'lock_wait_timeout'</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="s1">'31536000'</span><span class="w"> </span><span class="n">default_value</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'innodb_lock_wait_timeout'</span><span class="p">,</span><span class="s1">'50'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'max_execution_time'</span><span class="p">,</span><span class="s1">'0'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'wait_timeout'</span><span class="p">,</span><span class="s1">'28800'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'interactive_timeout'</span><span class="p">,</span><span class="s1">'28800'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'slow_query_log'</span><span class="p">,</span><span class="s1">'OFF'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'long_query_time'</span><span class="p">,</span><span class="s1">'10'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'innodb_print_all_deadlocks'</span><span class="p">,</span><span class="s1">'OFF'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'innodb_deadlock_detect'</span><span class="p">,</span><span class="s1">'ON'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'transaction_isolation'</span><span class="p">,</span><span class="s1">'REPEATABLE-READ'</span><span class="w"> </span><span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="s1">'autocommit'</span><span class="p">,</span><span class="s1">'ON'</span>
+<span class="p">)</span><span class="w"> </span><span class="n">d</span>
+<span class="k">LEFT</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">global_variables</span><span class="w"> </span><span class="n">gv</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">gv</span><span class="p">.</span><span class="n">VARIABLE_NAME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">d</span><span class="p">.</span><span class="n">name</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="err">判定</span><span class="p">,</span><span class="w"> </span><span class="n">d</span><span class="p">.</span><span class="n">name</span><span class="p">;</span>
+</code></pre></div>
+
+<blockquote>
+<p>说明：<code>idle_transaction_timeout</code> 系列本 build 无（<code>✗ 本build无此参数</code>），改用第 7 节的「连接池 + 定时 KILL」防空闲事务。</p>
+</blockquote>
+<hr />
+<h2 id="2-sql">2. 生产常用配置基线（可执行 SQL）</h2>
+<blockquote>
+<p>分「安全兜底类（建议直接上）」和「按业务评估类（别盲改）」。数值为通用 OLTP 起点，按实际压测微调。</p>
+</blockquote>
+<h3 id="21-set-persist">2.1 安全兜底类（超时 + 可观测，建议直接 <code>SET PERSIST</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ① 锁等待超时：防「一个长事务/DDL 把后面全拖死」</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">lock_wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60</span><span class="p">;</span><span class="w">              </span><span class="c1">-- 元数据锁(MDL)等锁上限；默认 1 年，必改</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">innodb_lock_wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">15</span><span class="p">;</span><span class="w">       </span><span class="c1">-- 行锁等待上限(秒)；默认 50 偏长</span>
+
+<span class="c1">-- ② 慢查询日志：跑飞/慢 SQL 能被发现的【前提】</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">slow_query_log</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">ON</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">long_query_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">                 </span><span class="c1">-- 超过 1s 记为慢查询</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">log_output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'FILE'</span><span class="p">;</span><span class="w">                 </span><span class="c1">-- 或 'TABLE' 写 mysql.slow_log 便于 SQL 查询</span>
+<span class="c1">-- SET PERSIST slow_query_log_file = '/var/log/mysql/slow.log';  -- 路径按环境，需可写</span>
+
+<span class="c1">-- ③ 死锁留痕：事后能查死锁现场</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">innodb_print_all_deadlocks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">ON</span><span class="p">;</span><span class="w">     </span><span class="c1">-- 所有死锁写入 error log</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">innodb_deadlock_detect</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">ON</span><span class="p">;</span><span class="w">         </span><span class="c1">-- 保持开启（默认 ON）</span>
+
+<span class="c1">-- ④ 空闲连接超时：与连接池 maxLifetime 对齐（本 build 无 idle_transaction_timeout，靠它+池回收兜底）</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="p">;</span><span class="w">                  </span><span class="c1">-- 非交互连接空闲 10min 断开</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">interactive_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="p">;</span><span class="w">           </span><span class="c1">-- 交互连接同上</span>
+</code></pre></div>
+
+<h3 id="22">2.2 按业务评估类（改前务必评估，别盲上）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 隔离级别：RR→RC 可显著减少间隙锁/死锁，但改变幻读与复制语义，需业务确认</span>
+<span class="c1">-- SET PERSIST transaction_isolation = 'READ-COMMITTED';</span>
+<span class="c1">-- 注意：用 RC 时 binlog_format 必须为 ROW（默认即 ROW）。</span>
+
+<span class="c1">-- SELECT 超时（毫秒）：只对 SELECT 生效，会砍掉合法长报表/导出，建议给宽值或只在应用会话设</span>
+<span class="c1">-- SET PERSIST max_execution_time = 300000;</span>
+
+<span class="c1">-- autocommit 保持 ON；应用显式开事务时再 SET autocommit=0，别全局关。</span>
+</code></pre></div>
+
+<h3 id="23-mycnf">2.3 持久化与复制安全（my.cnf 为主，生产强相关，按需核对）</h3>
+<blockquote>
+<p>这些多为<strong>只读/建议 my.cnf</strong> 项，用于「数据不丢 + 主从一致」，不是锁治理，但属生产常用基线，列出供核对：</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="c1"># my.cnf [mysqld]</span>
+<span class="na">innodb_flush_log_at_trx_commit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">1</span><span class="w">   </span><span class="c1"># 1=每次提交刷盘，最安全（双 1 之一）</span>
+<span class="na">sync_binlog</span><span class="w">                </span><span class="o">=</span><span class="w"> </span><span class="s">1</span><span class="w">       </span><span class="c1"># 每次事务刷 binlog（双 1 之一）</span>
+<span class="na">binlog_format</span><span class="w">              </span><span class="o">=</span><span class="w"> </span><span class="s">ROW</span><span class="w">     </span><span class="c1"># 行格式，配 RC/恢复友好</span>
+<span class="na">gtid_mode</span><span class="w">                  </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span><span class="w">      </span><span class="c1"># 若用主从/多源，建议 GTID</span>
+<span class="na">enforce_gtid_consistency</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span>
+<span class="na">log_slave_updates</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span>
+<span class="na">max_connections</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="s">1000</span><span class="w">    </span><span class="c1"># 按实例规格，防连接打满</span>
+<span class="na">performance_schema</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">ON</span><span class="w">      </span><span class="c1"># 排查锁/等待依赖它（改此项需重启）</span>
+</code></pre></div>
+
+<h3 id="24-mdl">2.4 开启 MDL 监控（排查「改表卡死」必备，一次性）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 启用元数据锁采集 instrument，之后才能用 performance_schema.metadata_locks 查 MDL</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">setup_instruments</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">ENABLED</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'YES'</span><span class="p">,</span><span class="w"> </span><span class="n">TIMED</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'YES'</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">NAME</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'wait/lock/metadata/sql/mdl'</span><span class="p">;</span>
+</code></pre></div>
+
+<h3 id="25-1-1193">2.5 一键落地脚本（复制即用，先跑 1 的体检确认无 1193）</h3>
+<div class="codehilite"><pre><span></span><code><span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">lock_wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">innodb_lock_wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">15</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">slow_query_log</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">ON</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">long_query_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">innodb_print_all_deadlocks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">ON</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="p">;</span>
+<span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">interactive_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="p">;</span>
+<span class="k">UPDATE</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">setup_instruments</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">ENABLED</span><span class="o">=</span><span class="s1">'YES'</span><span class="p">,</span><span class="w"> </span><span class="n">TIMED</span><span class="o">=</span><span class="s1">'YES'</span>
+<span class="w">  </span><span class="k">WHERE</span><span class="w"> </span><span class="n">NAME</span><span class="o">=</span><span class="s1">'wait/lock/metadata/sql/mdl'</span><span class="p">;</span>
+</code></pre></div>
+
+<h2 id="26">2.6 参数详解（逐个说明含义）</h2>
+<h3 id="a-set-persist">A. 动态参数（可 <code>SET PERSIST</code>，影响新建连接）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>含义</th>
+<th>默认</th>
+<th>建议</th>
+<th>作用 / 注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lock_wait_timeout</code></td>
+<td>等待<strong>元数据锁(MDL)/表级锁</strong>的最长时间（秒），超时语句报错退出</td>
+<td>31536000（1年）</td>
+<td>60（DDL 会话设 5）</td>
+<td>防「ALTER 无限期卡住」的头号开关。过小会误杀正常等锁语句，过大则卡死无界</td>
+</tr>
+<tr>
+<td><code>innodb_lock_wait_timeout</code></td>
+<td>等待 <strong>InnoDB 行锁</strong>的最长时间（秒），超时报 <code>1205</code></td>
+<td>50</td>
+<td>15</td>
+<td>行锁排队上限；配合应用重试</td>
+</tr>
+<tr>
+<td><code>slow_query_log</code></td>
+<td>是否开启<strong>慢查询日志</strong></td>
+<td>OFF</td>
+<td>ON</td>
+<td>发现慢/跑飞 SQL 的前提，不开则一切白搭</td>
+</tr>
+<tr>
+<td><code>long_query_time</code></td>
+<td>执行超过该值（秒，可小数）的语句记入慢日志</td>
+<td>10</td>
+<td>1~2</td>
+<td>阈值越低越敏感，但日志量大</td>
+</tr>
+<tr>
+<td><code>log_output</code></td>
+<td>日志输出目标：<code>FILE</code>/<code>TABLE</code>/<code>NONE</code></td>
+<td>FILE</td>
+<td>FILE 或 TABLE</td>
+<td><code>TABLE</code> 写 <code>mysql.slow_log</code>，可直接用 SQL 查分析</td>
+</tr>
+<tr>
+<td><code>slow_query_log_file</code></td>
+<td><code>FILE</code> 模式下的慢日志文件路径</td>
+<td>(编译默认)</td>
+<td>按环境</td>
+<td>需对 mysql 用户可写</td>
+</tr>
+<tr>
+<td><code>innodb_print_all_deadlocks</code></td>
+<td>ON 时把<strong>所有</strong>死锁写入 error log（默认只留最后一个）</td>
+<td>OFF</td>
+<td>ON</td>
+<td>事后定位死锁现场的关键</td>
+</tr>
+<tr>
+<td><code>innodb_deadlock_detect</code></td>
+<td>ON 时 InnoDB 主动检测死锁并回滚牺牲者；OFF 则靠锁等待超时</td>
+<td>ON</td>
+<td>ON</td>
+<td>一般保持；仅极端热点行场景才评估关闭省开销</td>
+</tr>
+<tr>
+<td><code>wait_timeout</code></td>
+<td><strong>非交互连接</strong>空闲多久被服务端断开（秒）</td>
+<td>28800（8h）</td>
+<td>600</td>
+<td>与连接池 <code>maxLifetime</code> 协调；过小会断正常空闲连接</td>
+</tr>
+<tr>
+<td><code>interactive_timeout</code></td>
+<td><strong>交互式客户端连接</strong>的空闲断开时间（秒）</td>
+<td>28800</td>
+<td>600</td>
+<td>同上，针对交互式会话</td>
+</tr>
+<tr>
+<td><code>transaction_isolation</code></td>
+<td>事务隔离级别</td>
+<td>REPEATABLE-READ</td>
+<td>按业务（RC 可减间隙锁）</td>
+<td>改 RC 会改变幻读/锁语义，<strong>非纯安全项，先评估</strong></td>
+</tr>
+<tr>
+<td><code>max_execution_time</code></td>
+<td><strong>SELECT</strong> 最大执行时间（毫秒），超时中断</td>
+<td>0（不限）</td>
+<td>宽值或会话级</td>
+<td><strong>只对只读 SELECT 生效</strong>，会砍长报表，谨慎</td>
+</tr>
+<tr>
+<td><code>autocommit</code></td>
+<td>每条语句是否自动提交</td>
+<td>ON</td>
+<td>ON</td>
+<td>保持 ON；显式事务用 <code>BEGIN</code></td>
+</tr>
+<tr>
+<td><code>event_scheduler</code></td>
+<td>是否启用事件调度器（跑定时巡检/自动 KILL 用）</td>
+<td>OFF</td>
+<td>ON</td>
+<td>第 7.3 的自动 KILL EVENT 依赖它</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b-mycnf">B. 只读 / my.cnf 参数（多数需重启，属生产基线核对）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>含义</th>
+<th>默认</th>
+<th>建议</th>
+<th>作用 / 注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>innodb_flush_log_at_trx_commit</code></td>
+<td>redo log 刷盘策略：1=每次提交刷盘，2=每秒刷，0=每秒写+刷</td>
+<td>1</td>
+<td>1</td>
+<td>「双 1」之一，=1 最安全（宕机不丢已提交事务）</td>
+</tr>
+<tr>
+<td><code>sync_binlog</code></td>
+<td>binlog 刷盘：1=每次提交刷，N=每 N 次，0=交给 OS</td>
+<td>1</td>
+<td>1</td>
+<td>「双 1」之二，与上者共同保证不丢数据</td>
+</tr>
+<tr>
+<td><code>binlog_format</code></td>
+<td>binlog 格式 ROW/MIXED/STATEMENT</td>
+<td>ROW</td>
+<td>ROW</td>
+<td>ROW 恢复/复制最安全；<strong>用 RC 隔离级别必须 ROW</strong></td>
+</tr>
+<tr>
+<td><code>gtid_mode</code></td>
+<td>全局事务标识，便于主从切换/故障转移</td>
+<td>OFF</td>
+<td>用主从则 ON</td>
+<td>需配 <code>enforce_gtid_consistency=ON</code></td>
+</tr>
+<tr>
+<td><code>enforce_gtid_consistency</code></td>
+<td>禁止与 GTID 不兼容的语句</td>
+<td>OFF</td>
+<td>ON</td>
+<td>配合 gtid_mode</td>
+</tr>
+<tr>
+<td><code>log_slave_updates</code></td>
+<td>从库把自己应用的变更也写进自身 binlog</td>
+<td>OFF</td>
+<td>级联/切换则 ON</td>
+<td>主主/级联复制、故障切换需要</td>
+</tr>
+<tr>
+<td><code>max_connections</code></td>
+<td>最大并发连接数</td>
+<td>151</td>
+<td>按实例规格（如 1000）</td>
+<td>配合连接池上限，防连接打满</td>
+</tr>
+<tr>
+<td><code>performance_schema</code></td>
+<td>性能/锁/等待采集总开关（本手册 5.x 依赖它）</td>
+<td>ON</td>
+<td>ON</td>
+<td><strong>改此项需重启</strong>；关了则 MDL/锁等待视图查不到</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>说明：<code>SET PERSIST</code> 写入 <code>mysqld-auto.cnf</code>，重启后仍生效；<code>SET GLOBAL</code> 只在本次运行期有效、重启丢失。B 组多为只读参数，改 my.cnf 后重启。</p>
+</blockquote>
+<hr />
+<h2 id="3-mvcc-undopurge">3. 事务、MVCC 与 undo/purge</h2>
+<p>InnoDB 用 <strong>MVCC</strong>：每行隐藏 <code>trx_id</code>（最后修改它的事务）和 <code>roll_pointer</code>（指向 undo log 里的旧版本）。一致性读靠 <strong>ReadView</strong>（快照）判断「哪个版本可见」。</p>
+<ul>
+<li><strong>RC（Read Committed）</strong>：每条 <code>SELECT</code> 生成新 ReadView → 能看见别事务已提交的新改动。</li>
+<li><strong>RR（Repeatable Read，默认）</strong>：事务内<strong>第一条快照读</strong>生成 ReadView 并复用 → 全程可重复读；配合<strong>间隙锁/next-key 锁</strong>防幻读。</li>
+<li><strong>当前读</strong>（<code>SELECT ... FOR UPDATE / LOCK IN SHARE MODE</code>、<code>UPDATE</code>、<code>DELETE</code>）读最新版本并<strong>加锁</strong>；<strong>快照读</strong>（普通 <code>SELECT</code>）不加锁、读 undo 里的历史版本。</li>
+</ul>
+<p><strong>undo / purge 与长事务</strong>：修改产生的旧版本放 undo log，由 <strong>purge 线程</strong>在「没有任何 ReadView 还需要它」时回收。<strong>一个长事务会把 ReadView 钉在很老的位置</strong>，导致：</p>
+<ul>
+<li>undo 无法清理 → <strong>History List Length 飙升</strong>、回滚段膨胀、purge 追不上；</li>
+<li>主从架构下放大<strong>复制延迟</strong>；</li>
+<li>极端情况影响性能与空间。</li>
+</ul>
+<blockquote>
+<p>治理要点同 PG：<strong>长事务是万恶之源</strong>，靠「短事务 + 及时提交 + 超时兜底 + 定时巡检 KILL」。本 build 无 <code>idle_transaction_timeout</code>，见第 7 节替代方案。</p>
+</blockquote>
+<p><strong>两类「事务挂着」</strong>（处置与预防都不同）：</p>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>特征</th>
+<th>危害</th>
+<th>兜底手段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>跑飞的查询</td>
+<td><code>innodb_trx.trx_query</code> 有内容、<code>processlist</code> 非 Sleep</td>
+<td>占资源、钉住 ReadView</td>
+<td><code>max_execution_time</code>(仅SELECT) + 慢日志发现 + <code>KILL</code></td>
+</tr>
+<tr>
+<td>空闲未提交事务</td>
+<td><code>innodb_trx</code> 有记录但 <code>trx_query</code> 为 NULL、<code>trx_started</code> 很旧、连接 <code>Sleep</code></td>
+<td>钉住 ReadView、占连接</td>
+<td>连接池 <code>maxLifetime</code> + <code>wait_timeout</code> + 定时 <code>KILL</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-innodb-mdl">4. InnoDB 锁体系（含 MDL）</h2>
+<h3 id="41">4.1 锁的分类（由粗到细）</h3>
+<ul>
+<li><strong>全局锁</strong>：<code>FLUSH TABLES WITH READ LOCK</code>（全库只读，做逻辑备份用）、<code>LOCK INSTANCE FOR BACKUP</code>。</li>
+<li><strong>元数据锁 MDL</strong>：<strong>任何访问表的语句自动加</strong>，无需显式声明。DML/查询加 <strong>MDL 读锁（SHARED_READ/WRITE）</strong>，DDL 加 <strong>MDL 写锁（EXCLUSIVE）</strong>。读写互斥 → <strong>一条未提交的长事务/长查询会持有 MDL 读锁，把 <code>ALTER/DROP</code> 挡在 <code>Waiting for table metadata lock</code></strong>，且 MDL 有排队优先，会连带堵死后续所有访问该表的语句（<strong>「改不了表」的头号原因</strong>）。</li>
+<li><strong>表级锁</strong>：<code>LOCK TABLES ... READ/WRITE</code>、意向锁 <strong>IS/IX</strong>（InnoDB 行锁与表锁共存的协议）、AUTO-INC 锁（自增分配，受 <code>innodb_autoinc_lock_mode</code> 影响）。</li>
+<li><strong>InnoDB 行级锁</strong>（加在索引记录上）：</li>
+<li><strong>记录锁 Record Lock</strong>：锁单行（S/X）。</li>
+<li><strong>间隙锁 Gap Lock</strong>：锁索引记录之间的<strong>间隙</strong>（仅 RR），防插入幻读。</li>
+<li><strong>Next-Key Lock</strong>：记录锁 + 其前间隙，RR 默认加锁单位。</li>
+<li><strong>插入意向锁 Insert Intention</strong>：<code>INSERT</code> 前的特殊间隙锁，与 Gap/Next-Key 冲突 → 这是「<strong>没命中索引的 UPDATE/DELETE 会锁很大范围甚至近似锁表</strong>」的根源。</li>
+</ul>
+<h3 id="42">4.2 谁与谁冲突（速记）</h3>
+<ul>
+<li><strong>MDL</strong>：读 vs 读共存；读 vs 写互斥；写 vs 一切互斥。→ 长事务(持读) 挡 DDL(要写)。</li>
+<li><strong>行锁 S/X</strong>：S 与 S 兼容；S 与 X、X 与 X 互斥。</li>
+<li><strong>间隙锁</strong>：只与「插入意向锁」冲突；<strong>间隙锁之间互相兼容</strong>（两个事务可锁同一间隙，为死锁埋雷）。</li>
+<li><strong>隔离级别影响</strong>：RC 基本无间隙锁（死锁更少、并发更高）；RR 用 next-key/间隙锁防幻读（更易死锁）。</li>
+</ul>
+<h3 id="43">4.3 死锁与等待</h3>
+<ul>
+<li><strong>死锁</strong>：两事务互相持有对方要的锁成环。InnoDB 靠 <code>innodb_deadlock_detect</code>（默认 ON）<strong>即时检测</strong>并回滚代价小的一个，报 <code>ERROR 1213 (40001) Deadlock found</code>。</li>
+<li><strong>锁等待超时</strong>：行锁 <code>innodb_lock_wait_timeout</code>（默认 50s，报 <code>ERROR 1205 Lock wait timeout exceeded</code>）；MDL/表锁 <code>lock_wait_timeout</code>。</li>
+<li>开启 <code>innodb_print_all_deadlocks=ON</code> 后，死锁现场写入 error log，可事后定位是哪两条 SQL。</li>
+</ul>
+<hr />
+<h2 id="5-sql">5. 排查工具箱（可执行 SQL）</h2>
+<blockquote>
+<p>8.4 用 <code>performance_schema.data_locks / data_lock_waits</code>（旧的 <code>information_schema.INNODB_LOCKS/WAITS</code> 已移除）。<code>sys</code> 库视图最直观，若没装 sys 则用底表版。</p>
+</blockquote>
+<p><strong>5.1 看会话 / 找卡住的语句</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 非 Sleep 或执行超 60s 的会话</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="k">user</span><span class="p">,</span><span class="w"> </span><span class="k">host</span><span class="p">,</span><span class="w"> </span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">command</span><span class="p">,</span><span class="w"> </span><span class="k">time</span><span class="p">,</span><span class="w"> </span><span class="k">state</span><span class="p">,</span><span class="w"> </span><span class="k">LEFT</span><span class="p">(</span><span class="n">info</span><span class="p">,</span><span class="mi">100</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">query</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">processlist</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">command</span><span class="w"> </span><span class="o">&lt;&gt;</span><span class="w"> </span><span class="s1">'Sleep'</span><span class="w"> </span><span class="k">OR</span><span class="w"> </span><span class="k">time</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">60</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="k">time</span><span class="w"> </span><span class="k">DESC</span><span class="p">;</span>
+
+<span class="c1">-- 直接揪出被 MDL 卡住的 DDL</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="k">user</span><span class="p">,</span><span class="w"> </span><span class="k">time</span><span class="p">,</span><span class="w"> </span><span class="k">state</span><span class="p">,</span><span class="w"> </span><span class="k">LEFT</span><span class="p">(</span><span class="n">info</span><span class="p">,</span><span class="mi">100</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">query</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">processlist</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="k">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'Waiting for table metadata lock'</span><span class="p">;</span>
+</code></pre></div>
+
+<p><strong>5.2 看运行中的事务（长事务定位）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">trx_id</span><span class="p">,</span><span class="w"> </span><span class="n">trx_state</span><span class="p">,</span><span class="w"> </span><span class="n">trx_started</span><span class="p">,</span>
+<span class="w">       </span><span class="n">TIMESTAMPDIFF</span><span class="p">(</span><span class="k">SECOND</span><span class="p">,</span><span class="w"> </span><span class="n">trx_started</span><span class="p">,</span><span class="w"> </span><span class="n">NOW</span><span class="p">())</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">duration_s</span><span class="p">,</span>
+<span class="w">       </span><span class="n">trx_mysql_thread_id</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">processlist_id</span><span class="p">,</span>
+<span class="w">       </span><span class="n">trx_rows_modified</span><span class="p">,</span><span class="w"> </span><span class="n">trx_isolation_level</span><span class="p">,</span><span class="w"> </span><span class="k">LEFT</span><span class="p">(</span><span class="n">trx_query</span><span class="p">,</span><span class="mi">100</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">query</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_trx</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">trx_started</span><span class="p">;</span><span class="w">   </span><span class="c1">-- 最老的在最上；trx_query 为 NULL 多为「空闲未提交事务」</span>
+</code></pre></div>
+
+<p><strong>5.3 行锁等待链：谁挡谁</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">trx_mysql_thread_id</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">waiting_pid</span><span class="p">,</span>
+<span class="w">       </span><span class="k">LEFT</span><span class="p">(</span><span class="n">r</span><span class="p">.</span><span class="n">trx_query</span><span class="p">,</span><span class="mi">80</span><span class="p">)</span><span class="w">  </span><span class="k">AS</span><span class="w"> </span><span class="n">waiting_query</span><span class="p">,</span>
+<span class="w">       </span><span class="n">b</span><span class="p">.</span><span class="n">trx_mysql_thread_id</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">blocking_pid</span><span class="p">,</span>
+<span class="w">       </span><span class="k">LEFT</span><span class="p">(</span><span class="n">b</span><span class="p">.</span><span class="n">trx_query</span><span class="p">,</span><span class="mi">80</span><span class="p">)</span><span class="w">  </span><span class="k">AS</span><span class="w"> </span><span class="n">blocking_query</span><span class="p">,</span>
+<span class="w">       </span><span class="n">b</span><span class="p">.</span><span class="n">trx_started</span><span class="w">         </span><span class="k">AS</span><span class="w"> </span><span class="n">blocking_started</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">data_lock_waits</span><span class="w"> </span><span class="n">w</span>
+<span class="k">JOIN</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_trx</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">trx_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">requesting_engine_transaction_id</span>
+<span class="k">JOIN</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_trx</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">b</span><span class="p">.</span><span class="n">trx_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">blocking_engine_transaction_id</span><span class="p">;</span>
+
+<span class="c1">-- 或用 sys 视图（更直观，含建议的 kill 语句）</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">sys</span><span class="p">.</span><span class="n">innodb_lock_waits</span><span class="p">;</span>
+</code></pre></div>
+
+<p><strong>5.4 看具体锁与持锁对象</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 某事务持/等的锁（8.4）</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">engine_transaction_id</span><span class="p">,</span><span class="w"> </span><span class="n">thread_id</span><span class="p">,</span><span class="w"> </span><span class="n">object_schema</span><span class="p">,</span><span class="w"> </span><span class="n">object_name</span><span class="p">,</span>
+<span class="w">       </span><span class="n">index_name</span><span class="p">,</span><span class="w"> </span><span class="n">lock_type</span><span class="p">,</span><span class="w"> </span><span class="n">lock_mode</span><span class="p">,</span><span class="w"> </span><span class="n">lock_status</span><span class="p">,</span><span class="w"> </span><span class="n">lock_data</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">data_locks</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">object_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'你的表名'</span><span class="p">;</span>
+</code></pre></div>
+
+<p><strong>5.5 元数据锁 MDL 全景（需先执行 2.4 启用 instrument）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">object_schema</span><span class="p">,</span><span class="w"> </span><span class="n">object_name</span><span class="p">,</span><span class="w"> </span><span class="n">lock_type</span><span class="p">,</span><span class="w"> </span><span class="n">lock_duration</span><span class="p">,</span><span class="w"> </span><span class="n">lock_status</span><span class="p">,</span><span class="w"> </span><span class="n">owner_thread_id</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">metadata_locks</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">object_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'TABLE'</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">object_schema</span><span class="p">,</span><span class="w"> </span><span class="n">object_name</span><span class="p">,</span><span class="w"> </span><span class="n">lock_status</span><span class="p">;</span>
+
+<span class="c1">-- 找出「持 MDL 读锁不放、正挡住 DDL」的元凶线程</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">ml</span><span class="p">.</span><span class="n">object_name</span><span class="p">,</span><span class="w"> </span><span class="n">ml</span><span class="p">.</span><span class="n">lock_type</span><span class="p">,</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">processlist_id</span><span class="p">,</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">processlist_user</span><span class="p">,</span>
+<span class="w">       </span><span class="n">t</span><span class="p">.</span><span class="n">processlist_command</span><span class="p">,</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">processlist_time</span><span class="p">,</span><span class="w"> </span><span class="k">LEFT</span><span class="p">(</span><span class="n">t</span><span class="p">.</span><span class="n">processlist_info</span><span class="p">,</span><span class="mi">80</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">query</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">metadata_locks</span><span class="w"> </span><span class="n">ml</span>
+<span class="k">JOIN</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">threads</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">thread_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ml</span><span class="p">.</span><span class="n">owner_thread_id</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">ml</span><span class="p">.</span><span class="n">object_type</span><span class="o">=</span><span class="s1">'TABLE'</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">ml</span><span class="p">.</span><span class="n">lock_status</span><span class="o">=</span><span class="s1">'GRANTED'</span>
+<span class="w">  </span><span class="k">AND</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="n">processlist_id</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">;</span>
+</code></pre></div>
+
+<p><strong>5.6 死锁现场</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">SHOW</span><span class="w"> </span><span class="n">ENGINE</span><span class="w"> </span><span class="n">INNODB</span><span class="w"> </span><span class="n">STATUS</span><span class="err">\</span><span class="k">G</span><span class="w">   </span><span class="c1">-- 看 LATEST DETECTED DEADLOCK 段</span>
+<span class="c1">-- 或（开启 innodb_print_all_deadlocks 后）直接查 error log</span>
+</code></pre></div>
+
+<p><strong>5.7 一键巡检（长事务 + 空闲事务 + 锁等待 汇总）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="s1">'长事务'</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">kind</span><span class="p">,</span><span class="w"> </span><span class="n">trx_mysql_thread_id</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">pid</span><span class="p">,</span><span class="w"> </span><span class="n">trx_started</span><span class="p">,</span>
+<span class="w">       </span><span class="n">TIMESTAMPDIFF</span><span class="p">(</span><span class="k">SECOND</span><span class="p">,</span><span class="n">trx_started</span><span class="p">,</span><span class="n">NOW</span><span class="p">())</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">age_s</span><span class="p">,</span>
+<span class="w">       </span><span class="k">IF</span><span class="p">(</span><span class="n">trx_query</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span><span class="s1">'空闲未提交'</span><span class="p">,</span><span class="s1">'执行中'</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">sub</span><span class="p">,</span><span class="w"> </span><span class="k">LEFT</span><span class="p">(</span><span class="n">trx_query</span><span class="p">,</span><span class="mi">80</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">query</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_trx</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">TIMESTAMPDIFF</span><span class="p">(</span><span class="k">SECOND</span><span class="p">,</span><span class="n">trx_started</span><span class="p">,</span><span class="n">NOW</span><span class="p">())</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">300</span>
+<span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="s1">'锁等待'</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">trx_mysql_thread_id</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">trx_started</span><span class="p">,</span>
+<span class="w">       </span><span class="n">TIMESTAMPDIFF</span><span class="p">(</span><span class="k">SECOND</span><span class="p">,</span><span class="n">r</span><span class="p">.</span><span class="n">trx_started</span><span class="p">,</span><span class="n">NOW</span><span class="p">()),</span><span class="w"> </span><span class="s1">'被阻塞'</span><span class="p">,</span><span class="w"> </span><span class="k">LEFT</span><span class="p">(</span><span class="n">r</span><span class="p">.</span><span class="n">trx_query</span><span class="p">,</span><span class="mi">80</span><span class="p">)</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">performance_schema</span><span class="p">.</span><span class="n">data_lock_waits</span><span class="w"> </span><span class="n">w</span>
+<span class="k">JOIN</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_trx</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">trx_id</span><span class="o">=</span><span class="n">w</span><span class="p">.</span><span class="n">requesting_engine_transaction_id</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">age_s</span><span class="w"> </span><span class="k">DESC</span><span class="p">;</span>
+</code></pre></div>
+
+<h2 id="6-kill-mdl">6. 治理与处置（KILL / MDL / 死锁 / 生产红线）</h2>
+<p><strong>6.1 终止会话</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="n">KILL</span><span class="w"> </span><span class="mi">12345</span><span class="p">;</span><span class="w">        </span><span class="c1">-- 断开连接并回滚其事务（相当于 pg_terminate_backend）</span>
+<span class="n">KILL</span><span class="w"> </span><span class="n">QUERY</span><span class="w"> </span><span class="mi">12345</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 只中断当前语句，保留连接（相当于 pg_cancel_backend）</span>
+</code></pre></div>
+
+<ul>
+<li>杀自己的连接无需特权；杀别人的需 <code>CONNECTION_ADMIN</code>（或 SUPER）。</li>
+<li><strong><code>KILL</code> 也可能「杀不动」</strong>：若线程正卡在引擎底层 I/O 或大事务回滚中，<code>processlist</code> 会显示 <code>Killed</code> 状态但迟迟不退出——这是回滚在进行，<strong>别反复 KILL、别重启</strong>，等回滚完成。大事务回滚耗时与其改动量成正比。</li>
+</ul>
+<p><strong>6.2 「改不了表」= MDL 阻塞的标准处置流程</strong></p>
+<ol>
+<li>用 5.1 找到 <code>Waiting for table metadata lock</code> 的那条 DDL（它是受害者）。</li>
+<li>用 5.5 找出<strong>持有该表 MDL 读锁</strong>的元凶 <code>processlist_id</code>（通常是某个长查询或未提交事务）。</li>
+<li><code>KILL &lt;元凶id&gt;;</code> → MDL 释放 → 排队的 DDL 立即继续。</li>
+<li>若 DDL 后面已堆了一串查询（MDL 排队雪崩），杀掉元凶后整条链会瞬间疏通。</li>
+</ol>
+<p><strong>6.3 死锁处置</strong></p>
+<ul>
+<li>偶发死锁：InnoDB 已自动回滚一方，应用<strong>捕获 1213 做退避重试</strong>即可，不必人工。</li>
+<li>频发死锁：开 <code>innodb_print_all_deadlocks</code>，从 error log 看是哪两条 SQL 成环 → 通常靠「<strong>统一加锁顺序</strong>、让 <code>UPDATE/DELETE</code> <strong>走索引精确命中</strong>缩小锁范围、必要时 RR→RC」根治。</li>
+</ul>
+<p><strong>6.4 生产红线</strong></p>
+<ul>
+<li><strong>绝不为杀一个会话重启整库</strong>（打断真实业务）。重启只用于可丢数据/无业务场景。</li>
+<li><code>KILL</code> 前用 5.2/5.5 核对来源（<code>user</code>/<code>host</code>/<code>db</code>/<code>query</code>），确认是元凶而非误伤。</li>
+<li>强杀<strong>大写入事务</strong>会触发回滚，回滚期间负载可能短暂升高——只读事务无此顾虑。</li>
+<li>别在业务高峰跑 <code>SHOW ENGINE INNODB STATUS</code> 之外的重诊断；<code>performance_schema</code> 查询相对轻。</li>
+</ul>
+<hr />
+<h2 id="7">7. 预防与最佳实践</h2>
+<p><strong>7.1 开发侧（Java 后端重点）</strong></p>
+<ul>
+<li><strong>事务尽量短</strong>：<code>@Transactional</code> 方法里<strong>不要夹 RPC / HTTP / Redis / MQ / 文件 IO / 慢计算</strong>——这些把事务撑长，直接放大锁持有与 undo 无法回收。把外部调用挪到事务外。</li>
+<li><strong>及时提交/回滚</strong>：异常路径别把连接留在「开事务未提交」；确保 try/finally 或框架代理一定走到 commit/rollback。</li>
+<li><strong><code>UPDATE/DELETE</code> 必须走索引</strong>：没命中索引会退化成大范围 next-key 锁甚至近似锁表，是死锁与「改不动」的高发原因。上线前 <code>EXPLAIN</code> 确认 <code>key</code> 命中。</li>
+<li><strong><code>SELECT ... FOR UPDATE</code> 谨慎</strong>：锁行且持到事务结束，务必索引命中 + 短事务；考虑用乐观锁（版本号）替代部分悲观锁场景。</li>
+<li><strong>批量写分批提交</strong>：百万级 <code>INSERT/UPDATE</code> 拆小批、每批一提交，别在一个事务里跑到底（undo 暴涨 + 回滚代价大）。</li>
+<li><strong>连接池配置</strong>：HikariCP <code>maxLifetime</code> <strong>小于</strong> MySQL <code>wait_timeout</code>（如 600s → 池设 10min 内），配 <code>idleTimeout</code>、<code>connectionTimeout</code>；避免池里连接被服务端单方面 kill 后仍被复用报「通信链路失败」。</li>
+<li><strong>死锁/锁超时重试</strong>：对 <code>1213</code>(deadlock)、<code>1205</code>(lock wait timeout) 做<strong>有限次指数退避重试</strong>。</li>
+</ul>
+<p><strong>7.2 DDL / 变更</strong></p>
+<ul>
+<li>改结构前先 <code>SET SESSION lock_wait_timeout = 5;</code>，拿不到 MDL 快速失败、错峰重试，<strong>别让它排队堵死全表</strong>（本次教训核心）。</li>
+<li>大表结构变更用 <strong><code>gh-ost</code> 或 <code>pt-online-schema-change</code></strong> 在线改，避免 <code>ALTER</code> 长时间持 MDL 写锁。</li>
+<li>建索引用 <code>ALGORITHM=INPLACE, LOCK=NONE</code> 的在线 DDL（8.0 多数场景默认支持），仍会有短暂的 MDL 切换，避开高峰。</li>
+</ul>
+<p><strong>7.3 DBA / 监控侧</strong></p>
+<ul>
+<li><strong>定时巡检长事务/空闲事务</strong>（第 5.7 的 SQL），超阈值（如 &gt;5min）告警到运维群，把「挂两天」扼杀在「挂十分钟」。</li>
+<li><strong>本 build 无 <code>idle_transaction_timeout</code> 的替代方案</strong>——用 MySQL Event（或外部 crontab）定期自动 KILL 空闲未提交事务：</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 需 event_scheduler=ON（SET PERSIST event_scheduler=ON; 或 my.cnf）</span>
+<span class="k">DELIMITER</span><span class="w"> </span><span class="err">$$</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="n">EVENT</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">ev_kill_idle_trx</span>
+<span class="k">ON</span><span class="w"> </span><span class="n">SCHEDULE</span><span class="w"> </span><span class="k">EVERY</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">MINUTE</span>
+<span class="k">DO</span><span class="w"> </span><span class="k">BEGIN</span>
+<span class="w">  </span><span class="k">DECLARE</span><span class="w"> </span><span class="n">done</span><span class="w"> </span><span class="nb">INT</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="k">DECLARE</span><span class="w"> </span><span class="n">v_id</span><span class="w"> </span><span class="nb">BIGINT</span><span class="p">;</span>
+<span class="w">  </span><span class="k">DECLARE</span><span class="w"> </span><span class="k">c</span><span class="w"> </span><span class="k">CURSOR</span><span class="w"> </span><span class="k">FOR</span>
+<span class="w">    </span><span class="k">SELECT</span><span class="w"> </span><span class="n">trx_mysql_thread_id</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_trx</span>
+<span class="w">    </span><span class="k">WHERE</span><span class="w"> </span><span class="n">trx_query</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NULL</span>
+<span class="w">      </span><span class="k">AND</span><span class="w"> </span><span class="n">TIMESTAMPDIFF</span><span class="p">(</span><span class="k">SECOND</span><span class="p">,</span><span class="w"> </span><span class="n">trx_started</span><span class="p">,</span><span class="w"> </span><span class="n">NOW</span><span class="p">())</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">300</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 空闲事务超 5min</span>
+<span class="w">  </span><span class="k">DECLARE</span><span class="w"> </span><span class="k">CONTINUE</span><span class="w"> </span><span class="k">HANDLER</span><span class="w"> </span><span class="k">FOR</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">FOUND</span><span class="w"> </span><span class="k">SET</span><span class="w"> </span><span class="n">done</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">  </span><span class="k">OPEN</span><span class="w"> </span><span class="k">c</span><span class="p">;</span><span class="w"> </span><span class="n">read_loop</span><span class="p">:</span><span class="w"> </span><span class="n">LOOP</span>
+<span class="w">    </span><span class="k">FETCH</span><span class="w"> </span><span class="k">c</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="n">v_id</span><span class="p">;</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="n">done</span><span class="o">=</span><span class="mi">1</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="n">LEAVE</span><span class="w"> </span><span class="n">read_loop</span><span class="p">;</span><span class="w"> </span><span class="k">END</span><span class="w"> </span><span class="k">IF</span><span class="p">;</span>
+<span class="w">    </span><span class="k">SET</span><span class="w"> </span><span class="o">@</span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CONCAT</span><span class="p">(</span><span class="s1">'KILL '</span><span class="p">,</span><span class="w"> </span><span class="n">v_id</span><span class="p">);</span><span class="w"> </span><span class="k">PREPARE</span><span class="w"> </span><span class="n">st</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="o">@</span><span class="n">s</span><span class="p">;</span><span class="w"> </span><span class="k">EXECUTE</span><span class="w"> </span><span class="n">st</span><span class="p">;</span><span class="w"> </span><span class="k">DEALLOCATE</span><span class="w"> </span><span class="k">PREPARE</span><span class="w"> </span><span class="n">st</span><span class="p">;</span>
+<span class="w">  </span><span class="k">END</span><span class="w"> </span><span class="n">LOOP</span><span class="p">;</span><span class="w"> </span><span class="k">CLOSE</span><span class="w"> </span><span class="k">c</span><span class="p">;</span>
+<span class="k">END</span><span class="err">$$</span>
+<span class="k">DELIMITER</span><span class="w"> </span><span class="p">;</span>
+</code></pre></div>
+
+<blockquote>
+<p>⚠ 自动 KILL 有误杀风险：先只「告警」观察一段时间，确认阈值合理再启用自动 KILL；只读快照事务通常不在 <code>innodb_trx</code> 里，影响面小。
+- <strong>慢查询定期分析</strong>：<code>pt-query-digest</code> 跑慢日志，抓 Top SQL 优化。
+- <strong>autovacuum 类比项</strong>：InnoDB 无 autovacuum，但要盯 <strong>History List Length</strong>（<code>SHOW ENGINE INNODB STATUS</code> 的 TRANSACTIONS 段），持续升高＝有长事务拖住 purge。</p>
+</blockquote>
+<hr />
+<h2 id="8">8. 常见坑与注意事项</h2>
+<ul>
+<li><strong>本实例是裁剪/云版</strong>：<code>idle_transaction_timeout</code> 等标准参数可能缺失（<code>1193</code>）。<strong>任何参数先探针再设</strong>，别照搬标准 8.4 清单。</li>
+<li><strong><code>max_execution_time</code> 只管 <code>SELECT</code></strong>，<strong>拦不住跑飞的 <code>UPDATE/DELETE</code></strong>——大 DML 无语句级超时兜底，只能靠「走索引 + 分批 + <code>KILL</code>」。</li>
+<li><strong><code>lock_wait_timeout</code> 默认 1 年</strong>＝「ALTER 无限期卡住」的元凶，务必调小（如 60s，DDL 会话级设 5s）。</li>
+<li><strong>MDL 排队优先</strong>：一个等独占锁的 DDL 会把后续所有该表查询堵死，雪崩比 PG 更突然——先杀元凶再谈优化。</li>
+<li><strong>间隙锁 / next-key</strong>（RR 特有）是死锁高发源，PG 基本没有；<code>UPDATE</code> 不走索引会锁一大片。</li>
+<li><strong><code>KILL</code> 显示 <code>Killed</code> 却不退</strong>＝大事务正在回滚，耐心等，别反复 KILL、别重启。</li>
+<li><strong>长事务 × 复制</strong>：主从下长事务/大 DDL 放大复制延迟，且从库 <code>START SLAVE UNTIL</code>/GTID 恢复更麻烦。</li>
+<li><strong><code>performance_schema</code> 关闭时</strong>很多锁/等待视图查不到（本手册 5.x 依赖它），确认 <code>performance_schema=ON</code>。</li>
+<li><strong><code>SHOW PROCESSLIST</code> 默认截断 <code>info</code></strong>，看完整 SQL 用 <code>SHOW FULL PROCESSLIST</code> 或查 <code>information_schema.processlist</code> / <code>performance_schema.threads</code>。</li>
+<li><strong>权限受限账号</strong>：改 <code>SET PERSIST</code>/<code>GLOBAL</code>、<code>KILL</code> 别人的连接都需相应权限；云库优先走控制台参数与会话管理。</li>
+</ul>
+<hr />
+<h2 id="9-kingbasees-postgresql">9. 附录：与 KingbaseES / PostgreSQL 对照</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>MySQL (InnoDB)</th>
+<th>KingbaseES / PostgreSQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>默认隔离级别</td>
+<td>REPEATABLE-READ</td>
+<td>READ COMMITTED</td>
+</tr>
+<tr>
+<td>普通 SELECT</td>
+<td>不加行/表锁，但持 <strong>MDL 读锁</strong></td>
+<td>加 <code>AccessShareLock</code>（挡 DDL）</td>
+</tr>
+<tr>
+<td>锁体系</td>
+<td>意向锁 + 记录/间隙/next-key 行锁 + MDL</td>
+<td>8 级表锁 + 行锁(xmax) + 咨询锁</td>
+</tr>
+<tr>
+<td>长事务危害</td>
+<td>钉住 ReadView → undo/purge 膨胀、HLL 升高、复制延迟</td>
+<td>拖住 xmin → autovacuum 清不动 → 表膨胀、xid 回卷、复制槽 WAL 堆积</td>
+</tr>
+<tr>
+<td>看会话</td>
+<td><code>SHOW PROCESSLIST</code> / <code>information_schema.processlist</code></td>
+<td><code>pg_stat_activity</code></td>
+</tr>
+<tr>
+<td>看事务</td>
+<td><code>information_schema.innodb_trx</code></td>
+<td><code>pg_stat_activity.xact_start</code></td>
+</tr>
+<tr>
+<td>看锁等待</td>
+<td><code>performance_schema.data_lock_waits</code> / <code>sys.innodb_lock_waits</code></td>
+<td><code>pg_locks.granted=false</code></td>
+</tr>
+<tr>
+<td>看 MDL</td>
+<td><code>performance_schema.metadata_locks</code></td>
+<td>（PG 无 MDL，用表锁 <code>AccessShareLock</code> 表达同类阻塞）</td>
+</tr>
+<tr>
+<td>看死锁</td>
+<td><code>SHOW ENGINE INNODB STATUS</code> + error log</td>
+<td>日志 + <code>pg_stat_activity</code></td>
+</tr>
+<tr>
+<td>杀会话</td>
+<td><code>KILL &lt;id&gt;</code> / <code>KILL QUERY &lt;id&gt;</code></td>
+<td><code>pg_terminate_backend</code> / <code>pg_cancel_backend</code></td>
+</tr>
+<tr>
+<td>SELECT 超时</td>
+<td><code>max_execution_time</code>(仅SELECT)</td>
+<td><code>statement_timeout</code>(含DML/DDL)</td>
+</tr>
+<tr>
+<td>行锁等待</td>
+<td><code>innodb_lock_wait_timeout</code></td>
+<td><code>lock_timeout</code></td>
+</tr>
+<tr>
+<td>MDL 等待</td>
+<td><code>lock_wait_timeout</code></td>
+<td><code>lock_timeout</code></td>
+</tr>
+<tr>
+<td>空闲事务超时</td>
+<td><code>idle_transaction_timeout</code>(本build无)</td>
+<td><code>idle_in_transaction_session_timeout</code></td>
+</tr>
+<tr>
+<td>后台回收</td>
+<td>InnoDB purge；收缩靠 <code>OPTIMIZE TABLE</code>/重建</td>
+<td>autovacuum 自动</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>详细 PG/KingbaseES 侧见同目录《KingbaseES-锁与事务排查手册.md》。</p>
+</blockquote>
+<hr />
+<blockquote>
+<p>维护说明：参数取值按实际业务量级压测后微调，先分档、后迭代；本 build 缺失的参数以探针结果为准。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

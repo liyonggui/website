@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI Agent 项目集评估与改进建议 · 小番茄程序猿</title>
+<meta name="description" content="AI Agent 项目集评估与改进建议 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>AI Agent 项目集评估与改进建议</h1>
+  </div>
+  <article class="prose">
+<h1 id="ai-agent">AI Agent 项目集评估与改进建议</h1>
+<blockquote>
+<p>评估范围：<code>D:\ai-agent-project</code> 根目录下的 Agent 教学项目、可观测性项目和 <code>rdx-bx-backend</code> 业务后端沙盒。<br />
+评估时间：2026-09-20<br />
+评估方式：目录结构、README、Maven 配置、核心源码、测试目录、运行日志、Docker Compose 与 Git 忽略规则的静态检查。</p>
+</blockquote>
+<h2 id="1">1. 结论摘要</h2>
+<p>这是一个以“后端工程师转型 AI Agent”为主线的实验型项目集，技术路线比较完整：</p>
+<div class="codehilite"><pre><span></span><code>最小 Agent
+  -&gt; RAG
+  -&gt; 真实业务工具
+  -&gt; Agent 工程化治理
+  -&gt; MCP Server / Client
+  -&gt; 自动评测
+  -&gt; OpenTelemetry / Langfuse 可观测
+</code></pre></div>
+
+<p>项目最大的价值不是单独实现了某个模型调用，而是展示了从“能调用模型”到“能接入真实业务、能治理、能评测、能观测”的完整思路。</p>
+<p>综合评价如下：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th style="text-align: right;">评价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>学习路径设计</td>
+<td style="text-align: right;">9/10</td>
+</tr>
+<tr>
+<td>技术覆盖广度</td>
+<td style="text-align: right;">8.5/10</td>
+</tr>
+<tr>
+<td>Agent 工程化意识</td>
+<td style="text-align: right;">8/10</td>
+</tr>
+<tr>
+<td>评测意识</td>
+<td style="text-align: right;">8.5/10</td>
+</tr>
+<tr>
+<td>代码可维护性</td>
+<td style="text-align: right;">6.5/10</td>
+</tr>
+<tr>
+<td>测试与自动化</td>
+<td style="text-align: right;">5/10</td>
+</tr>
+<tr>
+<td>生产安全性</td>
+<td style="text-align: right;">3/10</td>
+</tr>
+<tr>
+<td>生产可部署性</td>
+<td style="text-align: right;">5.5/10</td>
+</tr>
+</tbody>
+</table>
+<p>当前最重要的改进方向不是继续增加框架，而是优先解决：</p>
+<ol>
+<li>配置和密钥安全；</li>
+<li><code>phase5-mcp-client</code> 工具轨迹记录的并发正确性；</li>
+<li>Agent 子项目自动化测试不足；</li>
+<li>构建产物、日志和运行数据的仓库卫生；</li>
+<li>实验代码与生产代码的边界。</li>
+</ol>
+<h2 id="2">2. 项目清单与定位</h2>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>定位</th>
+<th>主要能力</th>
+<th style="text-align: right;">综合评价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>phase1-minimal-agent</code></td>
+<td>最小 Agent</td>
+<td>工具调用循环、计算器、订单查询、同步与流式输出</td>
+<td style="text-align: right;">7.5/10</td>
+</tr>
+<tr>
+<td><code>phase2-rag</code></td>
+<td>RAG 实验</td>
+<td>Embedding、向量检索、引用回答、RAG 评测、rerank 对比</td>
+<td style="text-align: right;">8/10</td>
+</tr>
+<tr>
+<td><code>phase3-agent</code></td>
+<td>真实业务 Agent</td>
+<td>业务 HTTP 工具、多轮记忆、SSE</td>
+<td style="text-align: right;">8/10</td>
+</tr>
+<tr>
+<td><code>phase4-agent-ops</code></td>
+<td>Agent 工程化</td>
+<td>缓存、熔断、降级、舱壁、指标、k6 压测</td>
+<td style="text-align: right;">8.5/10</td>
+</tr>
+<tr>
+<td><code>phase5-mcp-server</code></td>
+<td>MCP 服务端</td>
+<td>将业务查询接口封装为 MCP tools</td>
+<td style="text-align: right;">8/10</td>
+</tr>
+<tr>
+<td><code>phase5-mcp-client</code></td>
+<td>MCP Agent 客户端</td>
+<td>动态发现工具、多轮记忆、工具轨迹、OTel</td>
+<td style="text-align: right;">8/10</td>
+</tr>
+<tr>
+<td><code>phase6-eval</code></td>
+<td>Agent 评测</td>
+<td>keyword、trajectory、LLM-as-judge、CI 门禁</td>
+<td style="text-align: right;">8.5/10</td>
+</tr>
+<tr>
+<td><code>observability</code></td>
+<td>可观测性</td>
+<td>OpenTelemetry、Langfuse、Agent span</td>
+<td style="text-align: right;">7.5/10</td>
+</tr>
+<tr>
+<td><code>rdx-bx-backend</code></td>
+<td>业务后端沙盒</td>
+<td>BladeX 单体、院校/专业/课程、考试及系统模块</td>
+<td style="text-align: right;">7/10</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 分项目评价</h2>
+<h2 id="31">3.1 根目录和总览文档</h2>
+<p>主要入口：</p>
+<ul>
+<li><a href="./README.md">README.md</a></li>
+<li><a href="./全链路.md">全链路.md</a></li>
+<li><a href="./AI-Agent新手教学.md">AI-Agent新手教学.md</a></li>
+<li><a href="./RAG代码与原理详解.md">RAG代码与原理详解.md</a></li>
+</ul>
+<h3 id="_1">优点</h3>
+<ul>
+<li>阶段划分清楚，能够展示 Agent 能力逐步演进。</li>
+<li><a href="./README.md">README.md</a> 同时包含端口、启动顺序、接口示例和实测基线，实用性较强。</li>
+<li><a href="./全链路.md">全链路.md</a> 能够解释 Agent、MCP、业务后端、数据库之间的关系。</li>
+<li>文档记录了大量真实踩坑，包括 Spring AI 版本差异、MCP 配置、中文请求编码、RAG 指标和 Langfuse 接入问题。</li>
+<li>适合进一步整理为技术博客、面试项目说明或内部学习材料。</li>
+</ul>
+<h3 id="_2">问题</h3>
+<ul>
+<li><a href="./README.en.md">README.en.md</a> 仍是模板内容，包含明显占位信息，影响项目专业度。</li>
+<li>文档大量依赖固定本机路径，换机器后复现成本较高。</li>
+<li>“已实测”主要依赖人工 curl 和历史日志，缺少统一自动验证入口。</li>
+<li>各阶段 Spring Boot / Spring AI 版本存在差异，但没有集中维护兼容性说明。</li>
+<li>根目录同时存在源码、日志、数据库运行数据、构建产物和实验文件，项目边界不够干净。</li>
+</ul>
+<h3 id="_3">建议</h3>
+<ol>
+<li>将根 README 改造成正式项目首页，包含项目定位、架构图、快速开始、安全说明、测试方式和已知限制。</li>
+<li>完善英文 README，或者删除模板文件。</li>
+<li>增加统一 <code>scripts/</code> 目录，提供构建、启动、停止和端到端验证脚本。</li>
+<li>将固定路径改为环境变量，例如 <code>RDX_BACKEND_DIR</code>、<code>MCP_SERVER_URL</code> 和 <code>AGENT_URL</code>。</li>
+<li>增加版本兼容表，明确每个阶段的 JDK、Spring Boot、Spring AI 和 MCP 协议版本。</li>
+</ol>
+<h2 id="32-phase1-minimal-agent">3.2 phase1-minimal-agent</h2>
+<p>项目路径：<a href="./phase1-minimal-agent">phase1-minimal-agent</a></p>
+<h3 id="_4">优点</h3>
+<ul>
+<li><a href="./phase1-minimal-agent/src/main/java/com/example/aiagent/config/AgentConfig.java">AgentConfig.java</a> 结构简单，适合作为入门示例。</li>
+<li><a href="./phase1-minimal-agent/src/main/java/com/example/aiagent/tool/DemoTools.java">DemoTools.java</a> 使用递归下降解析器计算表达式，没有直接执行脚本。</li>
+<li>工具描述较清晰，体现了工具描述对模型决策的重要性。</li>
+<li>同时提供同步接口和 SSE 流式接口，便于观察工具循环和首字延迟。</li>
+</ul>
+<h3 id="_5">问题</h3>
+<ul>
+<li>配置文件中曾出现直接写入的 DashScope API Key，必须立即撤销和轮换。</li>
+<li>没有输入长度限制、请求超时和统一错误响应。</li>
+<li>订单数据是静态内存 Map，只适合演示。</li>
+<li>没有该项目自己的自动化测试。</li>
+<li>计算器没有显式限制表达式长度和数值范围。</li>
+</ul>
+<h3 id="_6">建议</h3>
+<ul>
+<li>保留项目的最小性，不要在阶段 1 引入过多生产组件。</li>
+<li>为表达式解析器增加单元测试，覆盖优先级、括号、除零、非法字符和一元负号。</li>
+<li>在 Controller 层增加输入校验和长度限制。</li>
+<li>统一使用 <code>${DASHSCOPE_API_KEY}</code>，不允许任何真实 Key 进入仓库。</li>
+</ul>
+<h2 id="33-phase2-rag">3.3 phase2-rag</h2>
+<p>项目路径：<a href="./phase2-rag">phase2-rag</a></p>
+<h3 id="_7">优点</h3>
+<ul>
+<li><a href="./phase2-rag/src/main/java/com/example/rag/ingest/KnowledgeIngestor.java">KnowledgeIngestor.java</a> 展示了 Markdown 切分、Embedding 和向量入库完整链路。</li>
+<li><a href="./phase2-rag/src/main/java/com/example/rag/service/RagService.java">RagService.java</a> 同时提供检索、带引用回答和确定性召回评测。</li>
+<li><a href="./phase2-rag/src/main/java/com/example/rag/service/RagEvalService.java">RagEvalService.java</a> 已经实现 faithfulness、answer relevancy、context precision、context recall 和 rerank 对比。</li>
+<li>文档能够识别 <code>precision@k</code> 在小语料中的指标假象，并尝试使用 MRR、hit@1 和多轮中位数分析。</li>
+<li>已经具备“区分系统问题和量具问题”的评测意识。</li>
+</ul>
+<h3 id="_8">问题</h3>
+<ul>
+<li><code>SimpleVectorStore</code> 是进程内内存存储，重启后需要重新 Embedding。</li>
+<li>应用启动阶段直接调用外部 Embedding 服务，外部服务失败可能导致应用启动失败。</li>
+<li>按空行切分无法很好适应真实长文档。</li>
+<li>评测集硬编码在 Java 类中，不利于版本化和扩展。</li>
+<li>LLM-as-judge 仍存在裁判偏差，当前主要靠提示词修正。</li>
+<li>该项目配置中存在硬编码 API Key 风险。</li>
+</ul>
+<h3 id="_9">建议</h3>
+<ol>
+<li>将知识库导入从启动流程拆为独立命令或管理接口。</li>
+<li>引入 <code>documentId</code>、<code>chunkId</code>、<code>datasetVersion</code> 和 <code>updatedAt</code> 等 metadata。</li>
+<li>将评测集外置为 JSON/YAML 文件。</li>
+<li>采用递归切分、语义切分和 overlap。</li>
+<li>生产环境迁移到 Redis Vector Store、PgVector、Milvus 或云端向量库。</li>
+<li>增加混合检索、检索缓存、Embedding 批处理和增量更新。</li>
+<li>评测中增加 hit@1、MRR、nDCG、引用完整性和事实外推检测。</li>
+</ol>
+<h2 id="34-phase3-agent">3.4 phase3-agent</h2>
+<p>项目路径：<a href="./phase3-agent">phase3-agent</a></p>
+<h3 id="_10">优点</h3>
+<ul>
+<li><a href="./phase3-agent/src/main/java/com/example/agent3/tool/RuidaxingTools.java">RuidaxingTools.java</a> 将真实业务 HTTP 接口包装为模型工具。</li>
+<li>对返回结果进行字段裁剪和 Top-8 限制，具备 Token 控制意识。</li>
+<li><a href="./phase3-agent/src/main/java/com/example/agent3/web/AgentController.java">AgentController.java</a> 支持多轮会话、历史查看和 SSE 流式。</li>
+<li>默认业务地址指向本机后端，而不是生产地址，安全默认值正确。</li>
+<li>系统提示词要求事实性问题必须调用工具，方向正确。</li>
+</ul>
+<h3 id="_11">问题</h3>
+<ul>
+<li><code>MessageWindowChatMemory</code> 是本地内存实现，重启丢失，多实例不能共享。</li>
+<li>会话没有 TTL、用户隔离和容量治理。</li>
+<li>下游接口错误、超时和空响应的结构化处理不够完整。</li>
+<li>工具参数校验较弱。</li>
+<li>没有工具调用轨迹、请求 ID 和耗时信息。</li>
+<li>缺少 HTTP 合约测试。</li>
+</ul>
+<h3 id="_12">建议</h3>
+<ul>
+<li>将会话记忆迁移到 Redis，并增加 TTL、最大上下文长度和用户/租户隔离。</li>
+<li>复用 phase4 的 ToolGateway，统一处理超时、缓存、熔断和指标。</li>
+<li>用明确 DTO 替代大量 <code>JsonNode</code> 操作。</li>
+<li>为 <code>/wxma</code> 接口增加空数据、错误码、字段缺失和分页边界测试。</li>
+</ul>
+<h2 id="35-phase4-agent-ops">3.5 phase4-agent-ops</h2>
+<p>项目路径：<a href="./phase4-agent-ops">phase4-agent-ops</a></p>
+<h3 id="_13">优点</h3>
+<ul>
+<li><a href="./phase4-agent-ops/src/main/java/com/example/agent4/ops/AgentService.java">AgentService.java</a> 实现了 LLM 并发舱壁。</li>
+<li><a href="./phase4-agent-ops/src/main/java/com/example/agent4/tool/ToolGateway.java">ToolGateway.java</a> 将缓存、熔断、降级和指标集中管理。</li>
+<li><a href="./phase4-agent-ops/src/main/java/com/example/agent4/tool/Breaker.java">Breaker.java</a> 清楚实现 CLOSED、OPEN、HALF_OPEN 状态。</li>
+<li><a href="./phase4-agent-ops/src/main/java/com/example/agent4/ops/AgentMetrics.java">AgentMetrics.java</a> 已统计请求结果、工具成功率、Token、成本、缓存和熔断拒绝。</li>
+<li>k6 使用 constant-arrival-rate 开环模型，压测设计比单纯固定 VU 更可靠。</li>
+<li>能区分“503 是准入护栏的正常行为”和“系统内部错误”。</li>
+</ul>
+<h3 id="_14">问题</h3>
+<ul>
+<li><a href="./phase4-agent-ops/src/main/java/com/example/agent4/ops/AgentService.java">AgentService.java</a> 使用宽泛的 <code>catch (Exception)</code>，错误分类和日志信息不足。</li>
+<li>自研熔断器适合教学，但生产环境建议使用 Resilience4j 或 Spring Cloud CircuitBreaker。</li>
+<li>缓存 Key 没有独立抽象，参数扩展时存在冲突风险。</li>
+<li>缓存缺少明确的数据新鲜度和主动失效策略。</li>
+<li>只限制了 LLM 并发，没有对不同下游工具分别限流。</li>
+<li>指标主要保存在 JVM 内存中，重启后丢失。</li>
+</ul>
+<h3 id="_15">建议</h3>
+<ul>
+<li>按参数错误、下游超时、下游 4xx、下游 5xx、MCP 错误、LLM 限流和供应商错误分类。</li>
+<li>使用统一错误码、trace ID 和结构化日志。</li>
+<li>增加工具级 timeout、retry、bulkhead、circuit breaker 和 rate limit。</li>
+<li>使用 Prometheus/Grafana 做长期观测。</li>
+<li>增加缓存和熔断状态机集成测试。</li>
+<li>k6 指标中区分正常的护栏拒绝和真实错误。</li>
+</ul>
+<h2 id="36-phase5-mcp-server">3.6 phase5-mcp-server</h2>
+<p>项目路径：<a href="./phase5-mcp-server">phase5-mcp-server</a></p>
+<h3 id="_16">优点</h3>
+<ul>
+<li>独立 MCP Server 避免了 BladeX 后端与 Spring AI 版本强耦合。</li>
+<li><a href="./phase5-mcp-server/src/main/java/com/example/mcp/config/McpToolConfig.java">McpToolConfig.java</a> 通过 <code>MethodToolCallbackProvider</code> 发布工具，边界清晰。</li>
+<li><a href="./phase5-mcp-server/src/main/java/com/example/mcp/tool/RdxTools.java">RdxTools.java</a> 的院校、专业和课程工具职责明确。</li>
+<li>已验证 initialize、tools/list 和 tools/call 的真实链路。</li>
+<li>下游 RestClient 配置了连接和读取超时。</li>
+</ul>
+<h3 id="_17">问题</h3>
+<ul>
+<li>没有看到认证、授权、租户隔离和调用方校验。</li>
+<li>缺少工具调用配额、审计和调用方身份。</li>
+<li>参数约束不够严格，分页上限和字符串长度需要显式限制。</li>
+<li>错误处理主要依赖下游异常，MCP 层错误协议仍可加强。</li>
+<li>仅限制返回 8 条，复杂查询缺少标准分页能力。</li>
+</ul>
+<h3 id="_18">建议</h3>
+<ul>
+<li>内网服务也增加认证和来源校验。</li>
+<li>为参数增加最小值、最大值、长度和枚举约束。</li>
+<li>使用统一结构化错误响应，并标记是否可重试。</li>
+<li>为每个 MCP 请求增加 request ID 和审计日志。</li>
+<li>增加 MCP initialize、tools/list、tools/call 集成测试。</li>
+</ul>
+<h2 id="37-phase5-mcp-client">3.7 phase5-mcp-client</h2>
+<p>项目路径：<a href="./phase5-mcp-client">phase5-mcp-client</a></p>
+<h3 id="_19">优点</h3>
+<ul>
+<li><a href="./phase5-mcp-client/src/main/java/com/example/a3/config/AgentConfig.java">AgentConfig.java</a> 通过 <code>ToolCallbackProvider</code> 动态发现工具，体现了工具与 Agent 解耦。</li>
+<li>系统提示词比 phase3 更严格，强调事实题必须查工具。</li>
+<li><a href="./phase5-mcp-client/src/main/java/com/example/a3/tool/RecordingToolCallback.java">RecordingToolCallback.java</a> 记录工具名、参数、耗时和成功状态。</li>
+<li>已经具备 OpenTelemetry 和 Langfuse 接入基础。</li>
+</ul>
+<h3 id="_20">关键问题：工具轨迹记录并发不安全</h3>
+<p><a href="./phase5-mcp-client/src/main/java/com/example/a3/tool/ToolCallRecorder.java">ToolCallRecorder.java</a> 当前存在以下风险：</p>
+<ol>
+<li><code>byCid</code> 中使用 <code>ArrayList</code>，并发写入不安全。</li>
+<li>相同 <code>cid</code> 的并发请求会互相覆盖，<code>begin(cid)</code> 会重置已有轨迹。</li>
+<li><code>ThreadLocal</code> 只适合当前调用线程，不能自然覆盖异步和流式边界。</li>
+<li><code>/stream</code> 没有完整调用 <code>begin</code> 和 <code>end</code>，流式轨迹可能无法正确记录。</li>
+<li>轨迹长期保存在内存中，没有 TTL 和容量上限。</li>
+<li><code>/trace</code> 直接返回原始参数，可能暴露用户输入或敏感数据。</li>
+</ol>
+<h3 id="_21">建议</h3>
+<ul>
+<li>使用 <code>requestId</code> 标识一次请求，而不是只使用 <code>cid</code>。</li>
+<li>使用线程安全集合或并发事件队列。</li>
+<li>同步和流式请求统一建立、关闭轨迹上下文。</li>
+<li>增加 TTL、最大条数和参数脱敏。</li>
+<li>生产环境将轨迹写入 Redis、日志平台或 Langfuse。</li>
+<li><code>/trace</code> 增加权限控制，禁止任意查询其他会话。</li>
+</ul>
+<h2 id="38-phase6-eval">3.8 phase6-eval</h2>
+<p>项目路径：<a href="./phase6-eval">phase6-eval</a></p>
+<h3 id="_22">优点</h3>
+<ul>
+<li><a href="./phase6-eval/src/main/java/com/example/eval/EvalService.java">EvalService.java</a> 同时评测 keyword、trajectory 和 LLM judge。</li>
+<li>使用多轮评测和中位数，降低模型随机性影响。</li>
+<li>评测链路覆盖 Agent、MCP Client、MCP Server、业务后端和数据库。</li>
+<li><a href="./phase6-eval/gate.sh">gate.sh</a> 能够将评测结果转为 CI 门禁。</li>
+<li>能识别“最终答案正确但没有查真实数据”的评测盲区。</li>
+</ul>
+<h3 id="_23">问题</h3>
+<ul>
+<li>场景集硬编码在 Java 类中，不便于版本化。</li>
+<li>keyword 判断较粗糙，无法有效处理否定、实体混淆和数值错误。</li>
+<li>trajectory 主要检查工具名和参数关键词，尚未充分检查顺序、次数和冗余调用。</li>
+<li>LLM judge 仍然只有单一裁判模型。</li>
+<li><code>gate.sh</code> 使用 shell 文本解析 JSON，稳定性不如 JSON 解析工具。</li>
+<li>缺少评测结果持久化和历史趋势。</li>
+</ul>
+<h3 id="_24">建议</h3>
+<ul>
+<li>将场景集外置为 JSON/YAML，并增加场景 ID 和数据集版本。</li>
+<li>将评测拆成终答、工具选择、参数、顺序、调用次数、证据、延迟和成本等维度。</li>
+<li>使用 <code>jq</code> 或 Java JSON 解析替代 <code>grep</code>。</li>
+<li>增加人工校准集、多裁判或成对比较。</li>
+<li>接入 Langfuse Dataset/Evaluations，让线上样本进入回归集。</li>
+</ul>
+<h2 id="39-observability">3.9 observability</h2>
+<p>项目路径：<a href="./observability">observability</a></p>
+<h3 id="_25">优点</h3>
+<ul>
+<li>能够观测 chat、tool call、memory 等 span。</li>
+<li>已经考虑 prompt、completion 和工具输入输出的追踪。</li>
+<li>能将 tracing 与 phase6 评测结合起来。</li>
+<li><a href="./docker-compose.yml">docker-compose.yml</a> 记录了多个实际部署问题，经验价值较高。</li>
+</ul>
+<h3 id="_26">风险</h3>
+<ul>
+<li>Compose 中包含开发环境默认密码、初始化账号和示例密钥。</li>
+<li>prompt、completion 和工具参数可能包含个人信息或业务敏感数据。</li>
+<li>当前配置开启了完整内容采集，生产环境存在数据泄露风险。</li>
+<li>没有看到明确的数据保留周期、脱敏规则和容量策略。</li>
+</ul>
+<h3 id="_27">建议</h3>
+<ul>
+<li>分离 dev 和 prod Compose。</li>
+<li>生产环境禁止默认密码，所有凭据强制通过环境变量或 Secret Manager 注入。</li>
+<li>对手机号、Token、身份信息和业务敏感字段做脱敏。</li>
+<li>默认关闭完整 prompt/completion 采集，按环境显式开启。</li>
+<li>增加数据保留周期和存储容量限制。</li>
+</ul>
+<h2 id="310-rdx-bx-backend">3.10 rdx-bx-backend</h2>
+<p>项目路径：<a href="./rdx-bx-backend">rdx-bx-backend</a></p>
+<p>这是一个规模较大的 BladeX 单体业务后端沙盒，包含系统管理、考试、院校、专业、课程、资源、工作流等模块。当前约有 615 个 Java 源文件，并包含一定数量的测试和 k6 压测脚本。</p>
+<h3 id="_28">优点</h3>
+<ul>
+<li>业务边界相对完整。</li>
+<li><code>/wxma</code> 公开查询接口作为 Agent/MCP 数据源，链路清晰。</li>
+<li>本地 MySQL、Redis、MongoDB 和 MinIO 都有 Compose 配置。</li>
+<li>有业务规则、安全和 HTTP 相关测试。</li>
+<li>Agent 通过 HTTP 隔离接入，没有直接侵入核心后端实现。</li>
+</ul>
+<h3 id="_29">主要问题</h3>
+<ul>
+<li>多个配置文件包含开发密码、数据库密码、OSS 密钥、微信配置、JWT/SM4 配置等敏感信息。</li>
+<li><a href="./rdx-bx-backend/pom.xml">pom.xml</a> 中存在 Docker Registry 账号密码配置，这是严重的仓库卫生问题。</li>
+<li>数据库运行目录、日志和导入压缩包不应长期混在源码目录中。</li>
+<li>BladeX 商业授权边界需要在公开发布、博客和 GitHub 迁移时特别注意。</li>
+<li>单体规模较大，模块间耦合成本高。</li>
+</ul>
+<h3 id="_30">建议</h3>
+<ol>
+<li>立即轮换已暴露的凭据。</li>
+<li>从 Git 历史中清理敏感信息，而不只是修改当前文件。</li>
+<li>使用 <code>.env.example</code>、本地未跟踪配置、CI Secret 或 Secret Manager。</li>
+<li>对 Agent 只开放明确的只读业务接口。</li>
+<li>给 <code>/wxma</code> 增加限流、审计、统一错误码、分页上限和脱敏。</li>
+<li>暂时不建议为了微服务化而直接拆分部署，优先按业务域降低代码耦合。</li>
+<li>公开发布前确认 BladeX 商业授权和业务数据授权边界。</li>
+</ol>
+<h2 id="4">4. 跨项目高优先级问题</h2>
+<h2 id="p0">P0：密钥和凭据泄露风险</h2>
+<p>目前发现的敏感信息类型包括：</p>
+<ul>
+<li>DashScope API Key；</li>
+<li>数据库密码；</li>
+<li>MongoDB 密码；</li>
+<li>OSS Access Key/Secret Key；</li>
+<li>微信 App Secret；</li>
+<li>JWT/SM4 密钥；</li>
+<li>Docker Registry 用户名和密码；</li>
+<li>Langfuse 初始化账号、密码和项目密钥。</li>
+</ul>
+<p>重点检查文件包括：</p>
+<ul>
+<li><a href="./phase1-minimal-agent/src/main/resources/application.yml">phase1 application.yml</a></li>
+<li><a href="./phase2-rag/src/main/resources/application.yml">phase2 application.yml</a></li>
+<li><a href="./rdx-bx-backend/src/main/resources/application-dev.yml">rdx application-dev.yml</a></li>
+<li><a href="./rdx-bx-backend/src/main/resources/application.yml">rdx application.yml</a></li>
+<li><a href="./rdx-bx-backend/pom.xml">rdx pom.xml</a></li>
+<li><a href="./docker-compose.yml">Langfuse docker-compose.yml</a></li>
+</ul>
+<p>建议立即执行：</p>
+<ol>
+<li>撤销并轮换所有真实 Key。</li>
+<li>从当前文件删除明文值。</li>
+<li>检查 Git 历史，而不是只修改最新版本。</li>
+<li>增加 secret scanning。</li>
+<li>将默认配置改为环境变量注入，并在缺失时明确失败。</li>
+</ol>
+<h2 id="p1phase5">P1：phase5 轨迹记录的并发正确性</h2>
+<p>这个问题会直接影响 trajectory 评测可信度，也可能造成会话数据串写。应优先修复 <code>ToolCallRecorder</code> 的 request ID、线程安全、流式上下文、TTL 和权限问题。</p>
+<h2 id="p1agent">P1：Agent 子项目自动化测试不足</h2>
+<p>当前 phase1 到 phase6 基本没有独立 <code>src/test</code> 测试；业务后端虽然有一定测试，但不能覆盖 Agent、MCP 和评测链路。</p>
+<p>建议最低测试矩阵：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>最低测试内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>phase1</td>
+<td>表达式解析器、除零、非法输入</td>
+</tr>
+<tr>
+<td>phase2</td>
+<td>chunk、召回、引用、评测器</td>
+</tr>
+<tr>
+<td>phase3</td>
+<td>工具响应解析、空数据、错误响应</td>
+</tr>
+<tr>
+<td>phase4</td>
+<td>熔断状态机、缓存、超时、舱壁</td>
+</tr>
+<tr>
+<td>phase5</td>
+<td>MCP initialize、tools/list、tools/call</td>
+</tr>
+<tr>
+<td>phase6</td>
+<td>评测聚合、中位数、门禁判断</td>
+</tr>
+</tbody>
+</table>
+<h2 id="p1-ide">P1：构建产物和 IDE 文件被跟踪</h2>
+<p>当前 <code>.gitignore</code> 没有统一忽略所有模块的 <code>target</code> 和 <code>.idea</code>，部分 phase5/phase6 构建产物已被 Git 跟踪。</p>
+<p>建议补充：</p>
+<div class="codehilite"><pre><span></span><code>**/target/
+**/.idea/
+*.log
+</code></pre></div>
+
+<p>然后从 Git 索引中移除已经被跟踪的构建产物。</p>
+<p>另外，工作区中存在较大的导入压缩文件：</p>
+<ul>
+<li><a href="./rdx-bx-backend/doc/import_2026/zips/sync_good.zip">sync_good.zip</a></li>
+</ul>
+<p>应确认该文件是否必须保留在项目目录中。</p>
+<h2 id="5">5. 推荐改进路线</h2>
+<h2 id="_31">第一阶段：安全与仓库卫生</h2>
+<ol>
+<li>轮换所有真实凭据。</li>
+<li>清理 Git 历史中的敏感信息。</li>
+<li>完善 <code>.gitignore</code>。</li>
+<li>删除或迁移数据库运行数据、日志和构建产物。</li>
+<li>增加 secret scanning。</li>
+<li>用 <code>.env.example</code> 替代真实开发配置。</li>
+</ol>
+<h2 id="agent">第二阶段：修复 Agent 运行正确性</h2>
+<ol>
+<li>修复 <code>ToolCallRecorder</code> 并发和流式问题。</li>
+<li>增加 request ID、trace ID 和结构化日志。</li>
+<li>给会话记忆、轨迹和缓存增加 TTL 与容量限制。</li>
+<li>为工具调用设计结构化错误。</li>
+<li>为 MCP Server 增加认证、限流和审计。</li>
+<li>统一 phase3、phase4、phase5 的工具网关。</li>
+</ol>
+<h2 id="_32">第三阶段：建立自动化质量门禁</h2>
+<ol>
+<li>为所有 Agent 子项目补充单元测试。</li>
+<li>增加 MCP 协议集成测试。</li>
+<li>将 phase6 场景集外置并版本化。</li>
+<li>评测加入终答、工具选择、参数、顺序、调用次数、证据、延迟和成本。</li>
+<li>将 <code>run-e2e-gate.sh</code> 接入 CI。</li>
+</ol>
+<h2 id="_33">第四阶段：提高生产化程度</h2>
+<ol>
+<li>将内存 ChatMemory 迁移到 Redis。</li>
+<li>将 SimpleVectorStore 迁移到持久化向量库。</li>
+<li>使用 Resilience4j 替换自研熔断器。</li>
+<li>对 Langfuse 做脱敏、采样和数据保留控制。</li>
+<li>统一版本管理，减少 Spring Boot/Spring AI 版本漂移。</li>
+<li>为每个服务提供健康检查、就绪检查和可重复部署脚本。</li>
+</ol>
+<h2 id="6">6. 推荐目标架构</h2>
+<p>建议最终形成以下边界：</p>
+<div class="codehilite"><pre><span></span><code>用户/API Gateway
+      |
+      v
+Agent API
+  - 鉴权
+  - 会话
+  - 请求 ID / Trace ID
+  - LLM 舱壁
+      |
+      v
+Tool Gateway
+  - 参数校验
+  - 超时 / 重试
+  - 缓存
+  - 熔断 / 限流
+  - 统一错误
+      |
+      +--&gt; MCP Client --&gt; MCP Server --&gt; 只读业务接口
+      |
+      +--&gt; RAG Retriever --&gt; 持久化向量库
+      |
+      +--&gt; Eval / Trace
+               |
+               +--&gt; Prometheus / Grafana
+               +--&gt; Langfuse
+</code></pre></div>
+
+<h2 id="7">7. 最终评价</h2>
+<p>这个目录已经不是几个互不相关的 Demo，而是一条比较完整的 Agent 工程学习路线：</p>
+<ul>
+<li>phase1 解决“Agent 能不能工作”；</li>
+<li>phase2 解决“Agent 能不能利用知识库”；</li>
+<li>phase3 解决“Agent 能不能接入真实业务”；</li>
+<li>phase4 解决“Agent 能不能稳定运行”；</li>
+<li>phase5 解决“工具能不能解耦和复用”；</li>
+<li>phase6 解决“效果能不能量化和回归”；</li>
+<li>observability 解决“问题能不能被发现和定位”。</li>
+</ul>
+<p>最值得保留和继续深化的特色是：</p>
+<ol>
+<li>真实业务接口接入，而不是纯 Demo 工具；</li>
+<li>对缓存、熔断、舱壁和压测的工程化思考；</li>
+<li>MCP 动态工具发现；</li>
+<li>trajectory 评测；</li>
+<li>对评测指标和 LLM judge 偏差的反思。</li>
+</ol>
+<p>如果按 P0/P1 问题完成治理，这个项目集可以从“很好的学习实验仓库”提升为：</p>
+<blockquote>
+<p>面向后端工程师转 Agent 的完整作品集、技术文章素材和可演示的工程化样板。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

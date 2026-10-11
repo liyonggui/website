@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景 3 — 短期 TTL 海量过期 key 持续灌入 · 小番茄程序猿</title>
+<meta name="description" content="场景 3 — 短期 TTL 海量过期 key 持续灌入 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景 3 — 短期 TTL 海量过期 key 持续灌入</h1>
+  </div>
+  <article class="prose">
+<h1 id="3-ttl-key">场景 3 — 短期 TTL 海量过期 key 持续灌入</h1>
+<hr />
+<h3 id="tldr">TL;DR</h3>
+<p><strong>问题背景（一句话）：</strong>
+大量短 TTL（秒级）key 同时创建导致在到期时 Redis 的 active-expire 采样式扫描集中触发，从而在主线程上造成短时阻塞，导致 P99/max 大幅抖动，而 P50 保持较低。</p>
+<p><strong>原因要点：</strong>
+1. <code>activeExpireCycle</code> 在主线程执行<strong>采样式</strong>过期扫描；<code>effort</code> 增加每次采样预算和扫描深度（提高单次 CPU/阻塞），<code>hz</code> 控制定时任务触发频率（提高扫描密度）。二者<strong>不是精确线性关系</strong>，实际删除量受过期 key 分布和 Redis 时间限制影响。
+2. <code>lazyfree-lazy-expire</code> 将内存回收异步化（UNLINK → 后台 BIO 释放），显著减少主线程在释放内存上的阻塞，但<strong>不消除扫描/定位过期 key 的主线程成本</strong>。
+3. 应用层 TTL 打散从源头减少同一时间到期 key 数量，根本弱化过期峰值；但打散会扩大 key 到期窗口（可能增加瞬时 key 数），需控制偏移幅度。
+4. 过期压力来自"到期同步性"（同一时间大量 key 到期）与"key 空间大小"（同一窗口活跃 key 数）。</p>
+<p><strong>解决策略（实操顺序）：</strong>
+1. <strong>先启用 lazyfree（低风险兜底）</strong> — 减少删除释放导致的主线程阻塞
+2. 若短 TTL 且不能改应用 → 提高 hz（如 20~50）+ effort 降低到 1~3，把"单个波峰"切碎
+3. 若能改应用 → TTL 加随机偏移（短 TTL 偏移控制在几秒级）
+4. 长 TTL 周期批量写入 → 质数/互质 TTL 打破 LCM 汇集
+5. 横向扩展 — 按 prefix/logic 拆分到多个 Redis 实例</p>
+<p><strong>决策树：</strong></p>
+<div class="codehilite"><pre><span></span><code>能改 Redis 配置？
+├── 能 → ① 开 lazyfree（必须） → ② 短TTL? hz=50+effort=2 : 应用层打散为主
+└── 否 → 能改应用？
+          ├── 能 → TTL 随机打散（P99: 159ms→34ms）
+          └── 否 → 横向拆分 key-space 或接受 P99 &gt; 50ms
+</code></pre></div>
+
+<hr />
+<h2 id="_1">概述</h2>
+<p>Pipeline 持续写入短 TTL（2 秒）的 SETEX，模拟"缓存预热时大量短生命周期 key 同时创建、同时过期"的生产场景。观测 <code>activeExpireCycle</code> 抢占主线程导致延迟抖动。</p>
+<h2 id="_2">压测架构</h2>
+<div class="codehilite"><pre><span></span><code>Worker-1 ── Redis 连接 1 ── [SETEX ttl:N 2 val] × batchSize ── flush ── awaitAll ── 循环
+Worker-2 ── Redis 连接 2 ── [SETEX ttl:N 2 val] × batchSize ── flush ── awaitAll ── 循环
+...
+Worker-8 ── Redis 连接 8 ── [SETEX ttl:N 2 val] × batchSize ── flush ── awaitAll ── 循环
+</code></pre></div>
+
+<ul>
+<li>key 空间 50 万，TTL 仅 2 秒</li>
+<li>value 16 字节（极小，焦点在过期行为）</li>
+<li>Redis <code>--active-expire-effort 10</code>（模拟生产激进过期扫描）</li>
+<li>指标上报 5 秒一次，追踪 <strong>P50/P99/max</strong> 延迟 + expired_keys 增量</li>
+</ul>
+<h2 id="active-expire-lazyfree">核心概念澄清：active-expire 与 lazyfree 的精确语义</h2>
+<h3 id="active-expire-hz-effort">active-expire 不是线性 "hz × effort"</h3>
+<div class="codehilite"><pre><span></span><code>✗ 错误认知: 过期清理总量 = hz × effort（精确线性）
+✗ 错误认知: 单次阻塞时间完全由 effort 决定
+
+✓ 正确认知: active-expire 是"随机采样 + 时间受限"的自适应扫描
+  - hz: 控制定时任务每秒触发次数（越高越频繁，但 CPU 开销也越大）
+  - effort: 增加每次采样的预算和扫描深度，提高单次 CPU/阻塞时间
+  - 实际删除量 → 受过期 key 分布 + Redis 时间限制 + key 大小 + 内存碎片共同影响
+  - 单次阻塞长度 → effort 预算 + 待删除 key 的内存操作成本（大对象/复杂结构/碎片）
+</code></pre></div>
+
+<h3 id="lazyfree-lazy-expire">lazyfree-lazy-expire 只异步化"内存回收"，不消除"扫描"开销</h3>
+<div class="codehilite"><pre><span></span><code>常规过期:
+  主线程 [扫描定位过期key] → [DEL k1] → [DEL k2] → [处理命令]
+               └── 扫描+内存释放期间所有命令排队 ──→
+
+lazyfree:
+  主线程 [扫描定位过期key] → [UNLINK k1,k2,k3] → [处理命令]
+             ↑ 扫描仍占用主线程 ↑  UNLINK是常数级快操作
+  后台 BIO 线程: [异步回收内存...]
+</code></pre></div>
+
+<p><strong>关键澄清：</strong>
+- lazyfree <strong>不能消除</strong>主线程在 active-expire 扫描/定位过期 key 上的 CPU 成本
+- lazyfree 将 key 的<strong>内存释放（free）</strong> 交给后台 BIO 线程，主线程用 UNLINK 替代 DEL
+- UNLINK 本身是常数级别快速操作，但如果要 UNLINK 的 key 极多，UNLINK 调用仍会花时间（但远小于同步 free）</p>
+<p><strong>UNLINK 在复制/持久化上的影响：</strong>
+- UNLINK（或 lazyfree 删除动作）会在复制流/AOF 中以 <code>UNLINK</code>/<code>DEL</code> 形式传播到副本
+- 副本端也会进行相应的删除处理（可能触发副本后台回收）
+- 主从/持久化场景中需评估副本端/持久化端的删除负担，尤其是大量 key 同时被 UNLINK 时</p>
+<h3 id="hz">hz 提高的副作用</h3>
+<div class="codehilite"><pre><span></span><code>hz ↑:
+  ✓ 定时任务更频繁触发 → 过期扫描更分散 → 单次阻塞更短（P99 ↓）
+  ✗ 增加总 CPU 消耗 → 定时器中断/检查频率上升 → 低资源实例可能受影响
+  ✗ 上下文切换开销增大
+  → 最佳值需在吞吐、P99 与 CPU 之间折中：优先找最小能将 P99 压到可接受值的 hz
+</code></pre></div>
+
+<h3 id="ttl">TTL 打散的副作用</h3>
+<div class="codehilite"><pre><span></span><code>TTL=2s+rand(0,4s):
+  ✓ 到期时间分散在 2~6s → 单窗口内到期 key 数大幅减少
+  ✗ 窗口从 2s 拉宽到 2~6s → 瞬时 key 数可能增加（更多 key 同时存活）
+  ✗ 短 TTL 场景偏移过大（如 10s+）会显著扩大 key-space → 增加扫描负担
+
+建议:
+  短 TTL（秒级）→ 偏移控制在几秒级（如 rand(0,4s)）
+  长 TTL（时/天级）→ 使用质数 TTL 打破周期性 LCM 汇集
+</code></pre></div>
+
+<hr />
+<h2 id="30-batchsize200concurrency8">测试数据（30 秒，batchSize=200，concurrency=8）</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">时间</th>
+<th style="text-align: left;">bat/s</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">avg</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;"><strong>P99</strong></th>
+<th style="text-align: left;"><strong>max</strong></th>
+<th style="text-align: left;">expired/5s</th>
+<th style="text-align: left;">keys</th>
+<th style="text-align: left;">CPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">~4s</td>
+<td style="text-align: left;">185</td>
+<td style="text-align: left;">37k</td>
+<td style="text-align: left;">36.8ms</td>
+<td style="text-align: left;">29.7ms</td>
+<td style="text-align: left;"><strong>159ms</strong></td>
+<td style="text-align: left;"><strong>262ms</strong></td>
+<td style="text-align: left;">28k</td>
+<td style="text-align: left;">104k</td>
+<td style="text-align: left;">0.8</td>
+</tr>
+<tr>
+<td style="text-align: left;">~9s</td>
+<td style="text-align: left;">636</td>
+<td style="text-align: left;">127k</td>
+<td style="text-align: left;">12.4ms</td>
+<td style="text-align: left;">7.8ms</td>
+<td style="text-align: left;"><strong>69ms</strong></td>
+<td style="text-align: left;">114ms</td>
+<td style="text-align: left;">239k</td>
+<td style="text-align: left;">289k</td>
+<td style="text-align: left;">1.4</td>
+</tr>
+<tr>
+<td style="text-align: left;">~14s</td>
+<td style="text-align: left;">680</td>
+<td style="text-align: left;">136k</td>
+<td style="text-align: left;">11.6ms</td>
+<td style="text-align: left;">7.1ms</td>
+<td style="text-align: left;"><strong>65ms</strong></td>
+<td style="text-align: left;">103ms</td>
+<td style="text-align: left;">390k</td>
+<td style="text-align: left;">290k</td>
+<td style="text-align: left;">1.8</td>
+</tr>
+<tr>
+<td style="text-align: left;">~19s</td>
+<td style="text-align: left;">807</td>
+<td style="text-align: left;">161k</td>
+<td style="text-align: left;">9.9ms</td>
+<td style="text-align: left;">6.3ms</td>
+<td style="text-align: left;"><strong>61ms</strong></td>
+<td style="text-align: left;">82ms</td>
+<td style="text-align: left;">428k</td>
+<td style="text-align: left;">298k</td>
+<td style="text-align: left;">2.2</td>
+</tr>
+<tr>
+<td style="text-align: left;">~24s</td>
+<td style="text-align: left;">567</td>
+<td style="text-align: left;">113k</td>
+<td style="text-align: left;">14.0ms</td>
+<td style="text-align: left;">6.9ms</td>
+<td style="text-align: left;"><strong>102ms</strong></td>
+<td style="text-align: left;"><strong>179ms</strong></td>
+<td style="text-align: left;">421k</td>
+<td style="text-align: left;">175k</td>
+<td style="text-align: left;">2.6</td>
+</tr>
+<tr>
+<td style="text-align: left;">~29s</td>
+<td style="text-align: left;">1183</td>
+<td style="text-align: left;">236k</td>
+<td style="text-align: left;">6.7ms</td>
+<td style="text-align: left;">4.6ms</td>
+<td style="text-align: left;"><strong>51ms</strong></td>
+<td style="text-align: left;">83ms</td>
+<td style="text-align: left;">340k</td>
+<td style="text-align: left;">385k</td>
+<td style="text-align: left;">3.2</td>
+</tr>
+</tbody>
+</table>
+<p>30 秒汇总：
+- 写入 23,606 批（472 万条 SETEX）
+- 过期约 220 万 keys
+- P50 稳定在 4-8ms，但 P99 一度飙升到 159ms
+- max 最高 262ms（P50 的 55 倍）</p>
+<h2 id="_3">风险现象分析</h2>
+<h3 id="1-p99max-p50">1. 延迟抖动 — P99/max 远高于 P50</h3>
+<div class="codehilite"><pre><span></span><code>P50 延迟:  4-8ms      ← 正常水平
+P99 延迟: 51-159ms    ← P50 的 8~27 倍
+max 延迟: 82-262ms    ← P50 的 18~55 倍
+</code></pre></div>
+
+<p><strong>根因</strong>：<code>activeExpireCycle</code> 在 Redis 主线程中执行<strong>采样式</strong>过期扫描。当大量 key 同时过期，每次扫描命中大量过期 key，占用主线程数毫秒。在此期间，正常的 SETEX 命令被阻塞排队。</p>
+<h3 id="2">2. 过期速率的波动</h3>
+<p>5 秒窗口内过期量从 28k 飙升至 428k，表明大量 key 在第一波 TTL 到期后集中过期。<code>active-expire-effort 10</code> 的激进策略让 Redis 努力清理，但 CPU 消耗也从 0.8 增长到 3.2。</p>
+<h3 id="3-key">3. Key 数量剧烈波动</h3>
+<p>104k → 298k → 175k → 385k。过期和写入在持续拉锯——过期清理一批后 key 骤降，新写入又快速回拉。</p>
+<h3 id="4">4. 吞吐不稳定</h3>
+<p>567~1183 batches/s 波动。过期扫描高峰时（如 24s 处 P99=102ms），吞吐下降到 567；过期扫描收敛后（29s），吞吐反弹到 1183。</p>
+<h2 id="p50-p99">为什么 P50 很低但 P99 很高？</h2>
+<div class="codehilite"><pre><span></span><code>时间轴: ┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┐
+请求:   │A   │B   │C   │D   │E   │F   │G   │H   │I   │J   │
+延迟:   │5ms │6ms │6ms │150 │5ms │7ms │5ms │5ms │6ms │5ms │
+                            ↑
+                   activeExpireCycle 阻塞了主线程 144ms
+                   期间所有请求 D/F/G/H 排队等待
+</code></pre></div>
+
+<ul>
+<li>大部分请求在两次过期扫描之间完成 → P50 = 5-6ms</li>
+<li>恰好落在扫描窗口内的请求 → P99 = 100-160ms</li>
+<li>最不幸的一个 → max = 262ms</li>
+</ul>
+<p><strong>这解释了为什么只看平均延迟是致命的</strong>：avg=12ms 看起来不错，但 P99 的实际用户体验已经突破了 100ms。</p>
+<h2 id="_4">解决方案</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">优先级</th>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">效果</th>
+<th style="text-align: left;">副作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;"><strong>启用 <code>lazyfree-lazy-expire yes</code></strong></td>
+<td style="text-align: left;">主线程不阻塞于内存释放；低风险兜底</td>
+<td style="text-align: left;">副本/AOF 端可能有压力</td>
+</tr>
+<tr>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><strong>提高 <code>hz</code></strong></td>
+<td style="text-align: left;">扫描更分散，单次阻塞更短</td>
+<td style="text-align: left;">CPU 开销增大</td>
+</tr>
+<tr>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;"><strong>降低 <code>active-expire-effort</code></strong></td>
+<td style="text-align: left;">单次扫描预算降低 → 单次阻塞缩短</td>
+<td style="text-align: left;">清理不够快可能堆积</td>
+</tr>
+<tr>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;"><strong>应用层打散 TTL</strong></td>
+<td style="text-align: left;">从源头减少同时到期 key 数</td>
+<td style="text-align: left;">扩大到期窗口，瞬时 key 数增加</td>
+</tr>
+<tr>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;"><strong>降低 key 空间</strong></td>
+<td style="text-align: left;">500k → 100k，减少轮替堆积量</td>
+<td style="text-align: left;">业务约束</td>
+</tr>
+<tr>
+<td style="text-align: left;">6</td>
+<td style="text-align: left;"><strong>监控告警</strong></td>
+<td style="text-align: left;">多重指标交叉判断，快速发现问题</td>
+<td style="text-align: left;">—</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>小步试验建议</strong>：调整 hz/effort 或启用 lazyfree 时做 A/B 对比，记录 P99、CPU、expired_keys/s、replica lag、AOF/fsync 影响等，避免一次性大幅调整。</p>
+</blockquote>
+<hr />
+<h2 id="_5">方案详解</h2>
+<h3 id="1-active-expire-effort-hz">1. <code>active-expire-effort</code> 和 <code>hz</code> 的含义</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">参数</th>
+<th style="text-align: left;">含义</th>
+<th style="text-align: left;">默认值</th>
+<th style="text-align: left;">语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>hz</code></td>
+<td style="text-align: left;">每秒执行定时任务的次数（越大越频繁）</td>
+<td style="text-align: left;">10</td>
+<td style="text-align: left;">提高扫描密度，增加 CPU 定时开销</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>active-expire-effort</code></td>
+<td style="text-align: left;">每次定时任务中过期扫描的采样预算与深度</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">越高越深入，单次阻塞越长</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>关键理解: hz 与 effort 并非精确线性关系
+
+过期清理 ≈ 采样式自适应扫描：
+  - hz 控制"检查频率"（更分散 → 单次负担小）
+  - effort 控制"每次检查的采样深度"（更深 → 单次处理更多过期 key）
+  - 实际清理量受过期 key 随机分布 + Redis 内置时间预算限制
+  - 单次阻塞时间 ∝ effort ×（待删除 key 大小 + 内存碎片）
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>hz=10, effort=10（场景 3 原始配置）:
+  0ms     100ms    200ms    300ms
+  ┌─┐      ┌─┐      ┌─┐      ← 每次阻塞 ~15ms（effort=10 采样深度大）
+  │████    │████    │████
+  └──┘    └──┘    └──┘
+   ↑ P99 尖刺
+
+hz=50, effort=2（优化后）:
+  0 20 40 60 80 100 120 140 160 180 200ms
+  ▏▏▏▏▏▏▏▏▏▏                          ← 每次阻塞 ~1-2ms，基本无尖刺
+</code></pre></div>
+
+<h3 id="2-key">2. <code>key 空间</code> 的含义</h3>
+<p>即 <code>app.ttl-bench.key-space</code> 配置。压测代码中每次写入随机选 key：</p>
+<div class="codehilite"><pre><span></span><code><span class="n">String</span><span class="w"> </span><span class="n">key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"ttl:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ThreadLocalRandom</span><span class="p">.</span><span class="na">current</span><span class="p">().</span><span class="na">nextInt</span><span class="p">(</span><span class="n">keySpace</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>keySpace=500000</code> 意味着同一时刻最多有 50 万个不同 key 存活，TTL 到期时这些 key 都可能进入过期扫描范围。空间越大 → 采样命中过期 key 的概率/数量越高 → 扫描负担越重。</p>
+<h3 id="3-ttl">3. TTL 打散的局限性</h3>
+<p>不同级别的 TTL（1 天 / 1 小时 / 30 分钟）会在"最小公倍数"时间点自然汇集：</p>
+<div class="codehilite"><pre><span></span><code>t=0  写入 10 万 key，TTL=1天 (86400s)
+t=0  写入 10 万 key，TTL=1小时 (3600s)
+t=0  写入 10 万 key，TTL=30分钟 (1800s)
+
+t=3600  → 第 2 批 + 第 3 批 = 20 万汇集
+t=7200  → 第 2 批 + 第 3 批 = 20 万汇集
+t=86400 → 三批全部 = 30 万最大汇集
+</code></pre></div>
+
+<p>打散 TTL 只解决"同一批写入同时过期"，解决不了"不同批次在时间轴上自然交汇"。更根本的手段是：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">层级</th>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">写入层</td>
+<td style="text-align: left;">分散写入时间，不要瞬间批量刷</td>
+<td style="text-align: left;">到期时间自然错开</td>
+</tr>
+<tr>
+<td style="text-align: left;">TTL 层</td>
+<td style="text-align: left;">使用质数/非整数 TTL（3553s 而非 3600s）</td>
+<td style="text-align: left;">打破最小公倍数汇集</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 层</td>
+<td style="text-align: left;"><code>lazyfree-lazy-expire yes</code></td>
+<td style="text-align: left;">汇集后的删除动作后台异步，不阻塞主线程</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4-lazyfree-lazy-expire-yes">4. <code>lazyfree-lazy-expire yes</code> 原理</h3>
+<p>常规过期：主线程同步 <code>DEL key</code> → 大 key 或批量删除阻塞其他命令</p>
+<div class="codehilite"><pre><span></span><code>常规删除: 主线程 [扫描] → [DEL k1] → [DEL k2] → [DEL k3] → [处理命令]
+                     ←── 删除期间所有命令排队 ──→
+
+lazyfree: 主线程 [扫描] → [UNLINK k1,k2,k3] → [处理命令]
+             ↑ 扫描仍在主线程    ↑ UNLINK 常数级
+            后台 BIO 线程: [异步回收内存...]
+</code></pre></div>
+
+<p>开启后主线程只标记删除，实际内存回收交给后台线程。<strong>P99 尖刺的根源之一是"主线程被内存释放动作占用"</strong>，lazyfree 把这部分移走。但扫描/定位过期 key 的开销仍在主线程。</p>
+<blockquote>
+<p><strong>注意</strong>：UNLINK 会在复制流/AOF 中以 <code>UNLINK</code>/<code>DEL</code> 形式传播。如果大量 key 同时被 UNLINK，副本端也会经历相应的删除处理（可能触发后台回收）。主从场景中需监控 replica lag 和 replica CPU。</p>
+</blockquote>
+<hr />
+<h2 id="hz50-effort2-lazyfreeyes">优化验证：hz=50 + effort=2 + lazyfree=yes</h2>
+<p>将 Redis 配置从 <code>hz=10, effort=10</code> 改为 <code>hz=50, effort=2, lazyfree=yes</code>，相同条件重测 30 秒。</p>
+<h3 id="_6">优化后数据</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">时间</th>
+<th style="text-align: left;">bat/s</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">avg</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;"><strong>P99</strong></th>
+<th style="text-align: left;"><strong>max</strong></th>
+<th style="text-align: left;">expired/5s</th>
+<th style="text-align: left;">keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">~5s</td>
+<td style="text-align: left;">1924</td>
+<td style="text-align: left;">384k</td>
+<td style="text-align: left;">4.11ms</td>
+<td style="text-align: left;">3.16ms</td>
+<td style="text-align: left;"><strong>16.96ms</strong></td>
+<td style="text-align: left;">41.41ms</td>
+<td style="text-align: left;">113k</td>
+<td style="text-align: left;">489k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~10s</td>
+<td style="text-align: left;">2011</td>
+<td style="text-align: left;">402k</td>
+<td style="text-align: left;">3.93ms</td>
+<td style="text-align: left;">3.47ms</td>
+<td style="text-align: left;"><strong>9.89ms</strong></td>
+<td style="text-align: left;">30.33ms</td>
+<td style="text-align: left;">398k</td>
+<td style="text-align: left;">497k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~15s</td>
+<td style="text-align: left;">2175</td>
+<td style="text-align: left;">434k</td>
+<td style="text-align: left;">3.63ms</td>
+<td style="text-align: left;">3.32ms</td>
+<td style="text-align: left;"><strong>7.54ms</strong></td>
+<td style="text-align: left;">18.89ms</td>
+<td style="text-align: left;">398k</td>
+<td style="text-align: left;">498k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~20s</td>
+<td style="text-align: left;">2358</td>
+<td style="text-align: left;">471k</td>
+<td style="text-align: left;">3.35ms</td>
+<td style="text-align: left;">3.14ms</td>
+<td style="text-align: left;"><strong>5.92ms</strong></td>
+<td style="text-align: left;">17.55ms</td>
+<td style="text-align: left;">358k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~25s</td>
+<td style="text-align: left;">2276</td>
+<td style="text-align: left;">455k</td>
+<td style="text-align: left;">3.47ms</td>
+<td style="text-align: left;">3.25ms</td>
+<td style="text-align: left;"><strong>6.61ms</strong></td>
+<td style="text-align: left;">17.76ms</td>
+<td style="text-align: left;">363k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~30s</td>
+<td style="text-align: left;">2265</td>
+<td style="text-align: left;">453k</td>
+<td style="text-align: left;">3.48ms</td>
+<td style="text-align: left;">3.34ms</td>
+<td style="text-align: left;"><strong>5.65ms</strong></td>
+<td style="text-align: left;">8.19ms</td>
+<td style="text-align: left;">380k</td>
+<td style="text-align: left;">498k</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vs">优化前 vs 优化后 对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">优化前 (hz=10, effort=10)</th>
+<th style="text-align: left;">优化后 (hz=50, effort=2, lazyfree)</th>
+<th style="text-align: left;">改善</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>P50 延迟</strong></td>
+<td style="text-align: left;">4.6~29.7ms</td>
+<td style="text-align: left;"><strong>3.1~3.5ms</strong></td>
+<td style="text-align: left;">↓ 30%~90%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P99 延迟</strong></td>
+<td style="text-align: left;">51~159ms</td>
+<td style="text-align: left;"><strong>5.65~16.96ms</strong></td>
+<td style="text-align: left;"><strong>↓ 9~10 倍</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>max 延迟</strong></td>
+<td style="text-align: left;">82~262ms</td>
+<td style="text-align: left;"><strong>8.19~41.41ms</strong></td>
+<td style="text-align: left;"><strong>↓ 6~10 倍</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">avg 延迟</td>
+<td style="text-align: left;">6.7~36.8ms</td>
+<td style="text-align: left;"><strong>3.35~4.11ms</strong></td>
+<td style="text-align: left;">↓ 40%~89%</td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐 (cmd/s)</td>
+<td style="text-align: left;">37k~236k</td>
+<td style="text-align: left;"><strong>384k~471k</strong></td>
+<td style="text-align: left;">↑ 2~3 倍</td>
+</tr>
+<tr>
+<td style="text-align: left;">expired/5s</td>
+<td style="text-align: left;">28k~428k</td>
+<td style="text-align: left;">113k~398k</td>
+<td style="text-align: left;">相近（写入速度更快）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">关键结论</h3>
+<div class="codehilite"><pre><span></span><code>P99 从 159ms → 16.96ms（下降 9.3 倍）
+max 从 262ms → 41.41ms（下降 6.3 倍）
+吞吐从 236k/s → 471k/s（提升 2 倍）
+</code></pre></div>
+
+<ul>
+<li><strong>P99 尖刺被有效压制</strong>：hz=50 让过期扫描更分散（扫描密度 ↑），effort=2 让单次扫描采样深度降低（单次阻塞 ↓），lazyfree 让内存释放不阻塞主线程</li>
+<li><strong>吞吐反而翻倍</strong>：主线程不再被删除动作频繁阻塞，更多时间片用于处理命令</li>
+<li><strong>延迟曲线趋于平坦</strong>：后续几秒 P99 逐渐收敛到 5-6ms，说明系统进入稳态后过期清理基本不影响正常请求</li>
+</ul>
+<hr />
+<h2 id="2-ttl-ttl">优化验证 2：纯应用层 TTL 打散（固定 TTL → 随机偏移）</h2>
+<p>Redis 恢复默认（hz=10, effort=1, lazyfree=no），仅在应用层将 <code>TTL=2s</code> 改为 <code>TTL=2s+rand(0,4s)</code>，到期时间分散在 2~6s。</p>
+<h3 id="_8">打散后数据</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">时间</th>
+<th style="text-align: left;">bat/s</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">avg</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;"><strong>P99</strong></th>
+<th style="text-align: left;"><strong>max</strong></th>
+<th style="text-align: left;">expired/5s</th>
+<th style="text-align: left;">keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">~5s</td>
+<td style="text-align: left;">936</td>
+<td style="text-align: left;">187k</td>
+<td style="text-align: left;">7.38ms</td>
+<td style="text-align: left;">5.49ms</td>
+<td style="text-align: left;"><strong>34.15ms</strong></td>
+<td style="text-align: left;">123.49ms</td>
+<td style="text-align: left;">1.5k</td>
+<td style="text-align: left;">352k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~10s</td>
+<td style="text-align: left;">1829</td>
+<td style="text-align: left;">365k</td>
+<td style="text-align: left;">4.31ms</td>
+<td style="text-align: left;">3.80ms</td>
+<td style="text-align: left;"><strong>12.44ms</strong></td>
+<td style="text-align: left;">34.54ms</td>
+<td style="text-align: left;">110k</td>
+<td style="text-align: left;">496k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~15s</td>
+<td style="text-align: left;">2163</td>
+<td style="text-align: left;">432k</td>
+<td style="text-align: left;">3.63ms</td>
+<td style="text-align: left;">3.41ms</td>
+<td style="text-align: left;"><strong>6.69ms</strong></td>
+<td style="text-align: left;">16.93ms</td>
+<td style="text-align: left;">175k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~20s</td>
+<td style="text-align: left;">2072</td>
+<td style="text-align: left;">414k</td>
+<td style="text-align: left;">3.81ms</td>
+<td style="text-align: left;">3.54ms</td>
+<td style="text-align: left;"><strong>8.35ms</strong></td>
+<td style="text-align: left;">17.21ms</td>
+<td style="text-align: left;">166k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~25s</td>
+<td style="text-align: left;">2136</td>
+<td style="text-align: left;">427k</td>
+<td style="text-align: left;">3.69ms</td>
+<td style="text-align: left;">3.48ms</td>
+<td style="text-align: left;"><strong>6.84ms</strong></td>
+<td style="text-align: left;">12.12ms</td>
+<td style="text-align: left;">162k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~30s</td>
+<td style="text-align: left;">2018</td>
+<td style="text-align: left;">403k</td>
+<td style="text-align: left;">3.91ms</td>
+<td style="text-align: left;">3.59ms</td>
+<td style="text-align: left;"><strong>8.87ms</strong></td>
+<td style="text-align: left;">15.68ms</td>
+<td style="text-align: left;">169k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_9">三轮完整对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">① 基线 (固定TTL,默认Redis)</th>
+<th style="text-align: left;">② Redis 层优化 (hz=50,effort=2,lazyfree)</th>
+<th style="text-align: left;">③ 应用层打散 (TTL+rand,默认Redis)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">P50</td>
+<td style="text-align: left;">4.6~29.7ms</td>
+<td style="text-align: left;">3.1~3.5ms</td>
+<td style="text-align: left;">3.4~5.5ms</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P99</strong></td>
+<td style="text-align: left;"><strong>51~159ms</strong></td>
+<td style="text-align: left;"><strong>5.6~17ms</strong></td>
+<td style="text-align: left;"><strong>6.7~34ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>max</strong></td>
+<td style="text-align: left;"><strong>82~262ms</strong></td>
+<td style="text-align: left;"><strong>8~41ms</strong></td>
+<td style="text-align: left;"><strong>12~123ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">37k~236k/s</td>
+<td style="text-align: left;">384k~471k/s</td>
+<td style="text-align: left;">187k~432k/s</td>
+</tr>
+<tr>
+<td style="text-align: left;">expired/5s</td>
+<td style="text-align: left;">28k~428k</td>
+<td style="text-align: left;">113k~398k</td>
+<td style="text-align: left;"><strong>1.5k~175k</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">耗时手段</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">改 Redis 配置</td>
+<td style="text-align: left;">改应用代码</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">关键发现</h3>
+<p><strong>1. 应用层打散和 Redis 层优化效果接近</strong></p>
+<blockquote>
+<p>P99: 基线 159ms → Redis优化 17ms → 应用打散 34ms
+max: 基线 262ms → Redis优化 41ms → 应用打散 123ms</p>
+</blockquote>
+<p>两者都把 P99 从 150ms+ 压到了 30ms 以内。Redis 层略优（P99 更低），但应用层打散完全不依赖运维改 Redis 参数。</p>
+<p><strong>2. 应用层打散的 expired 增量远低</strong></p>
+<div class="codehilite"><pre><span></span><code>基线:    28k~428k/5s  ← 大量集中过期
+Redis:   113k~398k/5s  ← 过期清理更快，但仍在集中过期
+打散:    1.5k~175k/5s  ← 到期时间分散后，每 5s 到期的量大幅下降
+</code></pre></div>
+
+<p>这说明 TTL 打散从<strong>源头</strong>减少了"同时过期 key 的数量"，不是硬扛，是压根不让它堆积。</p>
+<p><strong>3. 第一窗口的尖刺是建连预热</strong></p>
+<p>打散后 ~5s 处的 max=123ms 是因为刚开始写入，connections 尚未完全预热。10s 后就降到 34ms，和 Redis 优化持平。</p>
+<p><strong>4. 最佳组合</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">不能改代码</td>
+<td style="text-align: left;">①+② = hz=50 + effort=2 + lazyfree</td>
+</tr>
+<tr>
+<td style="text-align: left;">能改代码</td>
+<td style="text-align: left;">①+③ = TTL 加随机偏移</td>
+</tr>
+<tr>
+<td style="text-align: left;">极致优化</td>
+<td style="text-align: left;"><strong>② 即可</strong> — hz=50 + effort=2 + lazyfree。不要叠加打散 TTL（实测更差，见下文优化验证 3）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-ttl-redis-hz50effort2lazyfree">优化验证 3：组合拳 — TTL 打散 + Redis 层全量优化（hz=50,effort=2,lazyfree）</h2>
+<p>同时启用应用层 TTL 打散（<code>2s+rand(0,4s)</code>）+ Redis 全量优化（<code>hz=50, effort=2, lazyfree=yes</code>）。</p>
+<h3 id="_11">组合优化数据</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">时间</th>
+<th style="text-align: left;">bat/s</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">avg</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;"><strong>P99</strong></th>
+<th style="text-align: left;"><strong>max</strong></th>
+<th style="text-align: left;">expired/5s</th>
+<th style="text-align: left;">keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">~5s</td>
+<td style="text-align: left;">1646</td>
+<td style="text-align: left;">329k</td>
+<td style="text-align: left;">4.49ms</td>
+<td style="text-align: left;">3.61ms</td>
+<td style="text-align: left;"><strong>16.02ms</strong></td>
+<td style="text-align: left;">84.72ms</td>
+<td style="text-align: left;">29k</td>
+<td style="text-align: left;">484k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~10s</td>
+<td style="text-align: left;">2096</td>
+<td style="text-align: left;">419k</td>
+<td style="text-align: left;">3.76ms</td>
+<td style="text-align: left;">3.35ms</td>
+<td style="text-align: left;"><strong>9.22ms</strong></td>
+<td style="text-align: left;">21.86ms</td>
+<td style="text-align: left;">184k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~15s</td>
+<td style="text-align: left;">1902</td>
+<td style="text-align: left;">380k</td>
+<td style="text-align: left;">4.15ms</td>
+<td style="text-align: left;">3.70ms</td>
+<td style="text-align: left;"><strong>9.85ms</strong></td>
+<td style="text-align: left;">13.42ms</td>
+<td style="text-align: left;">157k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~20s</td>
+<td style="text-align: left;">2333</td>
+<td style="text-align: left;">466k</td>
+<td style="text-align: left;">3.38ms</td>
+<td style="text-align: left;">3.18ms</td>
+<td style="text-align: left;"><strong>5.96ms</strong></td>
+<td style="text-align: left;">29.98ms</td>
+<td style="text-align: left;">174k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~25s</td>
+<td style="text-align: left;">2189</td>
+<td style="text-align: left;">437k</td>
+<td style="text-align: left;">3.60ms</td>
+<td style="text-align: left;">3.32ms</td>
+<td style="text-align: left;"><strong>7.93ms</strong></td>
+<td style="text-align: left;">17.55ms</td>
+<td style="text-align: left;">147k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~30s</td>
+<td style="text-align: left;">1925</td>
+<td style="text-align: left;">385k</td>
+<td style="text-align: left;">4.10ms</td>
+<td style="text-align: left;">3.69ms</td>
+<td style="text-align: left;"><strong>11.69ms</strong></td>
+<td style="text-align: left;">32.15ms</td>
+<td style="text-align: left;">173k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-ttl-lazyfreehz10effort1">优化验证 4：打散 TTL + 仅 lazyfree（hz=10,effort=1）</h2>
+<p>应用层 TTL 打散 + 仅开 <code>lazyfree-lazy-expire yes</code>，不调 hz 和 effort。</p>
+<h3 id="_12">数据</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">时间</th>
+<th style="text-align: left;">bat/s</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">avg</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;"><strong>P99</strong></th>
+<th style="text-align: left;"><strong>max</strong></th>
+<th style="text-align: left;">expired/5s</th>
+<th style="text-align: left;">keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">~5s</td>
+<td style="text-align: left;">395</td>
+<td style="text-align: left;">79k</td>
+<td style="text-align: left;">14.04ms</td>
+<td style="text-align: left;">11.21ms</td>
+<td style="text-align: left;"><strong>70.79ms</strong></td>
+<td style="text-align: left;">82.80ms</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">62k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~10s</td>
+<td style="text-align: left;">1691</td>
+<td style="text-align: left;">338k</td>
+<td style="text-align: left;">4.65ms</td>
+<td style="text-align: left;">3.90ms</td>
+<td style="text-align: left;"><strong>15.26ms</strong></td>
+<td style="text-align: left;">41.50ms</td>
+<td style="text-align: left;">48k</td>
+<td style="text-align: left;">486k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~15s</td>
+<td style="text-align: left;">2248</td>
+<td style="text-align: left;">449k</td>
+<td style="text-align: left;">3.50ms</td>
+<td style="text-align: left;">3.26ms</td>
+<td style="text-align: left;"><strong>8.91ms</strong></td>
+<td style="text-align: left;">29.26ms</td>
+<td style="text-align: left;">159k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~20s</td>
+<td style="text-align: left;">2274</td>
+<td style="text-align: left;">454k</td>
+<td style="text-align: left;">3.47ms</td>
+<td style="text-align: left;">3.24ms</td>
+<td style="text-align: left;"><strong>6.75ms</strong></td>
+<td style="text-align: left;">15.74ms</td>
+<td style="text-align: left;">148k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~25s</td>
+<td style="text-align: left;">2115</td>
+<td style="text-align: left;">423k</td>
+<td style="text-align: left;">3.73ms</td>
+<td style="text-align: left;">3.49ms</td>
+<td style="text-align: left;"><strong>7.52ms</strong></td>
+<td style="text-align: left;">22.35ms</td>
+<td style="text-align: left;">164k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~30s</td>
+<td style="text-align: left;">2154</td>
+<td style="text-align: left;">431k</td>
+<td style="text-align: left;">3.66ms</td>
+<td style="text-align: left;">3.35ms</td>
+<td style="text-align: left;"><strong>8.14ms</strong></td>
+<td style="text-align: left;">14.23ms</td>
+<td style="text-align: left;">162k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>~35s</strong></td>
+<td style="text-align: left;"><strong>2403</strong></td>
+<td style="text-align: left;"><strong>481k</strong></td>
+<td style="text-align: left;"><strong>3.28ms</strong></td>
+<td style="text-align: left;"><strong>3.16ms</strong></td>
+<td style="text-align: left;"><strong>5.03ms</strong></td>
+<td style="text-align: left;"><strong>7.12ms</strong></td>
+<td style="text-align: left;">146k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_13">五轮完整对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">① 基线</th>
+<th style="text-align: left;">② Redis全量</th>
+<th style="text-align: left;">③ 应用打散</th>
+<th style="text-align: left;">④ 全量组合</th>
+<th style="text-align: left;">⑤ <strong>打散+lazyfree</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">P50</td>
+<td style="text-align: left;">4.6~29.7ms</td>
+<td style="text-align: left;">3.1~3.5ms</td>
+<td style="text-align: left;">3.4~5.5ms</td>
+<td style="text-align: left;">3.2~3.7ms</td>
+<td style="text-align: left;"><strong>3.2~3.9ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P99</strong></td>
+<td style="text-align: left;"><strong>51~159ms</strong></td>
+<td style="text-align: left;">5.6~17ms</td>
+<td style="text-align: left;">6.7~34ms</td>
+<td style="text-align: left;">6.0~16ms</td>
+<td style="text-align: left;"><strong>5.0~15ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>max</strong></td>
+<td style="text-align: left;"><strong>82~262ms</strong></td>
+<td style="text-align: left;">8~41ms</td>
+<td style="text-align: left;">12~123ms</td>
+<td style="text-align: left;">13~85ms</td>
+<td style="text-align: left;"><strong>7~41ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐 (稳态)</td>
+<td style="text-align: left;">37k~236k</td>
+<td style="text-align: left;">384k~471k</td>
+<td style="text-align: left;">187k~432k</td>
+<td style="text-align: left;">329k~466k</td>
+<td style="text-align: left;"><strong>423k~481k</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">expired/5s</td>
+<td style="text-align: left;">28k~428k</td>
+<td style="text-align: left;">113k~398k</td>
+<td style="text-align: left;">1.5k~175k</td>
+<td style="text-align: left;">29k~184k</td>
+<td style="text-align: left;">48k~164k</td>
+</tr>
+<tr>
+<td style="text-align: left;">综合评分</td>
+<td style="text-align: left;">❌</td>
+<td style="text-align: left;">⭐⭐⭐⭐</td>
+<td style="text-align: left;">⭐⭐⭐</td>
+<td style="text-align: left;">⭐⭐⭐</td>
+<td style="text-align: left;">⭐⭐⭐⭐⭐（最佳）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-ttl-hz50-lazyfree">优化验证 5：多级质数 TTL + hz=50 + lazyfree</h2>
+<p>用质数级 TTL（2,3,5,7,11）避免最小公倍数汇集，每级叠加 2s 随机偏移，<code>hz=50 + lazyfree</code>。</p>
+<h3 id="_14">数据</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">时间</th>
+<th style="text-align: left;">bat/s</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">avg</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;"><strong>P99</strong></th>
+<th style="text-align: left;"><strong>max</strong></th>
+<th style="text-align: left;">expired/5s</th>
+<th style="text-align: left;">keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">~5s</td>
+<td style="text-align: left;">1590</td>
+<td style="text-align: left;">318k</td>
+<td style="text-align: left;">4.62ms</td>
+<td style="text-align: left;">3.64ms</td>
+<td style="text-align: left;"><strong>20.91ms</strong></td>
+<td style="text-align: left;">85.14ms</td>
+<td style="text-align: left;">5k</td>
+<td style="text-align: left;">462k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~10s</td>
+<td style="text-align: left;">2113</td>
+<td style="text-align: left;">423k</td>
+<td style="text-align: left;">3.72ms</td>
+<td style="text-align: left;">3.38ms</td>
+<td style="text-align: left;"><strong>8.96ms</strong></td>
+<td style="text-align: left;">20.49ms</td>
+<td style="text-align: left;">68k</td>
+<td style="text-align: left;">499k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~15s</td>
+<td style="text-align: left;">2408</td>
+<td style="text-align: left;">482k</td>
+<td style="text-align: left;">3.27ms</td>
+<td style="text-align: left;">3.10ms</td>
+<td style="text-align: left;"><strong>5.76ms</strong></td>
+<td style="text-align: left;">15.42ms</td>
+<td style="text-align: left;">74k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~20s</td>
+<td style="text-align: left;">1881</td>
+<td style="text-align: left;">376k</td>
+<td style="text-align: left;">4.19ms</td>
+<td style="text-align: left;">3.89ms</td>
+<td style="text-align: left;"><strong>9.81ms</strong></td>
+<td style="text-align: left;">23.92ms</td>
+<td style="text-align: left;">83k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~25s</td>
+<td style="text-align: left;">2298</td>
+<td style="text-align: left;">460k</td>
+<td style="text-align: left;">3.43ms</td>
+<td style="text-align: left;">3.29ms</td>
+<td style="text-align: left;"><strong>5.54ms</strong></td>
+<td style="text-align: left;">9.97ms</td>
+<td style="text-align: left;">89k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+<tr>
+<td style="text-align: left;">~30s</td>
+<td style="text-align: left;">2235</td>
+<td style="text-align: left;">447k</td>
+<td style="text-align: left;">3.52ms</td>
+<td style="text-align: left;">3.21ms</td>
+<td style="text-align: left;"><strong>8.61ms</strong></td>
+<td style="text-align: left;">16.38ms</td>
+<td style="text-align: left;">79k</td>
+<td style="text-align: left;">500k</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_15">六轮对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">⑥ 质数级+hz=50+lazyfree</th>
+<th style="text-align: left;">⑤ 统一打散+lazyfree(hz=10)</th>
+<th style="text-align: left;">② Redis全量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">P50</td>
+<td style="text-align: left;">3.1~3.9ms</td>
+<td style="text-align: left;">3.2~3.9ms</td>
+<td style="text-align: left;">3.1~3.5ms</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>P99 (稳态)</strong></td>
+<td style="text-align: left;"><strong>5.5~9.8ms</strong></td>
+<td style="text-align: left;">5.0~8.1ms</td>
+<td style="text-align: left;">5.6~9.9ms</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>max (稳态)</strong></td>
+<td style="text-align: left;"><strong>10~24ms</strong></td>
+<td style="text-align: left;">7~14ms</td>
+<td style="text-align: left;">8~18ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐 (稳态)</td>
+<td style="text-align: left;">376k~482k</td>
+<td style="text-align: left;">423k~481k</td>
+<td style="text-align: left;">384k~471k</td>
+</tr>
+<tr>
+<td style="text-align: left;">expired/5s</td>
+<td style="text-align: left;">68k~89k</td>
+<td style="text-align: left;">48k~164k</td>
+<td style="text-align: left;">113k~398k</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_16">分析</h3>
+<p>和三轮最好的 ⑤ 对比，⑥ 数据接近但略差一点。质数级避免了 LCM 汇集，这在 <strong>长 TTL 场景</strong>（小时/天级）价值巨大，但短 TTL 场景（秒级）反而带来了副作用：</p>
+<div class="codehilite"><pre><span></span><code>⑤ 统一打散: TTL=2+rand(0,4) → 所有 key 在 2~6s 内到期 → key 空间相对小
+⑥ 质数级:    TTL=2,3,5,7,11 + spread=2 → 最长 key 存活 13s → key 空间更大
+                                             ↑ 扫描的字典更大 → 扫描负担增加
+</code></pre></div>
+
+<p>质数打散在长 TTL 场景消除的是周期性"超级峰值"（如一小时/一天的批量 TTL 同时到期），但秒级稳态中，key 蔓延到更大时间窗口反而增加了扫描负担。</p>
+<hr />
+<h2 id="_17">总结：三种武器的分工框架</h2>
+<h3 id="_18">各司其职</h3>
+<div class="codehilite"><pre><span></span><code>hz + effort  →  应对"同一秒内大量到期"   →  把波峰切碎（事后补救，提高扫描密度）
+TTL 打散     →  应对"周期性 LCM 汇集"    →  不让波峰形成（源头消灭）
+lazyfree     →  应对"无论如何都要删 key"  →  内存释放不阻塞主线程（最后兜底，低风险优先启用）
+</code></pre></div>
+
+<h3 id="_19">为什么这样分工</h3>
+<p><strong>短 TTL（秒级，固定到期）→ hz + effort 是主武器：</strong></p>
+<div class="codehilite"><pre><span></span><code>40 万 key 同在第 2 秒到期 → 波峰又高又窄
+
+hz=10: 第 2 秒只触发了 10 次采样扫描，每次采样可能命中更集中的过期 key → 每次都很重
+hz=50: 第 2 秒触发 50 次采样扫描，单次需要处理的过期 key 更分散 → 切碎了 ✓
+</code></pre></div>
+
+<p>波峰本身避不开（TTL 固定），只能把扫描密度提高来分散单次负担。实测 ② 的 P99 从 159ms → 5.6ms 主要靠 hz 提高扫描密度。</p>
+<p><strong>长 TTL（时/天级，周期性批量写入）→ TTL 打散是主武器：</strong></p>
+<div class="codehilite"><pre><span></span><code>定时任务每小时写 10 万 key，TTL=3600s
+→ 每到整点，10 万 key 同时到期 → 周期性超级波峰
+
+hz=50 能切碎这个波峰吗？能，但：
+  - hz 只能让每次扫描负担轻一点，不能消除"这一秒内要处理 10 万过期"的事实
+  - 质数打散 (3593, 3607, 3613...) 直接让它们永不对齐 → 波峰消失 ✓
+</code></pre></div>
+
+<p>长 TTL 的波峰是"可避免的"——打散从源头消灭它，比事后切碎更优雅。</p>
+<p><strong>所有场景 → lazyfree 是兜底（应优先启用）：</strong></p>
+<div class="codehilite"><pre><span></span><code>无论波峰有没有被消灭/切碎，内存释放动作本身不应阻塞主线程。
+lazyfree-lazy-expire yes 确保过期 key 删除走后台 BIO 线程 UNLINK。
+这是低成本、低风险的操作，应在任何调优前先启用。
+</code></pre></div>
+
+<h3 id="_20">决策树</h3>
+<div class="codehilite"><pre><span></span><code>能改 Redis 配置？
+  ├── 能 → ① 先开 lazyfree（必须，零成本兜底）
+  │        │
+  │        ├── 短 TTL（秒级）+ 固定到期 → 加 hz=50 + effort=2
+  │        │     ②: P99 从 159ms → 5.6ms
+  │        │
+  │        ├── 短 TTL（秒级）+ 已打散 → 不需要 hz，lazyfree 就够
+  │        │     ⑤: P99 从 159ms → 5ms（最佳）
+  │        │
+  │        └── 长 TTL（时/天级）+ 批量写 → 应用层质数打散 + hz=50 抹残余毛刺
+  │
+  └── 否 → 能改应用代码？
+            ├── 能 → TTL 随机打散（③: P99 从 159ms → 34ms，能用）
+            └── 否 → 横向拆分 key-space 或接受 P99 &gt; 50ms
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code><span class="c1"># 实操顺序（推荐）</span>
+<span class="nt">1. lazyfree-lazy-expire</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">yes</span><span class="w">       </span><span class="c1"># 先兜底，最低风险</span>
+<span class="nt">2. active-expire-effort</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1~3</span><span class="w">       </span><span class="c1"># 降低单次采样深度</span>
+<span class="nt">3. hz</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20~50</span><span class="w">                       </span><span class="c1"># 提高扫描密度，视 CPU 可承受范围调整</span>
+<span class="l l-Scalar l-Scalar-Plain">4. 应用层 TTL 打散</span><span class="w">                   </span><span class="c1"># 若可改代码</span>
+<span class="l l-Scalar l-Scalar-Plain">5. 横向拆分 key-space</span><span class="w">                </span><span class="c1"># 若单实例不足以承载</span>
+</code></pre></div>
+
+<h3 id="_21">一图总结</h3>
+<div class="codehilite"><pre><span></span><code>                    ┌─────────────────────────┐
+                    │     key 会集中到期吗？    │
+                    └───────────┬─────────────┘
+                                │
+              ┌─────────────────┼─────────────────┐
+              ▼                 ▼                  ▼
+         会，不可避免        会，但可避免          不会
+      （固定短 TTL）    （长 TTL 周期批量）   （已打散稳态）
+              │                 │                  │
+              ▼                 ▼                  ▼
+        hz + effort         质数打散          什么也不加
+        切碎波峰            消灭波峰          lazyfree 兜底
+              │                 │                  │
+              └─────────────────┼──────────────────┘
+                                ▼
+                         lazyfree = yes
+                    （所有场景的最后防线）
+</code></pre></div>
+
+<hr />
+<h2 id="_22">监控与告警建议</h2>
+<p>不仅要看 expired_keys 和延迟分位，还需同时监控以下指标以区分瓶颈来源（扫描 vs 删除 vs 复制）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">监控项</th>
+<th style="text-align: left;">工具/命令</th>
+<th style="text-align: left;">关注点</th>
+<th style="text-align: left;">告警建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">P50/P95/P99/max 延迟</td>
+<td style="text-align: left;">客户端 HdrHistogram</td>
+<td style="text-align: left;">关注 P99 突刺</td>
+<td style="text-align: left;">P99 &gt; 50ms 持续 1min → P1</td>
+</tr>
+<tr>
+<td style="text-align: left;">expired_keys/s</td>
+<td style="text-align: left;"><code>INFO stats</code></td>
+<td style="text-align: left;">过期速率突增</td>
+<td style="text-align: left;">&gt; 100k/s 且 P99 &gt; 50ms → P1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>blocked_clients</code></td>
+<td style="text-align: left;"><code>INFO clients</code></td>
+<td style="text-align: left;">被阻塞命令（BLPOP/XREAD 等）堆积</td>
+<td style="text-align: left;">&gt; 0 持续 → P2</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>latency latest</code></td>
+<td style="text-align: left;"><code>LATENCY LATEST</code></td>
+<td style="text-align: left;">直接观测 Redis 内部延迟事件</td>
+<td style="text-align: left;">关注 expire 相关 events</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>instantaneous_ops_per_sec</code></td>
+<td style="text-align: left;"><code>INFO stats</code></td>
+<td style="text-align: left;">吞吐突降</td>
+<td style="text-align: left;">&lt; baseline × 50% → P2</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>used_memory</code> / <code>used_memory_peak</code></td>
+<td style="text-align: left;"><code>INFO memory</code></td>
+<td style="text-align: left;">内存峰值与波动</td>
+<td style="text-align: left;">接近 maxmemory → P1</td>
+</tr>
+<tr>
+<td style="text-align: left;">CPU（主机 + Redis 进程）</td>
+<td style="text-align: left;"><code>INFO cpu</code> + OS</td>
+<td style="text-align: left;">CPU 突增</td>
+<td style="text-align: left;">&gt; 80% 持续 1min → P1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>replica lag</code></td>
+<td style="text-align: left;"><code>INFO replication</code></td>
+<td style="text-align: left;">UNLINK 传播导致 replica 延迟</td>
+<td style="text-align: left;">lag &gt; 5s → P1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>replica CPU</code></td>
+<td style="text-align: left;">replica 端监控</td>
+<td style="text-align: left;">replica 端删除负担</td>
+<td style="text-align: left;">&gt; 80% → P2</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rdb_last_save_time</code> / <code>aof_fsync</code></td>
+<td style="text-align: left;"><code>INFO persistence</code></td>
+<td style="text-align: left;">持久化 I/O 影响</td>
+<td style="text-align: left;">fsync 延迟异常 → P2</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注意</strong>：hz 调高会增加 CPU 定时开销，需同时监控 Redis 进程 CPU。不要盲目把 hz 调太高（如 &gt; 100）——会增加调度和统计开销，且在部分旧版或受限环境下效果递减。优先找最小能将 P99 压到目标值的 hz。</p>
+<p><strong>UNLINK 对副本的附加负担</strong>：测试时关注副本端内存回收和持久化日志大小与速率，确保副本端不会因大量 UNLINK 传播导致回收延迟或内存峰值。</p>
+<p><strong>Pipeline/批量写入注意</strong>：主线程阻塞会导致客户端写入延迟累积，可能造成网络层退避或连接阻塞。测试时同时观测客户端侧延迟。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

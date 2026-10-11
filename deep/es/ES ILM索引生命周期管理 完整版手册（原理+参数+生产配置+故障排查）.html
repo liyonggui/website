@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ES ILM索引生命周期管理 完整版手册（原理\+参数\+生产配置\+故障排查） · 小番茄程序猿</title>
+<meta name="description" content="ES ILM索引生命周期管理 完整版手册（原理\+参数\+生产配置\+故障排查） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>ES ILM索引生命周期管理 完整版手册（原理\+参数\+生产配置\+故障排查）</h1>
+  </div>
+  <article class="prose">
+<h1 id="es-ilm">ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）</h1>
+<h2 id="_1">前置说明</h2>
+<p>本文承接前文ES路由、分片分配、冷热分层全套内容，<strong>ILM是ES冷热分层唯一原生实现方案</strong>，全程无业务代码、无定时任务，配置驱动实现索引自动冷热流转；同时厘清所有人都踩过的时间误区、调度误区、流转误区，附带完整可用生产脚本+全覆盖故障排障。</p>
+<hr />
+<h1 id="ilm3">一、ILM核心底层原理（必背，解决你之前3个疑问）</h1>
+<h2 id="1">1. 最小流转单位</h2>
+<p><strong>以【整个索引】为最小单位，不支持单条文档冷热迁移</strong>，不能把索引里一部分老数据挪冷节点、一部分留热节点。</p>
+<h2 id="2">2. 时间判断依据（高频面试坑点）</h2>
+<p><strong>完全不看文档create_time、update_time业务字段！！！</strong></p>
+<ol>
+<li>
+<p>普通静态索引：计时起点 = <strong>索引创建时间</strong>，文档无论怎么更新，索引年龄不变</p>
+</li>
+<li>
+<p>Rollover滚动索引（生产时序业务标配）：计时起点 = <strong>索引滚动切换时间</strong></p>
+</li>
+</ol>
+<blockquote>
+<p><strong>通俗一句话</strong>：ILM只管索引活了多久，不管里面数据改了多少次、数据是什么时间产生的。</p>
+</blockquote>
+<h2 id="3">3. 底层调度方式（是不是定时任务？）</h2>
+<p><strong>不是Cron定点定时任务，是ES内置后台线程轮询巡检</strong></p>
+<ul>
+<li>
+<p>后台服务：<code>ilm-service</code></p>
+</li>
+<li>
+<p>默认轮询间隔：<strong>10分钟检查一次</strong></p>
+</li>
+<li>
+<p>全局配置参数：<code>indices.lifecycle.poll_interval</code></p>
+</li>
+<li>
+<p>执行逻辑：每轮遍历所有绑定ILM策略的索引 → 判断是否满足阶段条件 → 上一步未执行完毕则跳过，不重复执行</p>
+</li>
+</ul>
+<h2 id="4">4. 四阶段单向流转逻辑（不可逆）</h2>
+<p>Hot热 → Warm温 → Cold冷 → Delete删除，<strong>只能往后走，不能自动回流热节点</strong></p>
+<ol>
+<li>
+<p>热阶段：承接高并发写入、高频查询，SSD高性能节点</p>
+</li>
+<li>
+<p>温阶段：停止写入，合并索引段、收缩分片，降低资源占用</p>
+</li>
+<li>
+<p>冷阶段：归档存储，冻结索引，节省内存，大容量HDD磁盘</p>
+</li>
+<li>
+<p>删除阶段：自动清理过期索引，释放磁盘空间</p>
+</li>
+</ol>
+<h2 id="5">5. 底层流转本质动作</h2>
+<p>ILM不搬运数据，只<strong>修改索引分片分配标签</strong>：给索引打上<code>data_tier:warm/cold</code>强制标签，ES分片分配算法自动将分片搬迁至对应节点池，全程集群内部自愈。</p>
+<hr />
+<h1 id="ilm">二、ILM全阶段参数详解（表格速查，全覆盖）</h1>
+<h2 id="_2">通用公共参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>含义</th>
+<th>生产建议值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>min_age</td>
+<td>进入当前阶段需要等待的最小时长</td>
+<td>热阶段固定0ms，其余按业务留存设置</td>
+</tr>
+<tr>
+<td>set_priority</td>
+<td>索引分片搬迁优先级，数值越高越优先</td>
+<td>热100 / 温50 / 冷10</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-hot">1. Hot热阶段（写入阶段）核心参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rollover.max_age</td>
+<td>索引最长写入周期，到期自动建新索引切别名</td>
+</tr>
+<tr>
+<td>rollover.max_primary_shard_size</td>
+<td>单主分片容量阈值，到达容量自动滚动（核心推荐）</td>
+</tr>
+<tr>
+<td>rollover.max_docs</td>
+<td>文档条数阈值，一般不推荐使用，数据量波动大</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-warm">2. Warm温阶段（降配优化）核心参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>allocate</td>
+<td>强制索引分片只能分配到温节点池</td>
+</tr>
+<tr>
+<td>forcemerge</td>
+<td>强制合并索引分段，减少小段，提升查询性能，<strong>非常耗IO</strong></td>
+</tr>
+<tr>
+<td>shrink</td>
+<td>收缩主分片数量，减少元数据内存占用，<strong>不可逆</strong></td>
+</tr>
+<tr>
+<td>readonly</td>
+<td>索引设置只读，杜绝后续写入产生新小段</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-cold">3. Cold冷阶段（归档阶段）核心参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>allocate</td>
+<td>强制分片仅存放冷节点池</td>
+</tr>
+<tr>
+<td>freeze</td>
+<td>索引冻结，大幅降低堆内存占用，冷归档标配</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-delete">4. Delete删除阶段</h2>
+<p>到达指定时长，直接删除整个索引，<strong>删除后不可恢复</strong>，生产务必谨慎配置</p>
+<hr />
+<h1 id="ilm_1">三、生产可直接复制：完整ILM策略+索引模板</h1>
+<h2 id="1-ilm">1. 创建ILM生命周期策略</h2>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT</span><span class="w"> </span><span class="err">_ilm/policy/order_ho</span><span class="kc">t</span><span class="err">_warm_cold_policy</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">"policy"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"phases"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"hot"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0ms"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"rollover"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"max_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"max_primary_shard_size"</span><span class="p">:</span><span class="w"> </span><span class="s2">"45gb"</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"warm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"require"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">              </span><span class="nt">"data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warm"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"forcemerge"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"max_num_segments"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"shrink"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"cold"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"30d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"require"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">              </span><span class="nt">"data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cold"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"freeze"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"90d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="2-ilm">2. 索引模板绑定ILM+冷热节点</h2>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT</span><span class="w"> </span><span class="err">_i</span><span class="kc">n</span><span class="err">dex_</span><span class="kc">te</span><span class="err">mpla</span><span class="kc">te</span><span class="err">/</span><span class="kc">te</span><span class="err">mpla</span><span class="kc">te</span><span class="err">_order</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">"index_patterns"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"order_*"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"template"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"settings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"number_of_replicas"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"index.lifecycle.name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"order_hot_warm_cold_policy"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"index.routing.allocation.data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hot"</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"mappings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"orderId"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"keyword"</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">"province"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"keyword"</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">"createTime"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"date"</span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<hr />
+<h1 id="ilm_2">四、生产环境必看：ILM八大注意事项（避坑核心）</h1>
+<ol>
+<li>
+<p><strong>冷热分层≠解决分片倾斜</strong>：ILM只能省磁盘成本，<strong>解决不了热数据路由热点倾斜</strong>，热节点依然必须做路由二次打散；温、冷数据无访问，倾斜无需处理</p>
+</li>
+<li>
+<p><strong>分片收缩不可逆</strong>：warm阶段shrink缩分片后，主分片无法扩容，前期必须规划好分片数量</p>
+</li>
+<li>
+<p><strong>流转存在时间误差</strong>：默认10分钟轮询，不会精准卡点流转；加上分片搬迁、段合并耗时，延迟几十分钟属于正常现象</p>
+</li>
+<li>
+<p><strong>forcemerge极度耗IO</strong>：禁止业务高峰期执行，ILM自动合并尽量放在凌晨低峰，防止线上查询卡顿</p>
+</li>
+<li>
+<p><strong>节点角色必须齐全</strong>：集群缺少hot/warm/cold任意节点，索引会卡在当前阶段，彻底停止冷热流转</p>
+</li>
+<li>
+<p><strong>禁止手动修改索引data_tier配置</strong>：会导致分片乱跑、主副分片跨节点异常、集群变黄</p>
+</li>
+<li>
+<p><strong>索引冻结利弊</strong>：冻结大幅节省内存，但查询性能下降，有偶尔查询需求的业务不要开启freeze</p>
+</li>
+<li>
+<p><strong>删除风险极高</strong>：ILM删除索引无回收站，上线前务必测试，核心数据提前开启快照备份</p>
+</li>
+</ol>
+<hr />
+<h1 id="ilm_3">五、ILM线上故障一页排查清单（现象→原因→解决方案）</h1>
+<table>
+<thead>
+<tr>
+<th>故障现象</th>
+<th>根因</th>
+<th>排查命令</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>索引到时间不流转，一直停留在热节点</td>
+<td>1.缺少对应warm/cold节点；2.分片搬迁卡住；3.上一阶段动作未完成</td>
+<td>GET 索引/_ilm/explain</td>
+<td>补齐对应角色节点；低峰调高分片搬迁并发</td>
+</tr>
+<tr>
+<td>索引滚动失败，索引持续膨胀</td>
+<td>别名未绑定写入；rollover阈值设置过大</td>
+<td>GET _alias/别名</td>
+<td>补全写入别名；合理调低分片容量阈值</td>
+</tr>
+<tr>
+<td>ILM流转期间集群IO暴涨</td>
+<td>forcemerge段合并+分片搬迁同时执行</td>
+<td>GET _cat/recovery?v</td>
+<td>高峰期临时关闭集群rebalance，低峰再放开</td>
+</tr>
+<tr>
+<td>索引误流转，提前进入冷节点</td>
+<td>误解计时长，把索引创建时间当成业务数据时间</td>
+<td>GET 索引/_settings</td>
+<td>修正min_age时长；理解ILM只认索引时间不认业务时间</td>
+</tr>
+<tr>
+<td>索引冻结后查询变慢</td>
+<td>freeze索引本身牺牲性能换内存</td>
+<td>GET 索引/_settings?filter_path=*.frozen</td>
+<td>有查询需求移除freeze动作，不开启索引冻结</td>
+</tr>
+<tr>
+<td>不想自动删索引，但是策略一直执行删除</td>
+<td>删除阶段min_age设置过小</td>
+<td>GET _ilm/policy/策略名</td>
+<td>拉长删除时长；临时注释delete阶段动作</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="ilm_4">六、ILM常用运维命令（一键复制）</h1>
+<div class="codehilite"><pre><span></span><code><span class="err"># 1.查看单个索引生命周期流转详情（最核心排障命令）</span>
+<span class="err">GET /index_name/_ilm/explain</span>
+
+<span class="err"># 2.查看全局ILM轮询间隔配置</span>
+<span class="err">GET _cluster/settings?include_defaults=true&amp;filter_path=indices.lifecycle*</span>
+
+<span class="err"># 3.手动触发一次ILM巡检（紧急排查用）</span>
+<span class="err">POST _ilm/start</span>
+
+<span class="err"># 4.临时修改ILM轮询间隔（测试改成1分钟，生产保持10分钟）</span>
+<span class="err">PUT _cluster/settings</span>
+<span class="err">{</span>
+<span class="err">  "transient": {</span>
+<span class="err">    "indices.lifecycle.poll_interval": "10m"</span>
+<span class="err">  }</span>
+<span class="err">}</span>
+
+<span class="err"># 5.查看索引当前冷热节点分配标签</span>
+<span class="err">GET index_name/_settings?filter_path=*.data_tier</span>
+</code></pre></div>
+
+<hr />
+<h1 id="3_1">七、面试3分钟口述标准答案（直接背诵）</h1>
+<p>ES ILM是原生索引生命周期管理，用来实现冷热数据分层，全程零代码维护。首先ILM是以整个索引为最小流转单位，<strong>不识别文档内部创建和更新时间</strong>，只根据索引创建时间或者滚动rollover时间计时；调度层面不是定时Cron任务，而是后台线程默认10分钟轮询巡检一次。</p>
+<p>整体分为热、温、冷、删除四个阶段，单向流转不可回流，通过修改索引节点分配标签，让集群分片自动迁移到对应冷热节点。同时需要重点区分，冷热分层只能优化存储成本，<strong>无法解决热数据自定义路由带来的分片热点倾斜</strong>。</p>
+<p>生产落地需要注意，分片收缩不可逆、段合并IO压力大、索引删除不可恢复，日常排障优先使用ilm explain命令定位流转卡住原因，业务高峰期需要管控分片搬迁和段合并，避免集群IO雪崩。</p>
+<blockquote>
+<p>（注：部分内容可能由 AI 生成）</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

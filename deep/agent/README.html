@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>phase1-minimal-agent · 小番茄程序猿</title>
+<meta name="description" content="phase1-minimal-agent —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>phase1-minimal-agent</h1>
+  </div>
+  <article class="prose">
+<h1 id="phase1-minimal-agent">phase1-minimal-agent</h1>
+<p>阶段 1 骨架：<strong>Spring Boot + Spring AI Alibaba（DashScope / 通义千问）最小 Agent 循环</strong>。
+目的不是做产品，是亲手把「模型 → 选工具 → 执行 → 结果回填 → 再决策」这个循环跑通一次。</p>
+<h2 id="_1">环境</h2>
+<ul>
+<li>JDK 17</li>
+<li>Maven 3.9+</li>
+<li>依赖版本：Spring Boot 3.4.7、spring-ai-alibaba 1.0.0.2（详见 <code>pom.xml</code>）</li>
+</ul>
+<h2 id="_2">跑起来</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1) 设 API Key（阿里百炼控制台申请，别写进仓库）</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">DASHSCOPE_API_KEY</span><span class="o">=</span>sk-你的key<span class="w">        </span><span class="c1"># Windows: set DASHSCOPE_API_KEY=sk-xxx</span>
+
+<span class="c1"># 2) 编译</span>
+mvn<span class="w"> </span>-q<span class="w"> </span>clean<span class="w"> </span>package<span class="w"> </span>-DskipTests
+
+<span class="c1"># 3) 启动</span>
+mvn<span class="w"> </span>spring-boot:run
+</code></pre></div>
+
+<h2 id="_3">验证工具调用闭环</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 流式（观测首字延迟）</span>
+curl<span class="w"> </span>-N<span class="w"> </span><span class="s2">"http://localhost:8080/api/agent/stream?text=帮我算(128%2B64)*3"</span>
+
+<span class="c1"># 同步（跨两个工具：先算数、再查订单）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8080/api/agent/chat<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: text/plain"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s2">"先算 (128+64)*3，再查订单 A1001 状态"</span>
+</code></pre></div>
+
+<p>打开 <code>com.alibaba.cloud.ai</code> 的 DEBUG 日志，就能看到模型两次要求调用 <code>calculator</code> / <code>orderStatus</code>、结果被回填、最后汇总作答的完整过程。</p>
+<h2 id="_4">本阶段刻意不做的</h2>
+<ul>
+<li>不做鉴权、不做持久化、不上微服务 —— 只要循环跑通即可。</li>
+<li>不接真实订单库 —— <code>orderStatus</code> 用内存 Map 模拟，阶段 3 再换成真实后端接口。</li>
+</ul>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

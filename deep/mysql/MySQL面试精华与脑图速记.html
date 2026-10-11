@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MySQL 面试精华 & 脑图速记 · 小番茄程序猿</title>
+<meta name="description" content="MySQL 面试精华 & 脑图速记 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>MySQL 面试精华 & 脑图速记</h1>
+  </div>
+  <article class="prose">
+<h1 id="mysql">MySQL 面试精华 &amp; 脑图速记</h1>
+<blockquote>
+<p>基于《MySQL四层架构与监控汇总》提取的<strong>面试精华版</strong>。用于快速记忆核心考点。
+面试主攻：四层架构、连接层指标辨析、SQL执行/两阶段提交、BufferPool、长连接与僵尸连接、监控排查。</p>
+</blockquote>
+<hr />
+<h2 id="_1">脑图（快速记忆框架）</h2>
+<div class="codehilite"><pre><span></span><code>MySQL 面试精华
+│
+├─ ① 四层架构
+│    连接层→SQL层→InnoDB→文件系统
+│    每层可监控，监控工具不同
+│    版本差异：以 show variables/status 为准
+│
+├─ ② 连接层指标辨析（易混淆）
+│    Threads_connected  当前连接数(含Sleep)
+│    Threads_created    累计建线程(只增)
+│    Aborted_connects   登录失败(未连上)
+│    Aborted_clients    登录后异常断开
+│    Thread_cache_hits  线程缓存命中
+│    ★判定用 delta 增量
+│
+├─ ③ SQL 执行（正向/反向）
+│    正向：连接→解析→优化→执行→InnoDB→磁盘
+│    反向：磁盘→InnoDB→Server→连接→客户端
+│    ★binlog属Server层，redo/undo属InnoDB层
+│    ★BufferPool命中不穿透四层到磁盘
+│
+├─ ④ 两阶段提交(2PC)
+│    Prepare(redo落盘PREPARED)→Commit(写binlog→redo标COMMIT)
+│    崩溃恢复：redo COMMIT直接提交；PREPARED看binlog是否完整
+│    ★commit不刷脏页，只刷redo/binlog
+│    ★group commit优化，非每事务单独fsync
+│
+├─ ⑤ BufferPool
+│    按页加载/驱逐(16KB)，缓存ibd数据页
+│    3链表：Free空闲/LRU冷热/Flush脏页
+│    脏页≠redo：脏页是数据页，redo是日志
+│    脏页4种刷盘：后台定时/LRU淘汰/redo满/关闭
+│    ★大字段(BLOB/TEXT)用溢出页，按需加载
+│    ★无索引字段跟着聚簇页进BP
+│
+├─ ⑥ 长连接/僵尸连接
+│    僵尸连接=断电断网(RST发不出)遗留的Sleep
+│    kill-9发RST→不残留
+│    三层保活：Hikari心跳(应用)/OS keepalive(内核)/wait_timeout(兜底)
+│    ★机器死机只剩wait_timeout兜底
+│    ★Nacos只管流量不管数据库连接
+│
+└─ ⑦ 监控/排查口诀
+    连接飙=连接层；filesort多=SQL层；
+    BP命中低/锁等待=InnoDB层；磁盘await高=文件层
+    诊断SQL：processlist/innodb_trx/innodb_lock_waits
+</code></pre></div>
+
+<hr />
+<h2 id="1">① 四层架构 &amp; 各层监控</h2>
+<h3 id="_2">脑图</h3>
+<div class="codehilite"><pre><span></span><code>连接层 ─ 连接/线程/认证/权限
+   ↓
+SQL服务层 ─ 解析/优化器/执行器/binlog
+   ↓
+InnoDB ─ BufferPool/锁/事务/redo/undo/ChangeBuffer
+   ↓
+文件系统层 ─ 磁盘IO/文件/页刷盘/DoubleWrite
+</code></pre></div>
+
+<h3 id="_3">精华速记</h3>
+<ul>
+<li>四层<strong>全部可监控</strong>，工具不同：<code>show status</code> / <code>show engine innodb status</code> / <code>information_schema</code> / <code>performance_schema</code> / <code>slow log</code>。</li>
+<li><strong>版本差异</strong>：不同发行版功能（线程池、事件名、状态变量名）不同，实际以 <code>show variables/status</code> 为准。</li>
+</ul>
+<h3 id="_4">各层监控核心指标</h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>关键指标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>连接层</td>
+<td>Threads_connected、Threads_created、Aborted_*、Thread_cache_hits</td>
+</tr>
+<tr>
+<td>SQL层</td>
+<td>Com_<em>、Sort_</em>、Created_tmp_*、Binlog_cache_disk_use</td>
+</tr>
+<tr>
+<td>InnoDB层</td>
+<td>Innodb_buffer_pool_<em>、Innodb_log_waits、Innodb_trx_</em></td>
+</tr>
+<tr>
+<td>文件层</td>
+<td>iostat/sar、Innodb_dblwr_writes、Innodb_pages_written</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">瓶颈口诀</h3>
+<div class="codehilite"><pre><span></span><code>连接飙/大量Abort → 连接层
+filesort多/磁盘临时表 → SQL层
+BP命中低/锁等待/log_waits&gt;0 → InnoDB层
+所有SQL慢+磁盘await高 → 文件系统层
+</code></pre></div>
+
+<hr />
+<h2 id="2">② 连接层指标辨析（高频易混淆）</h2>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>含义</th>
+<th>判定要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Threads_connected</strong></td>
+<td>当前已建立连接数（含 Sleep）</td>
+<td>不是运行中事务数；看活跃用 <code>processlist</code>/<code>innodb_trx</code></td>
+</tr>
+<tr>
+<td><strong>Threads_created</strong></td>
+<td>累计创建 OS 线程，只增</td>
+<td>看<strong>上涨速率</strong>，短连接频繁重连会飙升</td>
+</tr>
+<tr>
+<td><strong>Aborted_connects</strong></td>
+<td>连接建立阶段失败</td>
+<td>密码错/max_connections 打满/网络握手失败</td>
+</tr>
+<tr>
+<td><strong>Aborted_clients</strong></td>
+<td>登录后异常断开</td>
+<td>含<strong>超时被 MySQL 踢掉</strong>（wait_timeout）</td>
+</tr>
+<tr>
+<td><strong>Thread_cache_hits</strong></td>
+<td>线程缓存命中</td>
+<td>命中率用 <strong>delta 增量</strong>算，不用绝对值</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>线程缓存 ≠ 连接池</strong>：线程缓存缓存的是 OS 线程，不是 TCP 连接。
+<strong>delta 原则</strong>：<code>Threads_connected</code>、<code>Innodb_buffer_pool_pages_dirty</code> 等当前量用当前值；累计计数（Threads_created、Innodb_*_reads 等）用 delta 算速率。</p>
+</blockquote>
+<hr />
+<h2 id="3-sql">③ SQL 执行顺序</h2>
+<h3 id="_6">脑图</h3>
+<div class="codehilite"><pre><span></span><code>正向执行：
+  连接层(TCP/认证) → SQL层(解析/优化/执行) → InnoDB(BP/锁/MVCC) → 文件层(磁盘IO)
+反向回传：
+  文件层 → InnoDB → SQL层(组装结果) → 连接层(网络返回)
+</code></pre></div>
+
+<h3 id="_7">精华速记</h3>
+<ul>
+<li><strong>binlog 属 Server 层</strong>；<strong>redo/undo 属 InnoDB 层</strong>（最易考）。</li>
+<li>层与层是<strong>函数调用</strong>，上层不直接操作下层文件。</li>
+<li><strong>不是每条 SQL 都穿透四层</strong>：BufferPool 命中则 InnoDB 直接返回，不访问磁盘。</li>
+<li>隔离级别、MVCC、行锁都发生在 <strong>InnoDB 层</strong>，Server 层不知道。</li>
+<li>执行计划在 <strong>SQL层优化器</strong>；索引查找/锁/MVCC 在 <strong>存储引擎层</strong>；磁盘读写在 <strong>文件系统层</strong>。</li>
+</ul>
+<hr />
+<h2 id="4-2pc">④ 两阶段提交（2PC，关键考点）</h2>
+<h3 id="_8">脑图</h3>
+<div class="codehilite"><pre><span></span><code>commit:
+  InnoDB Prepare: redo落盘 标记PREPARED
+      ↓
+  Server写binlog并刷盘(受sync_binlog)
+      ↓
+  InnoDB: redo标记 COMMIT
+      ↓
+  返回成功；脏页后台异步刷ibd
+</code></pre></div>
+
+<h3 id="_9">精华速记</h3>
+<ul>
+<li>目的：保证 <strong>redo(InnoDB) 与 binlog(Server)</strong> 一致。</li>
+<li><strong>崩溃恢复</strong>：</li>
+<li>redo=COMMIT → 直接提交。</li>
+<li>redo=PREPARED → 查 binlog 是否完整：完整则 apply，否则 rollback。</li>
+<li><strong>commit 不刷脏页到 ibd</strong>，只刷 redo/binlog；脏页后台刷。</li>
+<li><strong>undo 不参与 2PC</strong>，只用于回滚和 MVCC。</li>
+<li><strong>group commit</strong>：高并发小事务合并 fsync，非每事务单独刷。</li>
+<li>最安全组合：<code>innodb_flush_log_at_trx_commit=1</code> + <code>sync_binlog=1</code>。</li>
+<li>不是分布式 XA 的 2PC，别混淆。</li>
+</ul>
+<hr />
+<h2 id="5-bufferpool">⑤ BufferPool &amp; 脏页（核心）</h2>
+<h3 id="_10">脑图</h3>
+<div class="codehilite"><pre><span></span><code>BufferPool(按页16KB加载/驱逐)
+ ├─ Free链表: 空闲页
+ ├─ LRU链表: 冷热页(young热/old冷)
+ └─ Flush链表: 脏页(内存改没刷盘)
+缓存: 表数据页/二级索引页/undo页/AHI页/ChangeBuffer页
+不缓存: redo(独立Log Buffer)/binlog(Server层)
+</code></pre></div>
+
+<h3 id="_11">精华速记</h3>
+<ul>
+<li><strong>脏页 ≠ redo</strong>：脏页是<strong>被改的数据页</strong>（最终刷 ibd）；redo 是<strong>日志</strong>（用于恢复）。commit 刷 redo/binlog，不刷脏页。</li>
+<li><strong>脏页 4 种刷盘</strong>：后台定时(75%)、LRU 淘汰(会阻塞)、redo 快满(强制)、数据库关闭。</li>
+<li><strong>控制参数</strong>：innodb_max_dirty_pages_pct、innodb_max_dirty_pages_pct_lwm、innodb_page_cleaners。</li>
+</ul>
+<h3 id="bufferpool">BufferPool &amp; 无索引字段</h3>
+<ul>
+<li>BP 按<strong>页</strong>加载，一页里所有列（含无索引字段，大字段除外）全进内存。</li>
+<li>聚簇索引叶子页含整行 → 访问主键或回表会加载整页。</li>
+<li>二级索引页仅索引键+主键，回表才加载聚簇页。</li>
+<li><strong>大字段(BLOB/TEXT)用溢出页，按需加载</strong>。</li>
+<li><strong>覆盖索引</strong>避免回表，省 IO 和 BP 占用。</li>
+</ul>
+<hr />
+<h2 id="6">⑥ 长连接 / 僵尸半开连接（实务）</h2>
+<h3 id="_12">脑图</h3>
+<div class="codehilite"><pre><span></span><code>僵尸连接产生：
+  kill-9/正常关机 → 发RST → MySQL回收，无残留
+  断电/断网/内核panic → 发不出RST → 半开Sleep僵尸连接
+
+三层保活（互不替代，分层防护）：
+  Hikari keepalive(应用层SQL心跳) → 进程活着才有效
+  OS TCP keepalive(内核) → 机器活着但网络断才有效
+  MySQL wait_timeout(兜底) → 任何场景生效
+  ★机器死机：只剩wait_timeout兜底
+  ★Nacos/Actuator：只管流量，不管数据库连接
+</code></pre></div>
+
+<h3 id="_13">精华速记</h3>
+<ul>
+<li><strong>参数约束链</strong>：<code>keepalive-time &lt; idle-timeout &lt; max-lifetime &lt; wait_timeout</code>。</li>
+<li><strong>maxLifetime 到期</strong>不打断正在跑的 SQL，仅在归还时销毁；有随机抖动防雪崩。</li>
+<li><strong>leakDetectionThreshold</strong>：检测连接泄漏。</li>
+<li>云环境靠<strong>应用层心跳 + wait_timeout</strong>，OS keepalive 会被 NAT/防火墙丢弃。</li>
+<li><strong>不要用 autoReconnect</strong> 掩盖真实断连问题。</li>
+</ul>
+<h3 id="qa">高频面试 Q&amp;A</h3>
+<ul>
+<li><strong>为什么报 Communications link failure？</strong> wait_timeout 关闭空闲连接，连接池不知道继续复用。→ idleTimeout &lt; wait_timeout + 心跳。</li>
+<li><strong>kill-9 会残留僵尸连接吗？</strong> 不会（发 RST）；断电断网才会。</li>
+<li><strong>Hikari 心跳能清僵尸连接吗？</strong> 不能，进程死了 JVM 停；靠 OS keepalive 或 wait_timeout。</li>
+<li><strong>Nacos 下线会释放 MySQL 连接吗？</strong> 不会，只摘流量。</li>
+</ul>
+<hr />
+<h2 id="7">⑦ 监控 / 排查速查</h2>
+<h3 id="_14">脑图</h3>
+<div class="codehilite"><pre><span></span><code>诊断SQL：
+  processlist(活跃SQL) → innodb_trx(事务) → innodb_lock_waits(阻塞链)
+  events_waits_summary_global_by_event_name(等待热点)
+监控告警：
+  Threads_connected &gt; 0.8*max → 报警
+  delta(Threads_created) 持续高 → 短连接压力
+  Aborted_connects 突增 → 认证/连接数
+  磁盘临时表比率&gt;5% → 慢SQL
+  log_waits&gt;0 → redo瓶颈
+  iostat await&gt;10ms → 磁盘IO
+</code></pre></div>
+
+<h3 id="_15">精华速记</h3>
+<ul>
+<li>累计计数指标用 <strong>delta</strong>，当前量用当前值。</li>
+<li>阻塞链查询（必背）：</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">trx_id</span><span class="w"> </span><span class="n">waiting</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">.</span><span class="n">trx_id</span><span class="w"> </span><span class="n">blocking</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">information_schema</span><span class="p">.</span><span class="n">innodb_lock_waits</span><span class="w"> </span><span class="n">w</span>
+<span class="k">JOIN</span><span class="w"> </span><span class="n">innodb_trx</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">blocking_trx_id</span><span class="o">=</span><span class="n">b</span><span class="p">.</span><span class="n">trx_id</span>
+<span class="k">JOIN</span><span class="w"> </span><span class="n">innodb_trx</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">w</span><span class="p">.</span><span class="n">requesting_trx_id</span><span class="o">=</span><span class="n">r</span><span class="p">.</span><span class="n">trx_id</span><span class="p">;</span>
+</code></pre></div>
+
+<ul>
+<li>版本检查：<code>show variables like 'version%'</code> / <code>'thread_cache_size'</code> / <code>'innodb_flush_log_at_trx_commit'</code> / <code>'sync_binlog'</code>。</li>
+</ul>
+<hr />
+<h2 id="8-mysql-sysbench">⑧ 单体 MySQL 硬件上限 &amp; 写入提速（Sysbench 压测）</h2>
+<h3 id="_16">脑图</h3>
+<div class="codehilite"><pre><span></span><code>压测(16表×100万行≈1600万行, mysql8.4, bp=1G):
+  只读 oltp_read_only     → 上限 2.7万QPS  拐点并发32
+  读写混合 oltp_read_write→ 上限 1.8万QPS/900TPS 拐点并发128
+  纯写 oltp_write_only    → 上限 1.3万QPS/2200TPS 仍增长但延迟失控
+写入提速(批量"管道"):
+  单条INSERT 111行/s → 多值批量 9.3万行/s(840x) → LOAD DATA 19万行/s(1700x)
+  同工具sysbench严格对比: batch=1 445行/s → batch=1000 17.8万行/s(400x)
+</code></pre></div>
+
+<h3 id="_17">精华速记</h3>
+<ul>
+<li><strong>性能排序（同机）</strong>：只读 &gt; 读写混合 &gt; 纯写（读快写慢）。</li>
+<li><strong>拐点规律</strong>：低并发近线性扩展，到上限后增长停滞回落，延迟暴增（资源饱和）。</li>
+<li><strong>读拐点并发 32</strong>，读写拐点并发 128（延迟 avg 已 141ms）。</li>
+<li><strong>批量提速核心</strong>：把多条写合并成一条 SQL/一次提交，减少解析、网络、fsync 次数。</li>
+<li><strong>生产写入选型</strong>：常规业务用 JDBC 批量（rewriteBatchedStatements）；高并发用 MQ 异步落库；数据迁移/数仓才用 LOAD DATA 或 DataX。</li>
+</ul>
+<h3 id="qa_1">高频面试 Q&amp;A</h3>
+<ul>
+<li><strong>LOAD DATA INFILE 生产常用吗？</strong> 不常用。需服务端本地文件 + secure-file-priv，绕过业务校验，需 DBA 介入；是"批量装载专用工具"。</li>
+<li><strong>纯写为什么比读慢？</strong> 写要落盘/刷 redo、页分裂、索引维护；读只需查缓存页。</li>
+<li><strong>拐点后吞吐为什么下降？</strong> CPU/锁/刷盘/网络饱和，延迟加剧导致有效吞吐回落。</li>
+</ul>
+<hr />
+<h2 id="9-mysqldump-datax-flink-cdc">⑨ 数据同步工具对比：mysqldump / DataX / Flink CDC</h2>
+<h3 id="_18">脑图</h3>
+<div class="codehilite"><pre><span></span><code>mysqldump = 备份全量（离线单机，兜底）
+DataX     = 离线批量异构同步（搬数据，并发分片吞吐高）
+Flink CDC = 实时 binlog 增量同步（实时抄数据，秒级延迟）
+选型: 备份用mysqldump / 离线搬数用DataX / 实时同步用Flink CDC
+</code></pre></div>
+
+<h3 id="_19">精华速记</h3>
+<ul>
+<li><strong>mysqldump</strong>：全量逻辑备份，<code>--single-transaction</code> 靠 MVCC 避免锁表，<code>--master-data</code> 记 binlog 位点配合建从库。</li>
+<li><strong>DataX</strong>：读插件→并发 Channel→写插件，支持断点续传，异构（Oracle→MySQL→HDFS），离线需定时调度。</li>
+<li><strong>Flink CDC</strong>：伪装从库解析 binlog（Debezium 内核），秒级实时、精确一次，需 ROW 格式 + GTID。</li>
+<li><strong>数据一致性分级</strong>：mysqldump 全量一致性快照；DataX 批式（配合时间戳增量）；Flink CDC 流式精确一次。</li>
+</ul>
+<h3 id="qa_2">高频面试 Q&amp;A</h3>
+<ul>
+<li><strong>三个工具怎么选？</strong> 备份兜底用 mysqldump；跨库/数仓离线批量用 DataX；实时数仓/实时同步用 Flink CDC。</li>
+<li><strong>Flink CDC 依赖什么？</strong> binlog（ROW 格式 + GTID），否则无法捕获行级变更。</li>
+<li><strong>mysqldump 大表会锁库吗？</strong> InnoDB + <code>--single-transaction</code> 不锁；MyISAM 会锁表。</li>
+</ul>
+<hr />
+<h2 id="_20">面试一句话总结</h2>
+<blockquote>
+<p><strong>四层全可监控</strong>；<strong>binlog 归 Server、redo/undo 归 InnoDB</strong>；<strong>2PC 保 redo/binlog 一致</strong>；<strong>BP 按页缓存</strong>；<strong>commit 刷 redo 不刷脏页</strong>；<strong>僵尸连接靠 wait_timeout 兜底</strong>；<strong>累计指标用 delta</strong>；<strong>单机读上限 2.7万QPS 拐点并发32</strong>；<strong>写比读慢</strong>；<strong>批量管道提升写入 400x</strong>；<strong>备份用 mysqldump、离线搬数用 DataX、实时同步用 Flink CDC</strong>。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

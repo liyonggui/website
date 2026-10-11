@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis 1主1从3哨兵（自动故障转移） · 小番茄程序猿</title>
+<meta name="description" content="Redis 1主1从3哨兵（自动故障转移） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Redis 1主1从3哨兵（自动故障转移）</h1>
+  </div>
+  <article class="prose">
+<h1 id="redis-113">Redis 1主1从3哨兵（自动故障转移）</h1>
+<p>在「1主1从」之上加 3 个哨兵，补齐最后一块：<strong>主库宕机自动选主 + 客户端经哨兵发现当前主库</strong>。
+这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的一课。</p>
+<h2 id="_1">架构</h2>
+<div class="codehilite"><pre><span></span><code>            ┌─────────────┐
+客户端 ─────▶│ redis-sentinel │ (ClusterIP :26379，3 副本)
+            └──────┬──────┘
+                   │ 监控 / 自动选主
+        ┌──────────┴──────────┐
+   redis-0 (主)          redis-1 (从)
+   Headless: redis-0.redis  Headless: redis-1.redis
+</code></pre></div>
+
+<ul>
+<li>哨兵无状态 → 用 <strong>Deployment 3 副本</strong>（满足 quorum=2）。</li>
+<li>哨兵靠 <code>redis-0.redis</code>（Headless 稳定 DNS）找到初始主库；彼此靠主库 <code>__sentinel__:hello</code> 频道互相发现。</li>
+<li>主库有 <code>requirepass</code> → 哨兵配置里必须带 <code>sentinel auth-pass mymaster &lt;密码&gt;</code>。</li>
+</ul>
+<h2 id="wsl">部署（WSL）</h2>
+<p>前提：redis 的 1主1从 已在跑。直接 apply 哨兵即可：</p>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>redis-sentinel.yaml<span class="w"> </span>-f<span class="w"> </span>redis-sentinel-service.yaml<span class="w"> </span>-n<span class="w"> </span>sc-demo
+</code></pre></div>
+
+<h2 id="_2">验证哨兵工作状态</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 3 个哨兵都 Running</span>
+kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>-l<span class="w"> </span><span class="nv">app</span><span class="o">=</span>redis-sentinel
+
+<span class="c1"># 问哨兵：当前主库是谁（返回主库 Pod IP + 6379）</span>
+kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>redis-sentinel-xxxx<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster'</span>
+
+<span class="c1"># 哨兵是否互相发现：应列出另外 2 个哨兵</span>
+kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>redis-sentinel-xxxx<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -p 26379 SENTINEL sentinels mymaster'</span>
+</code></pre></div>
+
+<p>（pod 名用补全：<code>kubectl get pods -n sc-demo -l app=redis-sentinel</code> 看实际名字）</p>
+<h2 id="_3">验证自动故障转移（核心演示）</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># ① 先确认当前主库</span>
+kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>redis-sentinel-xxxx<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster'</span>
+<span class="c1">#   （假设是 redis-0）</span>
+
+<span class="c1"># ② 干掉主库 Pod（模拟宕机）</span>
+kubectl<span class="w"> </span>delete<span class="w"> </span>pod<span class="w"> </span>redis-0<span class="w"> </span>-n<span class="w"> </span>sc-demo
+
+<span class="c1"># ③ 等约 5~10 秒（down-after 5000ms + 选主耗时），再看主库 —— 应已变成 redis-1 的 IP</span>
+kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>redis-sentinel-xxxx<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster'</span>
+
+<span class="c1"># ④ 确认 redis-1 已升主</span>
+kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>redis-1<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -a "$REDIS_PASSWORD" info replication'</span><span class="w">   </span><span class="c1"># role:master</span>
+</code></pre></div>
+
+<h2 id="_4">一个真实的知识点（务必理解）</h2>
+<p>redis-0 被删后，K3s 会<strong>自动重建它</strong>，而 redis StatefulSet 的启动脚本规定「0 号永远是主」，
+所以 redis-0 重启后又以 master 身份起来 → 会短暂出现<strong>两个主</strong>（脑裂窗口）。
+此时哨兵会检测到 redis-0 重新上线，并向它发 <code>REPLICAOF</code>，把它<strong>降级为 redis-1 的从库</strong>。
+过一会儿再查：</p>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>redis-0<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -a "$REDIS_PASSWORD" info replication'</span>
+<span class="c1"># role:slave, master_host:redis-1.redis  ← 哨兵已完成 Reconcile</span>
+</code></pre></div>
+
+<p>这正好演示了哨兵的核心职责：<strong>不仅选主，还会把旧主重新纳入新拓扑。</strong></p>
+<blockquote>
+<p>生产环境要彻底避免“0号永远主”的脚本写法，通常用 Redis Operator 或让哨兵/初始化脚本动态决定角色；
+本例用最直观的方式把机制讲清楚，生产请改用成熟方案（如 Redis Operator / K8s Operator）。</p>
+</blockquote>
+<h2 id="_5">客户端怎么连（接入要点）</h2>
+<p>不要直连 <code>redis:6379</code> 或某个固定 Pod，而是：
+1. 连 <code>redis-sentinel:26379</code>（任意哨兵）；
+2. 发 <code>SENTINEL get-master-addr-by-name mymaster</code> 拿到当前主库地址；
+3. 再连真正的主库做写、从库做读。
+常用客户端（如 jedis/lettuce）都内置「哨兵模式」，配哨兵地址列表即可自动跟进主从切换。</p>
+<h2 id="redis-on-k8s">三档 Redis on K8s 全景</h2>
+<table>
+<thead>
+<tr>
+<th>档位</th>
+<th>资源</th>
+<th>解决什么</th>
+<th>自动故障转移</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单实例</td>
+<td>StatefulSet + PVC</td>
+<td>有状态 + 持久化</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>1主1从</td>
+<td>+ Headless Service</td>
+<td>读写分离 + 数据冗余</td>
+<td>❌（主挂从只读）</td>
+</tr>
+<tr>
+<td>1主1从3哨兵</td>
+<td>+ Sentinel×3</td>
+<td><strong>主挂自动选主</strong></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

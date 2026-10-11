@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存） · 小番茄程序猿</title>
+<meta name="description" content="phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</h1>
+  </div>
+  <article class="prose">
+<h1 id="phase4">phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</h1>
+<blockquote>
+<p>配套：<code>AI-Agent新手教学.md</code> 第 7 课。代码在 <code>D:\ai-agent-project\phase4-agent-ops</code>。
+一句话：<strong>把 LLM 当不靠谱下游服务，用后端老本行（超时/降级/限流/熔断/缓存/指标）把它治理成可依赖系统。</strong></p>
+</blockquote>
+<h2 id="0-8">0. 文件总览（8 个文件各管一件事）</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config/AgentConfig</code></td>
+<td>带<strong>双超时</strong>的 RestClient + 挂工具的 ChatClient（含降级话术）</td>
+</tr>
+<tr>
+<td><code>ops/AgentService</code></td>
+<td><strong>LLM 舱壁</strong>(Semaphore) + token 成本 + 结果埋点</td>
+</tr>
+<tr>
+<td><code>ops/AgentMetrics</code></td>
+<td>延迟/成败/缓存/熔断/token 全量指标 + snapshot</td>
+</tr>
+<tr>
+<td><code>tool/RuidaxingTools</code></td>
+<td>3 个 <code>@Tool</code>，只管"构造请求+解析"（护栏逻辑已下沉）</td>
+</tr>
+<tr>
+<td><code>tool/ToolGateway</code></td>
+<td>所有工具调用的唯一咽喉：缓存→熔断→真调→降级</td>
+</tr>
+<tr>
+<td><code>tool/Breaker</code></td>
+<td>CLOSED/OPEN/HALF_OPEN 状态机（手写，生产可换 resilience4j）</td>
+</tr>
+<tr>
+<td><code>ops/OpsController</code></td>
+<td>/chat /school /eval /snapshot</td>
+</tr>
+<tr>
+<td><code>application.yml</code></td>
+<td>超时/舱壁大小/缓存TTL/单价 全 env 可调</td>
+</tr>
+</tbody>
+</table>
+<p>与 phase3 的差别一句话：phase3 工具直连下游、零保护；<strong>phase4 把所有调用收进一条带护栏的管道</strong>。</p>
+<h2 id="1-agentconfig">1. AgentConfig：双超时 + 降级话术</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">SimpleClientHttpRequestFactory</span><span class="w"> </span><span class="n">rf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">SimpleClientHttpRequestFactory</span><span class="p">();</span>
+<span class="n">rf</span><span class="p">.</span><span class="na">setConnectTimeout</span><span class="p">(</span><span class="mi">1500</span><span class="p">);</span><span class="w">        </span><span class="c1">// 连不上 1.5s 失败</span>
+<span class="n">rf</span><span class="p">.</span><span class="na">setReadTimeout</span><span class="p">(</span><span class="n">timeoutMs</span><span class="p">);</span><span class="w">      </span><span class="c1">// 连上但不响应 2.5s 失败</span>
+</code></pre></div>
+
+<p><strong>没有超时的 HTTP 客户端是生产事故之源</strong>：下游挂 → 请求各卡 30s → 200 个 Tomcat 线程迅速占光。
+系统提示配套一句："若工具返回 unavailable…如实告知用户'该数据源暂时不可用'，不要凭空作答"——<strong>降级机制要配话术约束，模型才懂得如实转述</strong>。</p>
+<h2 id="2-agentservice">2. AgentService：舱壁四设计点</h2>
+<div class="codehilite"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">bulkhead</span><span class="p">.</span><span class="na">tryAcquire</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">metrics</span><span class="p">.</span><span class="na">countOutcome</span><span class="p">(</span><span class="s">"rejected"</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">Result</span><span class="p">(</span><span class="s">"rejected"</span><span class="p">,</span><span class="s">"系统繁忙"</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+<span class="kt">long</span><span class="w"> </span><span class="n">t0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">nanoTime</span><span class="p">();</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ChatResponse</span><span class="w"> </span><span class="n">resp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">chatClient</span><span class="p">.</span><span class="na">prompt</span><span class="p">().</span><span class="na">user</span><span class="p">(</span><span class="n">q</span><span class="p">).</span><span class="na">call</span><span class="p">().</span><span class="na">chatResponse</span><span class="p">();</span><span class="w">  </span><span class="c1">// 注意不是 content()</span>
+<span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">u</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">resp</span><span class="p">.</span><span class="na">getMetadata</span><span class="p">().</span><span class="na">getUsage</span><span class="p">();</span><span class="w">                                  </span><span class="c1">// 多拿一层 Usage 算成本</span>
+<span class="w">    </span><span class="n">metrics</span><span class="p">.</span><span class="na">addUsage</span><span class="p">(</span><span class="n">u</span><span class="p">.</span><span class="na">getPromptTokens</span><span class="p">(),</span><span class="w"> </span><span class="n">u</span><span class="p">.</span><span class="na">getCompletionTokens</span><span class="p">());</span>
+<span class="w">    </span><span class="n">metrics</span><span class="p">.</span><span class="na">recordChatOk</span><span class="p">(</span><span class="n">System</span><span class="p">.</span><span class="na">nanoTime</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t0</span><span class="p">);</span>
+<span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">Exception</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">metrics</span><span class="p">.</span><span class="na">countOutcome</span><span class="p">(</span><span class="s">"error"</span><span class="p">);</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<span class="k">finally</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">bulkhead</span><span class="p">.</span><span class="na">release</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
+<ul>
+<li><strong><code>tryAcquire</code> 非阻塞</strong>：抢不到立即 503，<strong>绝不排队</strong>（排队=用户干等+线程照占）。实测 6 并发/上限 3 → 3×503 秒拒 + 2×200（mean 11.8s/max 18.1s）+1 客户端超时。</li>
+<li><strong><code>finally release</code></strong>：异常也归还，否则许可泄漏几次后永久 503。</li>
+<li><strong><code>chatResponse()</code> 而非 <code>content()</code></strong>：为拿 <code>Usage</code>（token 数）→ 成本可见（实测 cost.estimated 0.032）。</li>
+<li><strong>rejected/error 不进延迟分布</strong>：0ms 的拒绝会污染 p50（踩过的坑）。</li>
+</ul>
+<h2 id="3-toolgateway">3. ToolGateway：五步顺序（所有工具的咽喉）</h2>
+<div class="codehilite"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">br</span><span class="p">.</span><span class="na">allowRequest</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">recordBreakerReject</span><span class="p">;</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">unavailable</span><span class="p">(</span><span class="s">"circuit-open"</span><span class="p">);</span><span class="w"> </span><span class="p">}</span><span class="w">  </span><span class="c1">// ① 熔断</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">cache</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">hit</span><span class="o">=</span><span class="n">cache</span><span class="p">.</span><span class="na">getIfPresent</span><span class="p">(</span><span class="n">key</span><span class="p">);</span><span class="w"> </span><span class="k">if</span><span class="p">(</span><span class="n">hit</span><span class="o">!=</span><span class="kc">null</span><span class="p">){</span><span class="n">recordCache</span><span class="p">(</span><span class="n">hit</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">hit</span><span class="p">;}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="c1">// ② 缓存</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">result</span><span class="o">=</span><span class="n">loader</span><span class="p">.</span><span class="na">get</span><span class="p">();</span><span class="w"> </span><span class="n">br</span><span class="p">.</span><span class="na">onSuccess</span><span class="p">();</span><span class="w"> </span><span class="n">recordTool</span><span class="p">(</span><span class="n">ok</span><span class="p">);</span><span class="w"> </span><span class="n">cache</span><span class="p">.</span><span class="na">put</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="n">result</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">result</span><span class="p">;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="c1">// ③④ 真调+写缓存</span>
+<span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">RuntimeException</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">br</span><span class="p">.</span><span class="na">onFailure</span><span class="p">();</span><span class="w"> </span><span class="n">recordTool</span><span class="p">(</span><span class="n">fail</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">unavailable</span><span class="p">(</span><span class="n">e</span><span class="p">);</span><span class="w"> </span><span class="p">}</span><span class="w">             </span><span class="c1">// ⑤ 降级</span>
+</code></pre></div>
+
+<ul>
+<li><strong>失败不写缓存</strong>（坏数据不污染）；</li>
+<li><strong>降级返回结构化</strong> <code>{unavailable:true, tool, reason}</code>——不是抛异常，是让 LLM 看得懂；</li>
+<li>缓存 <code>CACHE_TTL_MS&lt;=0</code> 可关 → 做 A/B 基线。</li>
+</ul>
+<h2 id="4-breaker30">4. Breaker：30 行状态机</h2>
+<p>CLOSED（放行，连续失败≥5→OPEN）→ OPEN（冷却 5s 内全拒）→ HALF_OPEN（<strong>只放 1 个探针</strong>）→ 成功 CLOSED / 失败再 OPEN。
+原理：<strong>用"停手一段时间"换下游喘息</strong>，防"刚缓过来又被积压请求打死"的雪崩。实测：死端口连打 15 次 → 前 5 次真试失败 → OPEN → <strong>11 次 <code>circuit-open</code> 秒拒</strong>。</p>
+<h2 id="5-agentmetrics">5. AgentMetrics：三类指标 + 一个坑</h2>
+<p>Timer(延迟)/Counter(工具成败·缓存·熔断·结果)/AtomicLong(token 累加+占位单价算成本)；<code>/actuator/metrics</code> 可抓。
+<strong>坑</strong>：Micrometer <code>Timer</code> percentile 单位歧义算出 5.8e12ms → 改<strong>应用内自采 mean/max</strong>，p95/p99 交给 k6。</p>
+<h2 id="6-opscontroller">6. OpsController 四端点</h2>
+<table>
+<thead>
+<tr>
+<th>端点</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/chat?q</code></td>
+<td>问答（超舱壁→503）</td>
+</tr>
+<tr>
+<td><code>/school?city</code></td>
+<td><strong>编排层压测专用</strong>：只走工具→下游→降级，不经 LLM</td>
+</tr>
+<tr>
+<td><code>/eval</code></td>
+<td>场景成功率</td>
+</tr>
+<tr>
+<td><code>/snapshot</code></td>
+<td>指标总览 + 熔断实时状态（<code>breaker.state</code>）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7">7. 三条链路（对照实测）</h2>
+<div class="codehilite"><pre><span></span><code>正常：/chat →舱壁✓→LLM→工具→[缓存miss→真调→写缓存]→答(带成本)
+下游挂：CLOSED真试→超时/拒绝→fail计数→降级；连续5次→OPEN→之后秒拒(实测11次)
+并发超限：6并发→3个tryAcquire失败→503秒回(实测3×503)
+</code></pre></div>
+
+<h2 id="8-k6-k6-readme">8. 压测数字（k6 开环，见 k6/ 目录与 README）</h2>
+<ul>
+<li>orchestration 100/s×20s：2000 请求 0 失败，med 5ms；<strong>p95 836ms 长尾在下游非网关</strong>；</li>
+<li>缓存 A/B：p95 <strong>836→12.34ms</strong>（↓98.5%），命中率 97.7%；</li>
+<li>llm-guardrail 6/s vs 舱壁3：<strong>90.27% 秒挡 503</strong>（k6 把 503 计 failed 属口径，用自定义 Rate）。</li>
+</ul>
+<h2 id="9">9. 诚实边界</h2>
+<p>记忆仍是进程内；舱壁无排队；熔断无探针超时；成本是占位价；缓存无防击穿(single-flight)/主动刷新；k6 阈值"红"是诚实信号不是 bug。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ES路由机制\+MurmurHash3算法\+分片倾斜全套完整版文档（面试\+生产落地） · 小番茄程序猿</title>
+<meta name="description" content="ES路由机制\+MurmurHash3算法\+分片倾斜全套完整版文档（面试\+生产落地） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>ES路由机制\+MurmurHash3算法\+分片倾斜全套完整版文档（面试\+生产落地）</h1>
+  </div>
+  <article class="prose">
+<h1 id="esmurmurhash3">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）</h1>
+<h2 id="es">一、ES写入分片路由核心公式（源码原生）</h2>
+<h3 id="1-es717">1. 路由计算源码公式（ES7.17 固定不变）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 1. 确定路由key：优先自定义routing，没有则使用文档_id</span>
+<span class="n">String</span><span class="w"> </span><span class="n">effectiveRouting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">routing</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">routing</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<span class="c1">// 2. 32位哈希运算</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3HashFunction</span><span class="p">.</span><span class="na">hash</span><span class="p">(</span><span class="n">effectiveRouting</span><span class="p">);</span>
+<span class="c1">// 3. 取模得到最终主分片编号</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">hash</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">主分片数量</span><span class="p">;</span>
+</code></pre></div>
+
+<h3 id="2">2. 核心前置结论</h3>
+<ul>
+<li>
+<p><strong>主分片数创建索引后永久不可修改</strong>，所以同一条数据路由分片永远固定</p>
+</li>
+<li>
+<p>ES路由层面：<strong>固定使用 MurmurHash3_x86_32（32位）</strong>，不是128位</p>
+</li>
+<li>
+<p>128位哈希仅用于基数聚合cardinality，和分片路由毫无关系</p>
+</li>
+</ul>
+<hr />
+<h2 id="murmurhash3">二、MurmurHash3 全网最全知识点汇总（精准避坑）</h2>
+<h3 id="1">1. 算法基础介绍</h3>
+<p>MurmurHash3：非加密快速哈希算法，优势：运算快、雪崩性极强、低碰撞，专门用于数据打散，<strong>不可逆，不可做加密</strong>。</p>
+<p>分为两个官方版本，<strong>不是固定128bit</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>算法版本</th>
+<th>输出位数</th>
+<th>ES使用场景</th>
+<th>核心特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MurmurHash3_x86_32</td>
+<td>32位int</td>
+<td><strong>分片路由（唯一用途）</strong></td>
+<td>速度快，碰撞无害，满足分片打散即可</td>
+</tr>
+<tr>
+<td>MurmurHash3_x64_128</td>
+<td>128bit（2个long）</td>
+<td>cardinality去重聚合、murmur3字段</td>
+<td>超大哈希空间，极致降低哈希碰撞，保证统计精准</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2_1">2. 高频误区逐一纠正（面试必问）</h3>
+<ol>
+<li>
+<p><strong>误区1：分片路由用的是128位哈希</strong>
+   纠正：完全错误，路由全程32位哈希，128位和分片路由无关</p>
+</li>
+<li>
+<p><strong>误区2：32位哈希代表分片存储有上限</strong>
+   纠正：32位只是哈希中间计算值，<strong>和分片存储数据量无任何限制</strong>，分片上限由磁盘决定</p>
+</li>
+<li>
+<p><strong>误区3：哈希碰撞会导致文档覆盖</strong>
+   纠正：路由哈希碰撞无害，不同id算出相同哈希，只会进入同一个分片；分片内部依靠原始文档_id区分数据，<strong>永远不会覆盖</strong></p>
+</li>
+<li>
+<p><strong>误区4：MurmurHash3作用是消除哈希碰撞</strong>
+   纠正：核心作用是<strong>打散有序数据，解决分片数据倾斜</strong>，不负责消除碰撞</p>
+</li>
+</ol>
+<h3 id="3">3. 哈希碰撞通俗案例</h3>
+<p>两个不同文档ID：id1=abc1001、id2=xyz9999</p>
+<p>经过32位哈希计算后hash值一致，进入同一个分片</p>
+<p>结果：两条数据共存，无任何异常，仅仅少量数据扎堆，对整体集群无影响</p>
+<h3 id="4-128">4. 为什么路由不用128位哈希降低碰撞？</h3>
+<ul>
+<li>
+<p>路由碰撞本身无业务危害，没必要牺牲性能</p>
+</li>
+<li>
+<p>32位int CPU计算更快，海量写入开销更低</p>
+</li>
+<li>
+<p>32位哈希空间已经足够大，碰撞概率本身极低</p>
+</li>
+</ul>
+<h3 id="5-128">5. 什么时候必须用128位哈希？</h3>
+<p>基数统计cardinality：哈希碰撞会导致唯一值统计结果偏小，业务有损，必须用128位大空间哈希压低碰撞概率。</p>
+<hr />
+<h2 id="id">三、最优路由方案：雪花算法ID作为默认路由</h2>
+<h3 id="1-id">1. 雪花ID结构</h3>
+<p>1符号位 + 41时间戳 + 10机器ID + 12序列号</p>
+<h3 id="2-ides">2. 为什么雪花ID是ES最理想路由？</h3>
+<ol>
+<li>
+<p>自带时序+机器码+序列号，自带离散度，无规律</p>
+</li>
+<li>
+<p>经过MurmurHash3雪崩打散后，数据<strong>绝对均匀分布所有分片</strong>，零分片倾斜</p>
+</li>
+<li>
+<p>无需自定义routing，无需业务改造，开箱即用</p>
+</li>
+<li>
+<p>单条文档CRUD路由固定，性能最优</p>
+</li>
+</ol>
+<h3 id="3_1">3. 总结</h3>
+<p><strong>无分片内聚合查询需求，一律使用雪花ID默认路由，是生产最优解</strong></p>
+<hr />
+<h2 id="routing">四、业务强制自定义routing场景\&amp;分片倾斜根源</h2>
+<h3 id="1-routing">1. 必须自定义routing的业务场景</h3>
+<p>为了减少跨分片聚合开销，提升查询性能，业务必须指定路由：</p>
+<ul>
+<li>
+<p>按<strong>日期</strong>路由：当日日志只查单个分片</p>
+</li>
+<li>
+<p>按<strong>地区/省份</strong>路由：省内订单无需全分片检索</p>
+</li>
+<li>
+<p>按<strong>品牌/商家名称</strong>路由：商家数据分片内聚合</p>
+</li>
+</ul>
+<h3 id="2_2">2. 分片倾斜根本原因（核心考点）</h3>
+<p>一旦固定业务维度作为routing：<strong>一个key永久对应一个分片</strong></p>
+<p>头部热点key（广东、当日日期、头部商家）数据量远超其他key，<strong>哈希算法再均匀也无法解决业务体量不均</strong>，最终产生严重分片倾斜</p>
+<h3 id="3_2">3. 三类线上倾斜痛点</h3>
+<ul>
+<li>
+<p>日期路由：当天写入分片爆炸，历史分片空闲</p>
+</li>
+<li>
+<p>地区路由：沿海大省分片热点，西部省份分片闲置</p>
+</li>
+<li>
+<p>商家路由：头部大商家单分片打爆，小商家分片空闲</p>
+</li>
+</ul>
+<hr />
+<h2 id="routing_1">五、生产解决方案：Routing二次打散（根治分片倾斜）</h2>
+<h3 id="1_1">1. 解决方案原理</h3>
+<p>给原始业务路由拼接固定后缀，将一个热点key拆分分散到多个分片，打散热点压力；写入带后缀路由，查询一次性查询所有后缀路由。</p>
+<h3 id="2-java">2. 可直接上线：路由二次打散工具类（完整Java代码）</h3>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">java.util.ArrayList</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">java.util.List</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">java.util.concurrent.ThreadLocalRandom</span><span class="p">;</span>
+
+<span class="cm">/**</span>
+<span class="cm"> * ES Routing二次打散工具类</span>
+<span class="cm"> * 解决：日期/地区/商家自定义routing分片倾斜</span>
+<span class="cm"> * 适配：雪花ID主键，保证数据路由永久固定</span>
+<span class="cm"> */</span>
+<span class="kd">public</span><span class="w"> </span><span class="kd">class</span> <span class="nc">RoutingSplitUtil</span><span class="w"> </span><span class="p">{</span>
+
+<span class="w">    </span><span class="cm">/**</span>
+<span class="cm">     * 写入：生成打散后的路由key</span>
+<span class="cm">     * @param bizKey 原始业务key：省份/日期/品牌</span>
+<span class="cm">     * @param splitNum 拆分份数（热点越大拆分越多，建议3-5）</span>
+<span class="cm">     * @param snowflakeId 雪花算法唯一ID，保证路由稳定不变</span>
+<span class="cm">     * @return 打散路由 例如：guangdong_0、2026-06-23_2</span>
+<span class="cm">     */</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">getSplitRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="n">Long</span><span class="w"> </span><span class="n">snowflakeId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 不拆分，直接返回原始key</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">splitNum</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="c1">// 根据雪花ID稳定取模，更新数据路由不会漂移</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">suffix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">snowflakeId</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">splitNum</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">suffix</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="cm">/**</span>
+<span class="cm">     * 查询：获取当前业务key所有拆分路由，并行查询多分片</span>
+<span class="cm">     */</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">listAllRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">routingList</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ArrayList</span><span class="o">&lt;&gt;</span><span class="p">(</span><span class="n">splitNum</span><span class="p">);</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">splitNum</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">routingList</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">routingList</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="cm">/**</span>
+<span class="cm">     * 兼容字符串主键重载方法</span>
+<span class="cm">     */</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">getSplitRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">strId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">strId</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">strId</span><span class="p">.</span><span class="na">isBlank</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">getSplitRouting</span><span class="p">(</span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="kc">null</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="kt">long</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strId</span><span class="p">.</span><span class="na">hashCode</span><span class="p">();</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">getSplitRouting</span><span class="p">(</span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="n">hash</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="3_3">3. 业务写入\&amp;查询使用示例</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 常量配置：统一拆分份数</span>
+<span class="kd">private</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="kd">final</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">SPLIT_COUNT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+
+<span class="c1">// 1.写入：省份路由打散</span>
+<span class="n">String</span><span class="w"> </span><span class="n">routing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">RoutingSplitUtil</span><span class="p">.</span><span class="na">getSplitRouting</span><span class="p">(</span><span class="s">"guangdong"</span><span class="p">,</span><span class="w"> </span><span class="n">SPLIT_COUNT</span><span class="p">,</span><span class="w"> </span><span class="n">order</span><span class="p">.</span><span class="na">getSnowId</span><span class="p">());</span>
+<span class="n">indexRequest</span><span class="p">.</span><span class="na">routing</span><span class="p">(</span><span class="n">routing</span><span class="p">);</span>
+
+<span class="c1">// 2.查询：查询全省所有数据，传入全部后缀路由</span>
+<span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">routingList</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">RoutingSplitUtil</span><span class="p">.</span><span class="na">listAllRouting</span><span class="p">(</span><span class="s">"guangdong"</span><span class="p">,</span><span class="w"> </span><span class="n">SPLIT_COUNT</span><span class="p">);</span>
+<span class="n">searchRequest</span><span class="p">.</span><span class="na">routing</span><span class="p">(</span><span class="n">routingList</span><span class="p">.</span><span class="na">toArray</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">String</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">));</span>
+</code></pre></div>
+
+<hr />
+<h2 id="reindexdsl">六、存量历史数据倾斜修复：Reindex一键迁移DSL</h2>
+<p>新数据走打散路由，存量旧倾斜数据低峰期执行reindex，批量追加路由后缀，彻底全量修复倾斜。</p>
+<h3 id="reindexid">Reindex脚本（基于文档内雪花ID自动拆分路由）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST</span><span class="w"> </span><span class="err">_rei</span><span class="kc">n</span><span class="err">dex?slices=</span><span class="mi">5</span><span class="err">&amp;wai</span><span class="kc">t</span><span class="err">_</span><span class="kc">f</span><span class="err">or_comple</span><span class="kc">t</span><span class="err">io</span><span class="kc">n</span><span class="err">=</span><span class="kc">false</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"index"</span><span class="p">:</span><span class="w"> </span><span class="s2">"order_info_old"</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"dest"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"index"</span><span class="p">:</span><span class="w"> </span><span class="s2">"order_info_new"</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"script"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"""</span>
+<span class="s2">      // 拆分份数3</span>
+<span class="s2">      int splitNum = 3;</span>
+<span class="s2">      // 获取文档内雪花ID</span>
+<span class="s2">      long snowId = ctx._source.snowId;</span>
+<span class="s2">      // 原始业务路由key：省份</span>
+<span class="s2">      String bizKey = ctx._source.province;</span>
+<span class="s2">      // 生成打散路由</span>
+<span class="s2">      int suffix = Math.abs(snowId % splitNum);</span>
+<span class="s2">      ctx._routing = bizKey + "</span><span class="err">_</span><span class="s2">" + suffix;</span>
+<span class="s2">    """</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_1">参数说明</h3>
+<ul>
+<li>
+<p><code>wait_for_completion=false</code>：后台异步执行，避免连接超时</p>
+</li>
+<li>
+<p><code>slices=5</code>：并行迁移，提升重建速度</p>
+</li>
+<li>
+<p>拆分份数必须和线上业务代码保持一致</p>
+</li>
+</ul>
+<hr />
+<h2 id="_2">七、分片倾斜线上排查命令（一键复用）</h2>
+<div class="codehilite"><pre><span></span><code><span class="err"># 1.查看分片文档数量分布，快速判断倾斜</span>
+<span class="err">GET _cat/shards/order_info?v&amp;s=docs:desc</span>
+
+<span class="err"># 2.查看分片磁盘占用分布</span>
+<span class="err">GET _cat/shards/order_info?v&amp;s=store:desc</span>
+
+<span class="err"># 3.定位热点routing key</span>
+<span class="err">GET order_info/_search</span>
+<span class="err">{</span>
+<span class="err">  "size":0,</span>
+<span class="err">  "aggs": {</span>
+<span class="err">    "hot_routing": {</span>
+<span class="err">      "terms": {</span>
+<span class="err">        "field": "_routing",</span>
+<span class="err">        "size": 20</span>
+<span class="err">      }</span>
+<span class="err">    }</span>
+<span class="err">  }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<hr />
+<h2 id="_3">八、面试一页纸极简背诵答案（直接口述）</h2>
+<ol>
+<li>
+<p>ES分片路由采用<strong>MurmurHash3_x86_32 32位哈希</strong>，并非128位；128位哈希仅用于基数去重聚合。</p>
+</li>
+<li>
+<p>哈希碰撞对路由完全无害，分片内部依靠原始_id区分文档，不会发生数据覆盖。</p>
+</li>
+<li>
+<p>MurmurHash3核心作用是打散有序ID，解决分片倾斜，不是消除哈希碰撞。</p>
+</li>
+<li>
+<p><strong>雪花ID作为默认路由是最优方案</strong>，离散度高，分片分布绝对均匀，零倾斜。</p>
+</li>
+<li>
+<p>业务为了减少跨分片查询，使用日期/地区/商家作为自定义routing，会出现热点key分片倾斜，属于业务设计问题，哈希无法解决。</p>
+</li>
+<li>
+<p>根治方案：路由二次打散，给业务key增加后缀，拆分热点流量；存量数据通过reindex批量修复。</p>
+</li>
+</ol>
+<blockquote>
+<p>（注：部分内容可能由 AI 生成）</p>
+</blockquote>
+<h1 id="es_1">ES 冷热分层完整落地方案（可直接上线）</h1>
+<h2 id="_4">一、集群节点角色划分</h2>
+<h3 id="1-elasticsearchyml">1. 节点角色配置 <code>elasticsearch.yml</code></h3>
+<h4 id="ssd">热节点（SSD高配，负责实时写入、高频查询）</h4>
+<div class="codehilite"><pre><span></span><code><span class="nt">node.name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es-hot-1</span>
+<span class="nt">node.roles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">master</span><span class="p p-Indicator">,</span><span class="nv">data_hot</span><span class="p p-Indicator">]</span>
+<span class="c1"># 内存配比：内存50%给JVM，剩余留给系统缓存</span>
+</code></pre></div>
+
+<h4 id="ssd_1">温节点（普通SSD/高性能机械，少写入、日常查询）</h4>
+<div class="codehilite"><pre><span></span><code><span class="nt">node.name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es-warm-1</span>
+<span class="nt">node.roles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">data_warm</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+
+<h4 id="hdd">冷节点（大容量机械盘HDD，归档低访问数据）</h4>
+<div class="codehilite"><pre><span></span><code><span class="nt">node.name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">es-cold-1</span>
+<span class="nt">node.roles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">data_cold</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+
+<blockquote>
+<p>7.10及以上版本原生支持 <code>data_hot/data_warm/data_cold</code> 层级划分，无需自定义标签</p>
+</blockquote>
+<h2 id="ilm">二、创建统一ILM生命周期策略（全自动流转）</h2>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT</span><span class="w"> </span><span class="err">_ilm/policy/order_ho</span><span class="kc">t</span><span class="err">_cold_policy</span>
+<span class="p">{</span>
+<span class="w"> </span><span class="nt">"policy"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"phases"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"hot"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0ms"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"rollover"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"max_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"max_primary_shard_size"</span><span class="p">:</span><span class="w"> </span><span class="s2">"45gb"</span>
+<span class="w"> </span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">}</span>
+<span class="w"> </span><span class="p">}</span>
+<span class="w"> </span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"warm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"require"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warm"</span><span class="p">}</span>
+<span class="w"> </span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"forcemerge"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"max_num_segments"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"shrink"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">}</span>
+<span class="w"> </span><span class="p">}</span>
+<span class="w"> </span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"cold"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"30d"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"require"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cold"</span><span class="p">}</span>
+<span class="w"> </span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"freeze"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w"> </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span>
+<span class="w"> </span><span class="p">}</span>
+<span class="w"> </span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"90d"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w"> </span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w"> </span><span class="p">}</span>
+<span class="w"> </span><span class="p">}</span>
+<span class="w"> </span><span class="p">}</span>
+<span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_5">策略说明</h3>
+<ol>
+<li>
+<p>热阶段：数据写入7天内/单分片达45G自动滚动生成新索引</p>
+</li>
+<li>
+<p>温阶段：满7天迁移至温节点，合并分段、缩减分片数，降低资源占用</p>
+</li>
+<li>
+<p>冷阶段：满30天迁移冷节点并冻结，节省内存</p>
+</li>
+<li>
+<p>清理阶段：满90天自动删除，按需修改时长</p>
+</li>
+</ol>
+<p>## 三、索引模板绑定ILM+冷热层级</p>
+<p><code>json
+   PUT _index_template/template_order
+   {
+   "index_patterns": ["order_*"],
+   "template": {
+   "settings": {
+   "number_of_shards": 9,
+   "number_of_replicas": 1,
+   "index.lifecycle.name": "order_hot_cold_policy",
+   "index.routing.allocation.data_tier": "hot"
+   },
+   "mappings": {
+   "properties": {
+   "orderId": {"type": "keyword"},
+   "province": {"type": "keyword"},
+   "createTime": {"type": "date"}
+   }
+   }
+   },
+   "priority": 10
+   }</code>
+- 新建 <code>order_</code> 开头索引自动套用配置，默认落地热节点</p>
+<ul>
+<li>主分片直接初始化9片，前期预留充足容量，避免后期重构</li>
+</ul>
+<p>## 四、业务架构搭配方案（冷热+防倾斜双合一）
+1. <strong>热数据（7天内）</strong></p>
+<ul>
+<li>启用路由二次打散，<code>省份_0~8</code> 分流热点</li>
+<li>
+<p>多分片部署，均衡写入压力，彻底解决大省/当日数据倾斜</p>
+</li>
+<li>
+<p><strong>温数据（7-30天）</strong></p>
+</li>
+<li>
+<p>访问量下降，自动缩分片、合并索引段，优化查询效率</p>
+</li>
+<li>
+<p>无需再做打散优化，少量倾斜无影响</p>
+</li>
+<li>
+<p><strong>冷数据（30天以上）</strong></p>
+</li>
+<li>
+<p>冻结归档存储在低成本机械盘，节约集群成本</p>
+</li>
+<li>
+<p>几乎无写入，倾斜完全不用处理</p>
+<p>## 五、核心使用规范</p>
+</li>
+<li>
+<p>时序业务统一使用<strong>滚动索引</strong>，拒绝单索引无限膨胀</p>
+</li>
+<li>
+<p>新项目起步直接拉高主分片数量，预留3年数据余量</p>
+</li>
+<li>
+<p>热数据必须做路由二次打散，冷热分层只解决存储成本，不解决分片倾斜</p>
+</li>
+<li>
+<p>副本数热节点保留1副本，冷数据可酌情降为0节省空间</p>
+</li>
+</ul>
+<p>## 六、日常运维常用指令</p>
+<p><code>http
+   # 查看所有索引生命周期状态
+   GET _cat/indices?v&amp;h=index,status,health,pri,rep,ilm
+   # 手动触发索引生命周期流转
+   POST _ilm/explain/索引名
+   # 关闭索引自动分片均衡（业务高峰）
+   PUT _cluster/settings
+   {"persistent":{"cluster.routing.allocation.balance.index":"0"}}</code></p>
+<p>## 七、和分库分表统一思路总结</p>
+<ol>
+<li>
+<p>MySQL分表：手动按时间拆分、自行迁移冷热数据</p>
+</li>
+<li>
+<p>ES冷热：ILM全自动流转，节点硬件分层隔离，运维零代码</p>
+</li>
+<li>
+<p>通用架构思想：<strong>热数据做均衡防倾斜，冷数据做归档控成本</strong></p>
+</li>
+<li>
+<p>前期分片宁可多不可少，配合冷热分层，彻底规避后期扩容重构风险</p>
+</li>
+</ol>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

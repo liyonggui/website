@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ES 运维常用命令速查手册（独立文档，可直接复制使用） · 小番茄程序猿</title>
+<meta name="description" content="ES 运维常用命令速查手册（独立文档，可直接复制使用） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>ES 运维常用命令速查手册（独立文档，可直接复制使用）</h1>
+  </div>
+  <article class="prose">
+<h1 id="es">ES 运维常用命令速查手册（独立文档，可直接复制使用）</h1>
+<h2 id="_1">目录</h2>
+<ol>
+<li>分片路由与倾斜排查命令</li>
+<li>集群分片均衡 &amp; 磁盘水位配置</li>
+<li>ILM 生命周期常规运维命令</li>
+<li>ILM 冷热层级向上回退全套命令（Warm↔Hot / Cold↔Warm / Cold→Hot）</li>
+<li>Reindex 数据迁移重构常用命令</li>
+<li>索引别名管理命令（创建、原子切换、查询）</li>
+<li>Rollover 滚动索引运维命令</li>
+<li>索引读写锁、冻结、只读解除配套命令</li>
+<li>分片异常排障核心命令</li>
+<li>批量回流 Shell 脚本（温→热、冷→温通用）</li>
+</ol>
+<hr />
+<h2 id="1">1. 分片路由与倾斜排查命令</h2>
+<h3 id="_2">查看文档归属分片</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET /索引名/_search?routing=路由值</span>
+<span class="err">{</span>
+<span class="err"> "_size": 1,</span>
+<span class="err"> "_source": false</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_3">查看索引分片分布</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cat/shards/索引名?v</span>
+</code></pre></div>
+
+<h3 id="_4">查看索引自定义路由开启状态</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 索引名/_mapping?filter_path=*.routing</span>
+</code></pre></div>
+
+<h3 id="_5">统计各分片文档数量（判断倾斜）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 索引名/_search</span>
+<span class="err">{</span>
+<span class="err"> "size": 0,</span>
+<span class="err"> "aggs": {</span>
+<span class="err"> "shard_group": {</span>
+<span class="err"> "terms": {</span>
+<span class="err"> "script": {</span>
+<span class="err"> "source": "doc['_shard_id'].value"</span>
+<span class="err"> },</span>
+<span class="err"> "size": 20</span>
+<span class="err"> }</span>
+<span class="err"> }</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<hr />
+<h2 id="2">2. 集群分片均衡 &amp; 磁盘水位配置</h2>
+<h3 id="_6">设置分片搬迁并发与限速（生产常用）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
+<span class="err">{</span>
+<span class="err"> "transient": {</span>
+<span class="err"> "cluster.routing.allocation.node_concurrent_incoming_recoveries": 2,</span>
+<span class="err"> "cluster.routing.allocation.node_concurrent_outgoing_recoveries": 2,</span>
+<span class="err"> "cluster.routing.allocation.cluster_concurrent_rebalance": 2,</span>
+<span class="err"> "indices.recovery.max_bytes_per_sec": "40mb"</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="io">临时关闭集群自动均衡（高峰期防IO抖动）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
+<span class="err">{</span>
+<span class="err"> "transient": {</span>
+<span class="err"> "cluster.routing.allocation.allow_rebalance": "none"</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_7">恢复自动均衡</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
+<span class="err">{</span>
+<span class="err"> "transient": {</span>
+<span class="err"> "cluster.routing.allocation.allow_rebalance": "indices_all_active"</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_8">查看磁盘水位阈值配置</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cluster/settings?include_defaults=true&amp;filter_path=*.disk.watermark</span>
+</code></pre></div>
+
+<hr />
+<h2 id="3-ilm">3. ILM 生命周期常规运维命令</h2>
+<h3 id="ilm">查看索引 ILM 流转详情、卡住原因</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 索引名/_ilm/explain</span>
+</code></pre></div>
+
+<h3 id="ilm_1">暂停单个索引 ILM</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST 索引名/_ilm/stop</span>
+</code></pre></div>
+
+<h3 id="ilm_2">开启单个索引 ILM</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST 索引名/_ilm/start</span>
+</code></pre></div>
+
+<h3 id="ilm_3">全局启停所有 ILM</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _ilm/stop</span>
+<span class="err">POST _ilm/start</span>
+</code></pre></div>
+
+<h3 id="ilm_4">查看全局 ILM 巡检间隔</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cluster/settings?include_defaults=true&amp;filter_path=indices.lifecycle.poll_interval</span>
+</code></pre></div>
+
+<h3 id="ilm_5">修改 ILM 全局巡检间隔</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
+<span class="err">{</span>
+<span class="err"> "transient": {</span>
+<span class="err"> "indices.lifecycle.poll_interval": "5m"</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="ilm_6">查询所有绑定 ILM 的索引</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _settings/index.lifecycle.name:*</span>
+</code></pre></div>
+
+<hr />
+<h2 id="4-ilm">4. ILM 冷热层级向上回退全套通用命令</h2>
+<blockquote>
+<p>通用前置：查看分片回迁进度统一命令</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cat/recovery?v&amp;h=index,shard,percent,source_node,target_node,stage</span>
+</code></pre></div>
+
+<h3 id="1warm-hot">场景1：Warm → Hot 温层回退热层</h3>
+<div class="codehilite"><pre><span></span><code><span class="err"># 修改层级标签，触发分片回迁</span>
+<span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "index.routing.allocation.data_tier": "hot"</span>
+<span class="err">}</span>
+<span class="err"># 暂停ILM防止再次下沉</span>
+<span class="err">POST 索引名/_ilm/stop</span>
+</code></pre></div>
+
+<h3 id="2cold-warm">场景2：Cold → Warm 冷层回退温层</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "index.routing.allocation.data_tier": "warm"</span>
+<span class="err">}</span>
+<span class="err">POST 索引名/_ilm/stop</span>
+</code></pre></div>
+
+<h3 id="3cold-hot">场景3：Cold → Hot 冷层跨层直接回退热层</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "index.routing.allocation.data_tier": "hot"</span>
+<span class="err">}</span>
+<span class="err">POST 索引名/_ilm/stop</span>
+</code></pre></div>
+
+<h3 id="_9">回流完成后恢复自动生命周期</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST 索引名/_ilm/start</span>
+</code></pre></div>
+
+<h3 id="_10">边界说明</h3>
+<ol>
+<li>Delete 已删除索引无法直接回退，只能通过快照恢复重建</li>
+<li>shrink 缩分片仅迁移节点位置，分片数量无法自动复原</li>
+</ol>
+<hr />
+<h2 id="5-reindex">5. Reindex 数据迁移重构常用命令</h2>
+<h3 id="_11">基础全量迁移</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _reindex</span>
+<span class="err">{</span>
+<span class="err"> "source": {"index": "旧索引"},</span>
+<span class="err"> "dest": {"index": "新索引"}</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="painless">带 Painless 脚本：字段改名、类型转换迁移</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _reindex</span>
+<span class="err">{</span>
+<span class="err"> "source": {"index": "order_v1"},</span>
+<span class="err"> "dest": {"index": "order_v2"},</span>
+<span class="err"> "script": {</span>
+<span class="err"> "source": """</span>
+<span class="err"> if(ctx._source.containsKey('o_id')){</span>
+<span class="err"> ctx._source.order_id = String.valueOf(ctx._source.remove('o_id'));</span>
+<span class="err"> }</span>
+<span class="err"> if(ctx._source.containsKey('create_dt')){</span>
+<span class="err"> ctx._source.create_time = ctx._source.remove('create_dt');</span>
+<span class="err"> }</span>
+<span class="err"> """</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="reindex">路由重打散 Reindex（解决热点倾斜）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _reindex?slices=auto&amp;requests_per_second=2000</span>
+<span class="err">{</span>
+<span class="err"> "source": {"index": "order_old"},</span>
+<span class="err"> "dest": {"index": "order_new"},</span>
+<span class="err"> "script": {</span>
+<span class="err"> "source": """</span>
+<span class="err"> def suffix = Math.abs(ctx._source.orderId.hashCode()) % 3;</span>
+<span class="err"> ctx._routing = ctx._source.province + "_" + suffix;</span>
+<span class="err"> """</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="reindex_1">异步执行 Reindex（超大索引）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _reindex?wait_for_completion=false</span>
+<span class="err">{</span>
+<span class="err"> "source": {"index": "旧索引"},</span>
+<span class="err"> "dest": {"index": "新索引"}</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_12">查看异步任务进度</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _tasks/任务ID</span>
+</code></pre></div>
+
+<h3 id="_13">时间范围增量追赶数据</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _reindex</span>
+<span class="err">{</span>
+<span class="err"> "source": {</span>
+<span class="err"> "index": "旧索引",</span>
+<span class="err"> "query": {</span>
+<span class="err"> "range": {</span>
+<span class="err"> "update_time": {</span>
+<span class="err"> "gte": "迁移起始时间"</span>
+<span class="err"> }</span>
+<span class="err"> }</span>
+<span class="err"> },</span>
+<span class="err"> "dest": {"index": "新索引"}</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_14">新旧索引数量校验</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 旧索引/_count</span>
+<span class="err">GET 新索引/_count</span>
+</code></pre></div>
+
+<hr />
+<h2 id="6">6. 索引别名管理命令</h2>
+<h3 id="_15">创建索引同时绑定别名（初始化最佳实践）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT order_v1</span>
+<span class="err">{</span>
+<span class="err"> "settings": {</span>
+<span class="err"> "number_of_shards": 9,</span>
+<span class="err"> "number_of_replicas": 1</span>
+<span class="err"> },</span>
+<span class="err"> "mappings": {</span>
+<span class="err"> "properties": {</span>
+<span class="err"> "orderId": {"type":"keyword"}</span>
+<span class="err"> }</span>
+<span class="err"> },</span>
+<span class="err"> "aliases": {</span>
+<span class="err"> "alias_order": {}</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_16">事后给已有索引添加别名</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _aliases</span>
+<span class="err">{</span>
+<span class="err"> "actions": [</span>
+<span class="err"> {"add": {"index": "order_v1", "alias": "alias_order"}}</span>
+<span class="err"> ]</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_17">原子切换别名（重构无感切流/回滚核心）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _aliases</span>
+<span class="err">{</span>
+<span class="err"> "actions": [</span>
+<span class="err"> {"remove": {"index": "order_v1", "alias": "alias_order"}},</span>
+<span class="err"> {"add": {"index": "order_v2", "alias": "alias_order"}}</span>
+<span class="err"> ]</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_18">查询别名绑定关系</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _alias/alias_order</span>
+</code></pre></div>
+
+<h3 id="_19">删除别名</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _aliases</span>
+<span class="err">{</span>
+<span class="err"> "actions": [</span>
+<span class="err"> {"remove": {"index": "*", "alias": "alias_order"}}</span>
+<span class="err"> ]</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<hr />
+<h2 id="7-rollover">7. Rollover 滚动索引运维命令</h2>
+<h3 id="_20">手动触发滚动测试</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">POST alias_order_roll/_rollover</span>
+</code></pre></div>
+
+<h3 id="_21">查看滚动索引别名写入标识</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _alias/alias_order_roll</span>
+</code></pre></div>
+
+<h3 id="_22">初始化首个滚动可写索引</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT order-000001</span>
+<span class="err">{</span>
+<span class="err"> "aliases": {</span>
+<span class="err"> "alias_order_roll": {</span>
+<span class="err"> "is_write_index": true</span>
+<span class="err"> }</span>
+<span class="err"> }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_23">查看滚动索引模板</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _index_template/template_order_roll</span>
+</code></pre></div>
+
+<hr />
+<h2 id="8">8. 索引读写锁、冻结、只读解除配套命令</h2>
+<h3 id="warm">解除索引只读锁（Warm回流后常用）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "index.blocks.write": null</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_24">手动设置索引只读</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "index.blocks.write": true</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="cold">关闭索引冻结（Cold回流后常用）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "index.frozen": false</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_25">手动冻结索引</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "index.frozen": true</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<h3 id="_26">查看索引冷热层级标签</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 索引名/_settings?filter_path=*.data_tier</span>
+</code></pre></div>
+
+<hr />
+<h2 id="9">9. 分片异常排障核心命令</h2>
+<h3 id="_27">查看未分配分片详细原因</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cluster/allocation/explain</span>
+</code></pre></div>
+
+<h3 id="_28">查看集群健康状态</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cluster/health?v</span>
+</code></pre></div>
+
+<h3 id="_29">查看节点磁盘使用率</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cat/nodes?v&amp;h=name,disk.total,disk.used,disk.used_percent,heap*</span>
+</code></pre></div>
+
+<h3 id="_30">查看未分配分片列表</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cat/shards?v&amp;s=state</span>
+</code></pre></div>
+
+<h3 id="_31">手动修改副本数量</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
+<span class="err">{</span>
+<span class="err"> "number_of_replicas": 1</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<hr />
+<h2 id="10-shell">10. 批量回流 Shell 脚本（通用可修改）</h2>
+<h3 id="1-warm-hotwarm_to_hotsh">脚本1：批量所有 Warm 索引回迁 Hot（warm_to_hot.sh）</h3>
+<div class="codehilite"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="nv">ES_HOST</span><span class="o">=</span><span class="s2">"http://127.0.0.1:9200"</span>
+<span class="c1"># ES_USER="elastic"</span>
+<span class="c1"># ES_PWD="你的密码"</span>
+<span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:warm"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="k">then</span>
+<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"无warm索引需要回迁"</span>
+<span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+<span class="k">fi</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span>
+<span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>index<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$index</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">continue</span>
+curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_settings"</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type:application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"index.routing.allocation.data_tier":"hot"}'</span>
+curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_ilm/stop"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$index</span><span class="s2"> 已设置hot并暂停ILM"</span>
+<span class="k">done</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"执行完成，查看迁移进度：GET _cat/recovery?v"</span>
+</code></pre></div>
+
+<h3 id="cold_1">适配 Cold 批量回流只需修改一行过滤条件</h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:cold"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+</code></pre></div>
+
+<h3 id="_32">脚本使用方式</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 安装依赖</span>
+yum<span class="w"> </span>install<span class="w"> </span>jq<span class="w"> </span>-y
+<span class="c1"># 授权运行</span>
+chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
+./warm_to_hot.sh
+</code></pre></div>
+
+<hr />
+<p>文档使用说明：</p>
+<ol>
+<li>全文为生产可直接复制执行的运维命令，覆盖分片排查、ILM冷热回流、Reindex重构、别名切换、异常排障全场景；</li>
+<li>回流逻辑统一：修改 <code>data_tier</code> + 暂停 ILM，所有层级回退操作模式通用；</li>
+<li>保存为 <code>ES_运维命令速查手册.md</code>，日常运维、问题排查、版本重构可快速查阅使用。</li>
+</ol>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

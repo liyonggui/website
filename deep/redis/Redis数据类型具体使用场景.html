@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis 数据类型具体使用场景 · 小番茄程序猿</title>
+<meta name="description" content="Redis 数据类型具体使用场景 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Redis 数据类型具体使用场景</h1>
+  </div>
+  <article class="prose">
+<h1 id="redis">Redis 数据类型具体使用场景</h1>
+<blockquote>
+<p>基于《Redis数据类型原理》整理。Redis 有 5 种基础数据类型（String / Hash / List / Set / ZSet）+ 3 种内置专用结构（Bitmaps / Geospatial / Streams），选择哪种类型取决于<strong>业务的数据形态与访问模式</strong>。本文给出每种类型的<strong>具体使用场景 + 命令示例 + 选型要点</strong>，并标注内存/性能注意事项。</p>
+<p>⚠️ <strong>版本与兼容性提示</strong>：文中涉及的配置项（如 <code>hash-max-listpack-entries</code> vs 老版本 <code>hash-max-ziplist-*</code>）、命令（如 <code>GEOSEARCH</code> vs 旧版 <code>GEORADIUS</code>）与压缩阈值在不同 Redis 版本、OSS 与 enterprise 之间可能存在差异，<strong>请以当前 Redis 版本文档与 <code>CONFIG GET</code> 为准</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="string">一、String —— 字符串</h2>
+<p><strong>形态</strong>：单个 key 对应一个字符串 value；value 本质上是<strong>字节序列</strong>，若可解析为整型，Redis 可采用<strong>整数编码（integer-encoding）</strong>。</p>
+<h3 id="_1">具体使用场景</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令示例</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>计数器 / 自增</strong>（浏览数、点赞数、库存）</td>
+<td style="text-align: left;"><code>INCR hot:video:10086</code>、<code>DECRBY goods:stock:sku 1</code></td>
+<td style="text-align: left;">当 value 可解析为整数且在整型范围内，Redis 采用整数编码，使 INCR/DECR 更高效</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>缓存</strong>（短文本、JSON、序列化对象）</td>
+<td style="text-align: left;"><code>SET user:9527 '{"name":"..."}'</code></td>
+<td style="text-align: left;">短值走 embstr，长值走 raw</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Session / Token</strong></td>
+<td style="text-align: left;"><code>SET token:abc123 session-value</code>、<code>EXPIRE</code></td>
+<td style="text-align: left;">短值 embstr cache 友好</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>分布式锁</strong></td>
+<td style="text-align: left;"><code>SET lock:order NX PX 30000</code></td>
+<td style="text-align: left;">需配合 <strong>Lua 原子释放</strong>（见下）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>限流计数</strong></td>
+<td style="text-align: left;"><code>INCR rate:user:10086</code> + <code>EXPIRE</code></td>
+<td style="text-align: left;">整数编码高效</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>分布式发号器 / ID</strong></td>
+<td style="text-align: left;"><code>INCR global:order_seq</code></td>
+<td style="text-align: left;">全局唯一序列</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>拼接构建大字符串</strong>（日志、累积值）</td>
+<td style="text-align: left;">先 <code>SET k 初始值</code> 再 <code>APPEND k 小块</code></td>
+<td style="text-align: left;">raw 预分配摊销 O(1)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>对象整体序列化</strong>（简单场景）</td>
+<td style="text-align: left;"><code>SET goods:10086 '{...}'</code></td>
+<td style="text-align: left;">字段少、整体读写用 String</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">选型要点</h3>
+<ul>
+<li><strong>能用整数存计数就用整数</strong>：当 value 可解析为整数且在整型范围内，Redis 会采用整数编码（integer-encoding），这使 INCR/DECR 等计数操作更高效；<strong>但内存分配行为仍受实现细节与数据修改频率影响</strong>（并非所有场景都"零分配"）；</li>
+<li><strong>短文本自动 embstr</strong>：短字符串通常走 embstr 编码（<strong>常见阈值约 44 bytes，具体以 Redis 版本为准</strong>），embstr 是一次性分配字符串对象与 SDS 数据区，SET/GET 在这种编码下性能更优；<strong>当字符串被扩展（如频繁 APPEND）且超阈值时，会从 embstr 切换为 raw（sds）并触发重新分配</strong>；</li>
+<li><strong>长文本/可变拼接用 raw</strong>：sds 预分配使 APPEND 摊销 O(1)，但会触发内存重分配与编码切换；</li>
+<li><strong>分布式锁释放用 Lua 保证"仅释放自己持有的锁"</strong>：不要只用 <code>GET</code>+<code>DEL</code>（存在竞态，可能误删他人锁）；推荐 <code>SET key val NX PX ttl</code> + <strong>Lua 判断 value 匹配再 DEL</strong>，或使用 RedLock 等更强保证；</li>
+<li><strong>大字符串注意持久化/复制开销</strong>：大 value 会影响 RDB/AOF 生成、主从复制网络与内存碎片，写入/备份期间可能导致阻塞或 I/O 峰值；</li>
+<li>❌ <strong>多个字段的对象别拆成多条 String</strong>——应改用 Hash（见下文，通常节省显著内存）。</li>
+</ul>
+<hr />
+<h2 id="hash">二、Hash —— 哈希（对象）</h2>
+<p><strong>形态</strong>：一个 key 下多个 field-value。<strong>内存优化弹性最大的类型，适合"同一对象的多个属性"。</strong></p>
+<h3 id="_3">具体使用场景</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令示例</th>
+<th style="text-align: left;">field 数建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>用户基础资料</strong></td>
+<td style="text-align: left;"><code>HSET user:9527 name "张三" age 30 city "北京"</code></td>
+<td style="text-align: left;">≤64</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>商品核心属性</strong></td>
+<td style="text-align: left;"><code>HSET goods:10086 title "..." price 99 stock 10</code></td>
+<td style="text-align: left;">≤64</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>会话/登录态</strong></td>
+<td style="text-align: left;"><code>HSET sess:abc123 uid 9527 login 2026-08-04</code></td>
+<td style="text-align: left;">~3-8</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>订单摘要</strong></td>
+<td style="text-align: left;"><code>HSET order:8001 uid 9527 amount 299 status "PAID"</code></td>
+<td style="text-align: left;">~5-10</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>购物车</strong></td>
+<td style="text-align: left;"><code>HSET cart:9527 goods:1 2 goods:5 1</code></td>
+<td style="text-align: left;">看商品数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>用户画像 / 多维标签</strong></td>
+<td style="text-align: left;"><code>HSET profile:9527 tag1 ... tag2 ...</code></td>
+<td style="text-align: left;">100-500+</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>商品全量属性</strong>（规格/参数）</td>
+<td style="text-align: left;"><code>HSET goods:10086 spec1 ... spec2 ...</code></td>
+<td style="text-align: left;">200+</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>配置表 / 规则表</strong></td>
+<td style="text-align: left;"><code>HSET rules:global rule1 ... rule2 ...</code></td>
+<td style="text-align: left;">数百</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>缓存对象 + 局部更新</strong></td>
+<td style="text-align: left;">整体读用 HGETALL，单字段改用 HSET</td>
+<td style="text-align: left;">灵活</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">选型要点</h3>
+<ul>
+<li><strong>小 field 的 Hash 走 listpack（历史上称 ziplist）</strong>：当 field 数量与单个 field 大小在阈值以内（由 <code>hash-max-listpack-entries</code> / <code>hash-max-listpack-value</code> 控制）时，Redis 使用 listpack 编码，能显著节省内存并提升局部访问性能；<strong>具体阈值与性能提升幅度取决于版本与数据特性，应以基准测试为准</strong>；</li>
+<li><strong>配置项版本区分</strong>：老版本（Redis 4/5/6）为 <code>hash-max-ziplist-entries</code> / <code>hash-max-ziplist-value</code>；新版本（Redis 6.0+/7+）对应为 <code>hash-max-listpack-entries</code> / <code>hash-max-listpack-value</code>；<strong>默认阈值在不同版本不同（历史上 entries 常见 512、value 常见 64）</strong>，以版本为准并可用 <code>CONFIG GET</code> 查看；</li>
+<li><strong>field 逼近阈值或更多</strong>：hashtable O(1) 反而更优（实测临界反超），不要刻意限容；</li>
+<li>❌ <strong>避免对大 Hash 做 HGETALL</strong>：这是 <strong>O(N)</strong> 操作，可能造成<strong>明显的主线程阻塞</strong>（耗时与 field/value 大小、CPU、单线程负载、网络、RDB/AOF 写入同时发生等有关）——应使用 HGET/HMGET 按需取，或 HSCAN 分页；</li>
+<li><strong>field 极多（数千/数万）</strong>：listpack 不适合（O(N) 扫描、内存搬移），且大量 field 会增加内存与操作复杂度，应评估建模（拆分/分片）；</li>
+<li><strong>Hash vs 多条 String</strong>：同对象多字段，Hash 比拆成多条 String 通常节省显著内存（listpack 紧凑），但具体收益视字段与编码而定。</li>
+</ul>
+<hr />
+<h2 id="list-quicklist">三、List —— 列表（quicklist）</h2>
+<p><strong>形态</strong>：有序字符串列表，双向链表（每个节点是 listpack）。<strong>擅长"按插入顺序"的操作。</strong></p>
+<h3 id="_5">具体使用场景</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令示例</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>消息队列 / 任务队列</strong></td>
+<td style="text-align: left;"><code>LPUSH queue task</code> + <code>BRPOP queue 0</code></td>
+<td style="text-align: left;">先进先出，阻塞读防空转</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>最新动态 / 时间线</strong></td>
+<td style="text-align: left;"><code>LPUSH feed:9527 post_id</code> + <code>LRANGE 0 9</code></td>
+<td style="text-align: left;">取最近 N 条</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>栈 / 历史记录</strong></td>
+<td style="text-align: left;"><code>LPUSH history user</code> + <code>LTRIM 0 9</code></td>
+<td style="text-align: left;">只留最近 10 条</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>待办 / 队列</strong></td>
+<td style="text-align: left;"><code>RPUSH</code> + <code>LPOP</code></td>
+<td style="text-align: left;">也可做优先级外的简单队列</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>发布通知流</strong></td>
+<td style="text-align: left;"><code>LPUSH notify:user msg</code></td>
+<td style="text-align: left;">按序消费</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">选型要点</h3>
+<ul>
+<li><strong>quicklist 支持压缩中间节点（list-compress-depth）</strong>：能显著省内存（如队列场景 <code>list-compress-depth 1</code>，中间节点压缩、两端保留），<strong>但会增加随机访问（LINDEX）或节点遍历时的解压开销</strong>；对高频随机访问或低延迟需求应慎用，或将压缩深度设为 0/调低相关参数；</li>
+<li><strong>需要 ACK/确认、回溯与消费组语义的队列，推荐评估 Streams</strong>：List + BRPOP 是简单方案，但<strong>缺少 ACK/重试语义</strong>（消息被 pop 后即从 List 移除，进程崩溃会丢消息）；Streams 提供消费组、XACK、XAUTOCLAIM 等；</li>
+<li>❌ <strong>不要用 List 做"需要按 value 查找"的数据</strong>（List 只能按下标/顺序访问，查找需 O(N) 遍历）——用 Set；</li>
+<li>❌ <strong>不要用 List 做排行榜/排序</strong>——用 ZSet。</li>
+</ul>
+<hr />
+<h2 id="set">四、Set —— 集合（无序去重）</h2>
+<p><strong>形态</strong>：不重复的无序元素集合。<strong>擅长"判断是否存在 / 去重 / 集合运算"。</strong></p>
+<h3 id="_7">具体使用场景</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令示例</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>去重</strong>（已购、已看、已领）</td>
+<td style="text-align: left;"><code>SADD bought:sku9527 uid1</code></td>
+<td style="text-align: left;">判断是否已买</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>黑白名单</strong>（整数 ID）</td>
+<td style="text-align: left;"><code>SADD blacklist ip_hash</code></td>
+<td style="text-align: left;">整数走 intset，二分查找快</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>点赞 / 收藏 / 关注</strong></td>
+<td style="text-align: left;"><code>SADD like:video:1 uid</code></td>
+<td style="text-align: left;">判断是否点过赞</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>标签系统</strong></td>
+<td style="text-align: left;"><code>SADD tags:video hot,new</code></td>
+<td style="text-align: left;">短标签</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>共同好友 / 共同关注</strong></td>
+<td style="text-align: left;"><code>SINTER user:1:friends user:2:friends</code></td>
+<td style="text-align: left;">集合交集</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>在线用户</strong></td>
+<td style="text-align: left;"><code>SADD online:users uid</code></td>
+<td style="text-align: left;">全站在线</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>抽奖 / 随机抽取</strong></td>
+<td style="text-align: left;"><code>SRANDMEMBER lottery 5</code></td>
+<td style="text-align: left;">随机抽 5 人</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_8">选型要点</h3>
+<ul>
+<li><strong>小整数集合用 intset 编码</strong>：Redis 会在满足条件（所有元素均为整数字符串且数量不超过实现阈值）时使用 intset；<strong>阈值在不同版本常见为 512，但请通过 <code>CONFIG GET</code> 查看具体实例配置或参考版本文档</strong>；intset 二分查找全面碾压（SADD +17%、SISMEMBER +15%）；</li>
+<li><strong>短字符串 ≤128 用 listpack</strong>：紧凑 cache 友好；</li>
+<li><strong>整数别存成字符串</strong>：元素以字符串形式存储会失去 intset 优势（只有当元素确实为整数类型时才触发 intset）；</li>
+<li>❌ <strong>避免大集合的 SMEMBERS（O(N)）</strong>：hashtable 全量读取慢 30 倍+，应用 SSCAN 分页或分片；</li>
+<li><strong>集合运算（SINTER/SUNION/SDIFF）只适合小集合</strong>：大集合是 O(N) 或更高，CPU/内存开销大、主线程易饱和——适合小集合或做分片/预计算（SINTERSTORE）；</li>
+<li><strong>Cluster 下多 key 集合运算需 hash tag 同 slot</strong>：跨槽多 key 操作会报 CROSSSLOT 或需客户端分片聚合。</li>
+</ul>
+<hr />
+<h2 id="zset">五、ZSet —— 有序集合（带分数排序）</h2>
+<p><strong>形态</strong>：member + score，按 score 自动排序。<strong>最适合"带分数、需要排名/范围"的数据。</strong></p>
+<h3 id="_9">具体使用场景</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令示例</th>
+<th style="text-align: left;">score 含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>排行榜</strong>（游戏/商品/主播）</td>
+<td style="text-align: left;"><code>ZADD rank:global user9527 战力值</code></td>
+<td style="text-align: left;">分数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>延迟任务队列</strong>（订单超时关单）</td>
+<td style="text-align: left;"><code>ZADD delay:task:queue 时间戳 order_9527</code></td>
+<td style="text-align: left;">执行时间戳</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>限流滑动窗口</strong></td>
+<td style="text-align: left;"><code>ZADD rate:user 时间戳 req_id</code></td>
+<td style="text-align: left;">时间戳</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>实时积分榜</strong></td>
+<td style="text-align: left;"><code>ZADD leaderboard user_id 得分</code></td>
+<td style="text-align: left;">积分</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>按分数范围查询</strong></td>
+<td style="text-align: left;"><code>ZRANGEBYSCORE rank 90 +inf</code></td>
+<td style="text-align: left;">查高分段</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Top-N / 范围取数</strong></td>
+<td style="text-align: left;"><code>ZREVRANGE rank 0 9</code></td>
+<td style="text-align: left;">取前 10</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>事件时间线（带时间戳）</strong></td>
+<td style="text-align: left;"><code>ZADD events 时间戳 event_id</code></td>
+<td style="text-align: left;">时间</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">选型要点</h3>
+<ul>
+<li><strong>小 ZSet 走 listpack</strong>：紧凑高效；</li>
+<li><strong>大 ZSet 使用 skiplist + hash table</strong>：ZADD 是 <strong>O(log N)</strong>，且排序定位更快，不要刻意限容保 listpack；</li>
+<li><strong>延迟队列注意原子性</strong>：应使用 Lua 脚本将 <code>ZRANGEBYSCORE + ZREM</code>（或 ZPOPMIN 检查 score）<strong>合并为原子操作</strong>，防重复消费；也可用 ZPOPMIN 反复弹出并检查 score，但若最小 score &gt; now 则必须把它放回或停止——<strong>因此 Lua 更安全</strong>；加 processing 集合防宕机丢任务，并设计<strong>幂等消费与防重机制</strong>（processing、唯一 member id 等）；</li>
+<li><strong>可考虑 Streams 替代延迟队列</strong>：Streams + 消费组提供内建的消费、ACK 与重试支持，比 ZSet 手动实现更丰富；</li>
+<li><strong>score 可以相同，member 唯一</strong>：<strong>用时间戳作 score 时要确保 member 唯一性</strong>（否则相同 member 会覆盖），或使用复合 member 避免覆盖；score 冲突（相同 score 的多个 member）时按字典序排，需注意排名语义；</li>
+<li><strong>Redis Cluster 下单个 ZSet 固定在一个槽无法分片</strong>；</li>
+<li>跨分片 ZRANGE/ZRANK 需客户端 K 路归并，代价高。</li>
+</ul>
+<hr />
+<h2 id="_11">六、内置专用结构（基于基础类型，场景化命令）</h2>
+<h3 id="61-bitmaps">6.1 Bitmaps —— 位图</h3>
+<p><strong>形态</strong>：基于 String 的位操作，1 个用户占 1 bit，100M 用户约 100M bits ≈ <strong>12.5 MB</strong>（不含其它开销）。<strong>适合"大量用户 + 布尔状态"。</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">内存（1 亿用户）</th>
+<th style="text-align: left;">命令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>每日签到</strong></td>
+<td style="text-align: left;">~12MB/日</td>
+<td style="text-align: left;"><code>SETBIT sign:date uid 1</code>、<code>BITCOUNT</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>用户在线状态</strong></td>
+<td style="text-align: left;">~12MB</td>
+<td style="text-align: left;"><code>SETBIT online uid 1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>AB 实验分组</strong></td>
+<td style="text-align: left;">~12MB</td>
+<td style="text-align: left;"><code>SETBIT ab uid 1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>权限标识位</strong></td>
+<td style="text-align: left;">~12MB</td>
+<td style="text-align: left;"><code>SETBIT perm uid 1</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>游戏属性紧凑存储</strong>（血量/魔法/金币）</td>
+<td style="text-align: left;">极省</td>
+<td style="text-align: left;"><code>BITFIELD player:42 SET u16 16 5000</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>判断</strong>：位图适合<strong>"索引空间（最大偏移）可接受且偏移稠密或可压缩"</strong>的场景；若 ID 是 GUID/随机大范围稀疏值，位图会浪费大量空间（空洞严重），应改用 Set。</p>
+<p><strong>BITFIELD 注意</strong>：可做紧凑数值存储，但随机访问/更新较复杂，<strong>注意溢出/越界与 signed/unsigned 位操作</strong>（<code>SET</code>/<code>INCRBY</code> 需指定 u8/u16 等位宽与符号）。</p>
+</blockquote>
+<h3 id="62-geospatial">6.2 Geospatial —— 地理位置</h3>
+<p><strong>形态</strong>：基于 ZSet（score 是 Geohash）。<strong>适合"附近/距离"查询。</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>附近的人 / 店</strong></td>
+<td style="text-align: left;"><code>GEOSEARCH shops FROMMEMBER "国贸店" BYRADIUS 2 km</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>配送范围计算</strong></td>
+<td style="text-align: left;"><code>GEODIST shops "A" "B" km</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>打车 / 外卖匹配</strong></td>
+<td style="text-align: left;"><code>GEOSEARCH FROMLONLAT 116.4 39.9 BYRADIUS 5 km</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>地理围栏</strong></td>
+<td style="text-align: left;">距离计算 + 推送</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>版本演进</strong>：推荐使用 <strong><code>GEOSEARCH</code> / <code>GEOSEARCHSTORE</code></strong>（较新接口），<strong>旧版 <code>GEORADIUS</code> / <code>GEORADIUSBYMEMBER</code> 在 Redis 6.2+ 已被标记为弃用</strong>。注意 Geo 精度有限（Geohash 约 0.3m~5km 误差），且底层是 ZSet——直接 <code>ZADD</code> 设 score 会破坏数据一致性。</p>
+</blockquote>
+<h3 id="63-streams">6.3 Streams —— 消息队列 / 事件流</h3>
+<p><strong>形态</strong>：Redis 5.0 引入的持久化消息流，支持 <code>XADD</code>、消费者组、ACK、消息回溯与消费者重分配（<code>XAUTOCLAIM</code>）。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>轻量消息队列</strong></td>
+<td style="text-align: left;"><code>XADD orders * ...</code>、<code>XREADGROUP GROUP g c1 ...</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>事件溯源</strong>（订单状态变更、用户行为）</td>
+<td style="text-align: left;"><code>XADD</code> + <code>XRANGE</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>异步任务分发</strong>（支持 ACK/重试）</td>
+<td style="text-align: left;"><code>XREADGROUP</code> + <code>XACK</code> + <code>XAUTOCLAIM</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>消息广播</strong>（多消费者组独立消费）</td>
+<td style="text-align: left;">多个 group</td>
+</tr>
+</tbody>
+</table>
+<p><strong>典型消费组管理命令</strong>：</p>
+<div class="codehilite"><pre><span></span><code>XGROUP<span class="w"> </span>CREATE<span class="w"> </span>orders<span class="w"> </span>group_order<span class="w"> </span><span class="m">0</span><span class="w">        </span><span class="c1"># 创建消费组（从头）</span>
+XREADGROUP<span class="w"> </span>GROUP<span class="w"> </span>group_order<span class="w"> </span>c1<span class="w"> </span>COUNT<span class="w"> </span><span class="m">5</span><span class="w"> </span>STREAMS<span class="w"> </span>orders<span class="w"> </span>&gt;<span class="w">   </span><span class="c1"># 消费</span>
+XACK<span class="w"> </span>orders<span class="w"> </span>group_order<span class="w"> </span>msg-id<span class="w">            </span><span class="c1"># 确认处理完成</span>
+XPENDING<span class="w"> </span>orders<span class="w"> </span>group_order<span class="w">               </span><span class="c1"># 查看未确认（PEL）</span>
+XAUTOCLAIM<span class="w"> </span>orders<span class="w"> </span>group_order<span class="w"> </span>c1<span class="w"> </span><span class="m">60000</span><span class="w"> </span><span class="m">0</span><span class="w">  </span><span class="c1"># 重新认领超时未确认（修复 stuck consumer 后 XACK）</span>
+XTRIM<span class="w"> </span>orders<span class="w"> </span>MAXLEN<span class="w"> </span>~<span class="w"> </span><span class="m">10000</span><span class="w">               </span><span class="c1"># 截断控制长度</span>
+</code></pre></div>
+
+<blockquote>
+<p>⚠️ <strong>扩展风险</strong>：Streams 是<strong>内存数据结构</strong>，若不 <strong>XTRIM</strong> 或合理设置 <strong>MAXLEN</strong>，会<strong>无限增长并消耗内存</strong>；消费组的 <strong>PEL（Pending Entries List）会存储未被 ACK 的消息</strong>，需关注 <code>XACK</code>、<code>XAUTOCLAIM</code>、<code>XPENDING</code> 等管理命令。<strong>修复 stuck consumer</strong>：用 <code>XAUTOCLAIM</code> 认领超时未确认消息并 <code>XACK</code>。</p>
+<p><strong>Cluster 注意</strong>：Streams 在 Cluster 下仍是<strong>按 key 分片</strong>，每个 stream key 固定在单一槽位；<strong>跨槽的 stream 合并/读取需客户端层处理</strong>。</p>
+<p>与 Kafka/RabbitMQ 对比：Streams 运维极低、支持消费者组与回溯，适合中~大规模；<strong>超大吞吐/需要跨集群横向扩展与持久化 SLA 时评估 Kafka/RabbitMQ</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="_12">七、选型决策速查表</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">你要解决什么问题</th>
+<th style="text-align: left;">用哪种类型</th>
+<th style="text-align: left;">为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">计数器/自增/缓存/锁</td>
+<td style="text-align: left;"><strong>String</strong></td>
+<td style="text-align: left;">整数编码 / embstr 高效</td>
+</tr>
+<tr>
+<td style="text-align: left;">存对象的多个属性</td>
+<td style="text-align: left;"><strong>Hash</strong></td>
+<td style="text-align: left;">listpack 小对象更省内存</td>
+</tr>
+<tr>
+<td style="text-align: left;">队列/最新列表/时间线</td>
+<td style="text-align: left;"><strong>List</strong></td>
+<td style="text-align: left;">quicklist 顺序访问；复杂队列评估 Streams</td>
+</tr>
+<tr>
+<td style="text-align: left;">去重/判断存在/集合运算</td>
+<td style="text-align: left;"><strong>Set</strong></td>
+<td style="text-align: left;">小整数用 intset；大集合慎用全量操作</td>
+</tr>
+<tr>
+<td style="text-align: left;">排行榜/排序/延迟任务</td>
+<td style="text-align: left;"><strong>ZSet</strong></td>
+<td style="text-align: left;">score 排序；延迟队列需原子消费或考虑 Streams</td>
+</tr>
+<tr>
+<td style="text-align: left;">大量用户布尔状态（签到/在线）</td>
+<td style="text-align: left;"><strong>Bitmaps</strong></td>
+<td style="text-align: left;">稠密且 ID 空间可控</td>
+</tr>
+<tr>
+<td style="text-align: left;">附近的人/距离计算</td>
+<td style="text-align: left;"><strong>Geospatial</strong></td>
+<td style="text-align: left;">GEOSEARCH</td>
+</tr>
+<tr>
+<td style="text-align: left;">持久化消息队列</td>
+<td style="text-align: left;"><strong>Streams</strong></td>
+<td style="text-align: left;">消费组 + ACK + 回溯；注意内存增长与 PEL 管理</td>
+</tr>
+</tbody>
+</table>
+<h3 id="redis_1">通用选型原则（来自《Redis数据类型原理》）</h3>
+<ol>
+<li><strong>优先用内部编码自动压缩</strong>：小对象（String 短值、Hash 小 field、ZSet 小 member、Set 小整数）Redis 自动走紧凑编码（embstr/listpack/intset），不要盲目转二进制压缩；</li>
+<li><strong>"结构级优化" &gt; 单 value 压缩</strong>：把多个属性放进一个 Hash listpack 或纯整数用 intset，内存收益远大于对单条 value 压缩；</li>
+<li><strong>避免大结构全量读取</strong>：大 hashtable 的 HGETALL/SMEMBERS、大 ZSet 的排序聚合都会阻塞主线程——用分页（HSCAN/SSCAN）或分片；</li>
+<li><strong>编码不可显式指定、单向不可逆</strong>：由数据自动决定，转换后不自动回退；</li>
+<li><strong>Cluster 下注意槽位</strong>：多 key 运算（集合运算、ZUNIONSTORE、MGET 等）需同 slot 或用 hash tag 强制同槽；跨槽操作会失败或需客户端合并。</li>
+</ol>
+<hr />
+<h2 id="_13">八、实操 / 监控 / 调优要点</h2>
+<h3 id="81">8.1 常见复杂度提示（哪些命令在大数据量要慎用）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">复杂度</th>
+<th style="text-align: left;">常见命令</th>
+<th style="text-align: left;">大数据量注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>O(1)</strong></td>
+<td style="text-align: left;">GET/SET（String）、HSET/HGET（单 field）、SADD/SISMEMBER（平均）</td>
+<td style="text-align: left;">安全</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>O(log N)</strong></td>
+<td style="text-align: left;">ZADD/ZRANK（ZSet）、GEOSEARCH</td>
+<td style="text-align: left;">稳定</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>O(N) 或隐含 O(N)</strong></td>
+<td style="text-align: left;"><strong>HGETALL</strong>、<strong>SMEMBERS</strong>、<strong>ZRANGE（large range）</strong>、<strong>LRANGE（large range）</strong>、<strong>KEYS</strong>、SORT、多种聚合操作</td>
+<td style="text-align: left;"><strong>会阻塞主线程，慎用</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>无阻塞分页替代</strong></td>
+<td style="text-align: left;">SCAN / HSCAN / SSCAN / ZSCAN</td>
+<td style="text-align: left;">非实时一致的快照，需处理重复</td>
+</tr>
+</tbody>
+</table>
+<h3 id="82">8.2 监控命令与诊断工具</h3>
+<div class="codehilite"><pre><span></span><code>MEMORY<span class="w"> </span>USAGE<span class="w"> </span>&lt;key&gt;<span class="w">             </span><span class="c1"># 单 key 内存（含元数据）</span>
+MEMORY<span class="w"> </span>STATS<span class="w">                   </span><span class="c1"># 内存细分</span>
+INFO<span class="w"> </span>MEMORY<span class="w"> </span>/<span class="w"> </span>INFO<span class="w"> </span>STATS<span class="w">       </span><span class="c1"># 整体内存/统计</span>
+SLOWLOG<span class="w"> </span>GET<span class="w"> </span><span class="m">100</span><span class="w">                </span><span class="c1"># 慢查询（定位阻塞命令）</span>
+LATENCY<span class="w"> </span>DOCTOR<span class="w">                 </span><span class="c1"># 延迟诊断</span>
+MONITOR<span class="w">                        </span><span class="c1"># 实时命令流（慎用，生产有开销）</span>
+redis-cli<span class="w"> </span>--bigkeys<span class="w">            </span><span class="c1"># 找大 key</span>
+CLIENT<span class="w"> </span>LIST<span class="w">                    </span><span class="c1"># 连接与阻塞客户端</span>
+</code></pre></div>
+
+<h3 id="83">8.3 持久化与复制注意</h3>
+<ul>
+<li><strong>大值/大量键</strong>会在 RDB/AOF 生成、主从复制和重写时产生 <strong>I/O 与 CPU 峰值</strong>；</li>
+<li>需评估 RDB/AOF 配置与持久化窗口（<code>appendfsync everysec/always</code>），监控 <code>rdb_last_cow_size</code>、<code>aof_last_cow_size</code>、复制 backlog。</li>
+</ul>
+<h3 id="84">8.4 集群注意</h3>
+<ul>
+<li><strong>多 key 操作</strong>（SINTER、ZUNIONSTORE、MGET 等）需要同 slot 或使用 hash tag；跨槽操作会失败或需要客户端合并；</li>
+<li>Streams 在 Cluster 下按 key 分片，跨槽 stream 合并/读取需客户端层处理。</li>
+</ul>
+<h3 id="85">8.5 推荐使用的替代 / 扩展</h3>
+<ul>
+<li><strong>复杂对象 / 复杂查询</strong>：考虑 Redis Modules（RedisJSON、RedisSearch）或外部系统（Elasticsearch）；</li>
+<li><strong>大流量持久化消息</strong>：评估 Kafka/RabbitMQ 与 Streams 的权衡（运维成本 vs 功能）。</li>
+</ul>
+<hr />
+<blockquote>
+<p>完整的内存模型、编码原理与调优策略见《Redis数据类型原理》文档。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

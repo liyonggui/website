@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版） · 小番茄程序猿</title>
+<meta name="description" content="Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）</h1>
+  </div>
+  <article class="prose">
+<p>结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split 约束、备份/可搜索快照等），并把改正与补充后的完整文档一起给出。下面先列出“问题 &amp; 建议修改点”，再给出修订后的完整文档（可直接复制到 Markdown/知识库）。</p>
+<p>主要问题与我做的改动（要点）</p>
+<ol>
+<li>MurmurHash / 取模实现的细节（重要）</li>
+<li>问题：原文示例使用 Math.abs(hash) % shards，会在 hash == Integer.MIN_VALUE 时仍返回负数或异常情况（Math.abs(Integer.MIN_VALUE) == Integer.MIN_VALUE），这是经典 bug。</li>
+<li>处理：改为安全写法：int shardId = Math.floorMod(hash, number_of_primary_shards) 或 (hash &amp; 0x7fffffff) % number_of_primary_shards，并说明 ES 用 UTF-8 bytes 做 Murmur3 hash。</li>
+<li>路由变更风险（关键修改）</li>
+<li>问题：文中写到“路由二次打散仅修改 _routing 字段，_id、业务主键保持不变，ES与MySQL可以依靠唯一主键对账” —— 这有误导风险。</li>
+<li>说明/更正：如果你在写入时改变 routing 而不对历史数据做 reindex，使用相同 _id 但不同 routing 会落在不同分片，可能导致“逻辑重复/更新失效/查不到原记录”等问题。必须明确：要变更已存在文档的路由（让已存量跟新路由一致），必须 reindex 或在更新/查询时显式使用原始 routing；否则只能用于新写入数据，或在做双写+Reindex迁移后切换别名。</li>
+<li>MurmurHash 版本描述（微调/补充）</li>
+<li>原文总体正确（32 位用于路由、128 位用于更高精度的去重），但补充说明 ES 的实现细节（routing 用 Murmur3 32-bit 对 UTF-8 字节哈希；cardinality/去重可能使用 128-bit 哈希作为 HLL/hash 输入）并建议注意版本与 ES 版本关联。</li>
+<li>Java 路由打散工具改进</li>
+<li>改进：用 Long.hashCode + Math.floorMod 做取模，避免 Math.abs 溢出，并增加空值校验与注释；同时补充并发/分布式唯一性注意事项（不要把 _id 与不同 routing 混用造成重复）。</li>
+<li>ILM 策略里的 rollover 配置项与 index template 写法</li>
+<li>问题：示例中使用的 rollover 字段名（如 max_primary_shard_size）和 index.routing.allocation.data_tier 写法在不同 ES 版本间有差异，可能导致误用。</li>
+<li>处理：统一用兼容写法示例： rollover: { "max_age": "7d", "max_size":"45gb" }；template 中 use "index.routing.allocation.require.data_tier": "hot"（或根据集群版本改为 data_tier 相关 setting），并提醒 “请按你的 ES 版本校验字段名”。</li>
+<li>shrink / split / reindex 的约束 &amp; 可选替代策略</li>
+<li>补充：明确 shrink/split 的前置条件（read-only/index on single node/all shards relocated to one node 等）、split API 可在一定约束下放大主分片数（必须为当前分片数的倍数并且索引为只读），并建议在大型或生产索引上优先使用 reindex/rollover+alias 的零停机迁移流程。</li>
+<li>关于分片大小建议：补充可搜索快照、snapshot lifecycle（SLM）</li>
+<li>建议增加关于 searchable snapshots（把冷数据用对象存储挂回查询）与 SLM 的内容，作为冷归档成本控制与恢复策略。</li>
+<li>监控与运维建议（新增）</li>
+<li>补充监控指标（master heap、cluster state size、pending tasks、large cluster state diffs、shard count per node、unassigned shards、recovery throughput、disk watermark hits、fielddata/query cache 等），以及告警建议。</li>
+<li>其它细节修正与措辞优化</li>
+<li>如“单分片容量建议范围”的理由补强、分片数量估算公式中加入“预留 20–50% 弹性”的建议、单节点分片上限建议补充对堆内存影响的说明、ILM poll_interval 默认值确认说明并提示各版本差异等。</li>
+</ol>
+<p>我还做的具体修改（实现）</p>
+<ul>
+<li>修正/替换了代码片段（路由哈希取模、Java 工具类），并加入更健壮的实现与注释。</li>
+<li>调整 ILM 示范 JSON（使用更兼容的 rollover 参数与 index template 的 data_tier 设置），并在注释里提醒“按 ES 版本检查字段名”。</li>
+<li>新增关于：split API、shrink 要求、reindex 并发(slice)、reindex requests_per_second、snapshot/SLM、searchable snapshots、分配意识（rack/zone awareness）、监控项、以及变更 routing 的风险与迁移流程。</li>
+<li>语言与结构上做了统一排版、增加小节标题，便于阅读和落地执行。</li>
+</ul>
+<p>下面给出修订后完整文档（已合并修正与补充）。你可以直接复制使用；我在各关键点保留了注释/说明以便实践时参考。</p>
+<div class="codehilite"><pre><span></span><code><span class="gh"># Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）</span>
+
+<span class="k">&gt; </span><span class="ge">版本说明：本文档为实践型运维手册，兼顾 Elasticsearch 常见版本差异（7.x / 8.x）。示例 API/字段在不同 ES 版本可能有细微差别（例如 rollover 的某些字段名、data_tier 相关设置等），上线前请以集群实际版本的官方文档为准。</span>
+
+---
+
+<span class="gu">## 一、索引 / 分片 / 节点 层级关系（概念回顾）</span>
+
+<span class="k">-</span><span class="w"> </span>层级结构：Cluster → Index → Primary Shards + Replica Shards → shards 部署在 Node → Node 依托服务器磁盘/内存/CPU
+<span class="k">-</span><span class="w"> </span>核心两条约束：
+<span class="w">  </span><span class="k">1.</span> 一个分片（shard）永久只归属一个索引（分片物理文件独立），**不能跨索引共享分片**。
+<span class="w">  </span><span class="k">2.</span> 同一分片的主分片与其副本**不允许**部署到同一节点（或同一机架/可用区），避免单点故障导致数据不可用。
+
+示例（3 节点、index order，9 主分片 + 1 副本 → 总分片 18）：
+<span class="k">-</span><span class="w"> </span>总分片 = 主分片数 × (副本数 + 1) = 9 × (1 + 1) = 18
+<span class="k">-</span><span class="w"> </span>理论均分：3 节点，每节点承载 6 个该索引的分片（实际受其他索引/磁盘水位/allocations 策略影响）
+
+说明：
+<span class="k">-</span><span class="w"> </span>节点：承载任意索引分片的资源容器
+<span class="k">-</span><span class="w"> </span>分片：索引的存储单元；分片归属创建后固定（不可随意改主分片数量）
+
+---
+
+<span class="gu">## 二、路由寻址底层原理 &amp; MurmurHash3</span>
+
+<span class="gu">### 1) 路由计算（核心逻辑）</span>
+索引一下写入/查找时底层计算分片的核心思路（伪代码）：
+
+```java
+// routingKey = (user-provided routing != null) ? routing : document_id;
+int hash = Murmur3.hash32(routingKeyBytes); // Murmur3 on UTF-8 bytes -&gt; 32-bit signed int
+// 安全取模（避免 Math.abs 溢出问题）
+int shardId = Math.floorMod(hash, number_of_primary_shards);
+// 也可用: int shardId = (hash &amp; 0x7fffffff) % number_of_primary_shards;
+</code></pre></div>
+
+<p>要点：</p>
+<ul>
+<li>ES 对 routing 使用 Murmur3 (32-bit) 对 routingKey 的 UTF‑8 字节做哈希，然后对主分片数取模得到目标主分片 id。</li>
+<li>注意不要用 Math.abs(hash) 直接取模（可能因 Integer.MIN_VALUE 导致负值/异常）。使用 Math.floorMod(...) 或 bitmask 更安全。</li>
+</ul>
+<p>硬性约束：</p>
+<ol>
+<li>number_of_primary_shards 在索引创建后“不能任意改动”。虽然有 split API（必须满足可拆分条件）与 reindex 可实现变更，但不能直接在线修改主分片数。</li>
+<li>number_of_replicas 可动态调整，不影响路由。</li>
+<li>同一 routingKey 的运算结果（hash → shardId）在索引生命周期内保持一致（除非更改主分片数并用 split/reindex 手段迁移）。</li>
+</ol>
+<h3 id="2-murmurhash3">2) MurmurHash3 两个版本的使用场景（补充）</h3>
+<ul>
+<li>MurmurHash3_x86_32（32-bit）：用于路由分片计算，目标是“打散有序ID”以均匀分布。</li>
+<li>MurmurHash3_x64_128（128-bit）：常用于需要更低碰撞概率的聚合/去重场景（作为哈希输入用于 cardinality/去重），降低去重误差。</li>
+</ul>
+<p>说明：哈希碰撞正常存在。碰撞导致多个不同 routingKey 落入同一分片，但文档内仍以 _id 区分，不会直接覆盖（注意上面的 routing 更改带来的风险点见下）。</p>
+<h3 id="3-routing">3) Routing 长度规范（建议）</h3>
+<ul>
+<li>过长或过短都不理想。推荐 6 ~ 30 字符（参考值）。</li>
+<li>注意：实际哈希基于 UTF‑8 bytes，非字符数；且超长 routing 可能导致 URL 长度或网络传参问题（如果 routing 被放在 URL）。</li>
+<li>如果业务 routing 是数值或雪花 ID，优先 hash/encode 为字符串再使用。</li>
+</ul>
+<h3 id="4-mysql">4) 路由二次打散（与 MySQL 的兼容性说明）</h3>
+<ul>
+<li>核心思想（写入端打散）：bizKey_suffix（如 guangdong_0、guangdong_1）将热点路由拆分到多个分片上，缓解写入倾斜。</li>
+<li>严正说明（极重要）：如果你的历史数据已用旧 routing 写入，且你开始用新的 routing 写入新数据，<strong>不能</strong>指望 ES 自动把两者当作同一条记录。具体风险：</li>
+<li>使用相同 <code>_id</code> 但不同 <code>routing</code> 会造成同一索引里存在“重复记录”分布在不同分片上（ES 的主键定位是通过 routing → shard 到达分片后才基于 _id 更新/覆盖）。</li>
+<li>若需要把历史数据的 routing 一并变更，必须 reindex（或在写入时同时双写新/旧 routing 并做迁移与对账），然后原子切换 alias。</li>
+<li>结论：路由打散适用于新写入的热点分散；对于已有数据要变更 routing，必须走 reindex/迁移流程，且严格测试。</li>
+</ul>
+<hr />
+<h2 id="_1">三、两类分片倾斜成因 + 路由二次打散解决方案</h2>
+<h3 id="1">类型1：路由数据倾斜（业务层面）</h3>
+<ul>
+<li>成因：业务自定义 routing（省份/日期/大客户ID 等）导致热点 key 长期落在单个分片。</li>
+<li>典型场景：按日期或省份路由导致单天或少数省份分片数据远大于其它分片。</li>
+<li>根治（常用）：路由二次后缀打散（原 bizKey_0..n）</li>
+<li>写入：使用 bizKey + "_" + suffix（suffix 可用 snowflake id.hash() % N）</li>
+<li>查询：若需要查询某 bizKey 全量，需要对 N 个后缀并行检索（或使用 routing 列表参数）</li>
+<li>风险与代价：查询 IO 与聚合复杂度会上升；聚合需要按后缀合并或在文档中保留原始 bizKey 字段用于聚合。</li>
+</ul>
+<p>改良的 Java 示例（更健壮）：</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">java.util.ArrayList</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">java.util.List</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">java.util.Objects</span><span class="p">;</span>
+
+<span class="kd">public</span><span class="w"> </span><span class="kd">class</span> <span class="nc">RoutingSplitUtil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 写入生成打散 routing（更安全的取模）</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">getSplitRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="n">Long</span><span class="w"> </span><span class="n">snowId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">splitNum</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">bizKey</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">snowId</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Long</span><span class="p">.</span><span class="na">hashCode</span><span class="p">(</span><span class="n">snowId</span><span class="p">);</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">suffix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">floorMod</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span><span class="w"> </span><span class="n">splitNum</span><span class="p">);</span><span class="w"> </span><span class="c1">// 安全取模，避免 Math.abs 溢出问题</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">suffix</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="c1">// 查询时遍历所有后缀（用于批量检索）</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">listAllRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ArrayList</span><span class="o">&lt;&gt;</span><span class="p">();</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">splitNum</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">bizKey</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">list</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">bizKey</span><span class="p">);</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">list</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">splitNum</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">list</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">list</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>注意：</p>
+<ul>
+<li>在聚合/去重/关联场景中，保留原始业务主键字段（如 bizKey）作为文档字段是必须的，方便跨后缀聚合。</li>
+<li>对于需要「在同一 _id 上频繁更新」的业务，不建议随意改变 routing 逻辑，否则会出现更新丢失或重复。</li>
+</ul>
+<h3 id="2">类型2：节点分片分配倾斜（集群层面）</h3>
+<ul>
+<li>成因：分片分配受限（磁盘水位、均衡阈值、搬迁速率、节点角色、allocation awareness 等），短期内迁移受限会导致分片分布不均。</li>
+<li>诊断与处置：检查 allocation/filter/watermark、cluster.routing.allocation.* 配置与搬迁并发参数、pending migrations、rebalance 阈值。</li>
+</ul>
+<hr />
+<h2 id="_2">四、分片节点分配算法完整解析（补充与细化）</h2>
+<h3 id="1_1">1) 分配流程</h3>
+<ul>
+<li>前置过滤（优先级最高）：同主副本同节点/磁盘水位/节点角色/节点离线/单节点分片上限等。</li>
+<li>候选节点打分：IndexBalance（0.55）与 ShardBalance（0.45）加权得分（ES 默认权重可以配置），得分越低越优先。</li>
+<li>rebalance 受 cluster.routing.allocation.balance.threshold 等阈值控制。</li>
+</ul>
+<p>补充：</p>
+<ul>
+<li>使用 allocation awareness（如 rack/az 属性）可强制把主副本分散到不同机架/可用区，避免单机架故障影响可用性。</li>
+<li>当集群为 yellow（没有足够节点放置副本）时需要扩容节点或降低副本设置。</li>
+</ul>
+<h3 id="2_1">2) 磁盘水位（默认值可配置）</h3>
+<ul>
+<li>low（默认 85%）：开始避免砖入并尝试迁出分片</li>
+<li>high（默认 90%）：禁止迁入新分片</li>
+<li>flood_stage（默认 95%）：索引会被设置只读，防止写入导致磁盘满
+  （注：默认阈值可能随 ES 版本不同，请以集群当前配置为准）</li>
+</ul>
+<h3 id="3">3) 分片迁移并发配置（示例）</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
+<span class="err">{</span>
+<span class="err">  "transient": {</span>
+<span class="err">    "cluster.routing.allocation.node_concurrent_incoming_recoveries": 2,</span>
+<span class="err">    "cluster.routing.allocation.node_concurrent_outgoing_recoveries": 2,</span>
+<span class="err">    "cluster.routing.allocation.cluster_concurrent_rebalance": 2,</span>
+<span class="err">    "indices.recovery.max_bytes_per_sec": "40mb"</span>
+<span class="err">  }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<ul>
+<li>上线策略：高峰期调低并发与带宽；低峰期适当抬高以加速收敛。</li>
+</ul>
+<h3 id="4">4) 额外补充</h3>
+<ul>
+<li>index.routing.allocation.total_shards_per_node 可以限制单节点承载的总分片数。</li>
+<li>定期合并（forcemerge）和 shrink 操作会带来大量 IO，请避开业务高峰。</li>
+</ul>
+<hr />
+<h2 id="_3">五、容量规划与分片数建议（实践版）</h2>
+<h3 id="1_2">1) 单分片容量建议（依据场景）</h3>
+<ul>
+<li>热数据（高写高查）：20 ~ 35 GB / 分片</li>
+<li>常规业务：35 ~ 50 GB / 分片</li>
+<li>冷归档（极少查询）：可放宽至 60 ~ 80 GB（建议使用 searchable snapshots 优化成本）</li>
+</ul>
+<p>说明：分片过大增大迁移与恢复成本；分片过多则增加 cluster state、内存及元数据压力。推荐「宁多勿少」的原则，但要为单分片恢复/迁移速度留空间。</p>
+<h3 id="2_2">2) 主分片数估算</h3>
+<ul>
+<li>建议主分片数 ≈ 预计未来 N 年数据总量 ÷ 目标单分片容量（例如 50GB）</li>
+<li>建议保留弹性（20%-50%）以应对数据增长，避免频繁 reindex</li>
+</ul>
+<h3 id="3_1">3) 副本策略</h3>
+<ul>
+<li>副本数量可动态调整；在单节点集群上副本不会分配（cluster 状态为 yellow）。</li>
+<li>副本不仅用于高可用，也用于增加并行查询吞吐（更多副本可分担搜索压力）。</li>
+</ul>
+<h3 id="4_1">4) 单节点分片上限</h3>
+<ul>
+<li>保守：&lt;= 800；警戒：&lt;= 1000</li>
+<li>分片过多会导致 master heap 和 cluster state 较大，影响稳定性与分配效率。</li>
+</ul>
+<h3 id="5">5) 单索引总体上限（参考）</h3>
+<ul>
+<li>3~5 节点小集群：单索引总量 ≤ 1.5 TB</li>
+<li>中大型集群：单索引 ≤ 3 TB</li>
+<li>时序数据应使用 Rollover + ILM 拆分索引</li>
+</ul>
+<hr />
+<h2 id="ilmindex-lifecycle-management">六、ILM（Index Lifecycle Management）冷/温/热分层（完整手册）</h2>
+<h3 id="61">6.1 核心原则（必须理解）</h3>
+<ol>
+<li>流转最小单位：整个索引（不是单条文档）</li>
+<li>计时基准：</li>
+<li>普通静态索引：以索引创建时间计时</li>
+<li>Rollover 索引：以每个滚动生成的新索引的创建时间计时</li>
+<li>调度模式：ILM 以内置服务周期性轮询（默认 polling interval），并非严格 cron；默认间隔视 ES 版本（通常为 10m），可调整。</li>
+<li>流转不可逆：Hot → Warm → Cold → Delete（若要回流需人工或自研流程）</li>
+<li>流转本质：修改 indexing allocation 标签（data_tier/allocate.require）以触发分片重新分配到对应节点池</li>
+</ol>
+<h3 id="62-ilm-cron">6.2 ILM 优于自研 Cron 的理由（补充）</h3>
+<ul>
+<li>内置幂等、失败自动重试、与迁移限流配置联动、低维护开销</li>
+<li>唯一短板：轮询周期带来的时间误差（优点：避免整点抖动）</li>
+</ul>
+<h3 id="63-ilm">6.3 ILM 参数速查与推荐（精简）</h3>
+<ul>
+<li>indices.lifecycle.poll_interval：默认 ~10m（按集群规模调整）</li>
+<li>测试 1m；时效敏感 3~5m；大型集群 15~20m</li>
+</ul>
+<p>Hot 阶段（示例）：</p>
+<ul>
+<li>rollover：max_age / max_size / max_docs（常用 max_size / max_age）</li>
+<li>set_priority: 恢复优先级</li>
+</ul>
+<p>Warm 阶段：</p>
+<ul>
+<li>min_age: 7d（示例）</li>
+<li>allocate.require.data_tier: "warm"</li>
+<li>forcemerge.max_num_segments: 1（根据查询频率启用）</li>
+<li>shrink: 目标 shards（注意 shrink 是不可逆并有前置条件）</li>
+<li>readonly: 如果确实无写入</li>
+</ul>
+<p>Cold 阶段：</p>
+<ul>
+<li>min_age: 30d（示例）</li>
+<li>allocate.require.data_tier: "cold"</li>
+<li>freeze: 可选（长期归档开启）</li>
+<li>set_priority: 10 之类</li>
+</ul>
+<p>Delete 阶段：</p>
+<ul>
+<li>min_age: 按合规设置（示例 90d），并强制先做 snapshot 以防误删</li>
+</ul>
+<h3 id="64-ilm-rollover">6.4 ILM 策略示例（更通用的 rollover 写法）</h3>
+<blockquote>
+<p>注意：某些字段名（如 max_primary_shard_size）在不同版本间存在差异，以下使用最常见的 max_size。发布前请以集群版本官方文档为准。</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT</span><span class="w"> </span><span class="err">_ilm/policy/order_ho</span><span class="kc">t</span><span class="err">_warm_cold_policy</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">"policy"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"phases"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"hot"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0ms"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"rollover"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"max_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"max_size"</span><span class="p">:</span><span class="w"> </span><span class="s2">"45gb"</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"warm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="s2">"warm"</span><span class="p">}},</span>
+<span class="w">          </span><span class="nt">"forcemerge"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"max_num_segments"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"shrink"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"cold"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"30d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="s2">"cold"</span><span class="p">}},</span>
+<span class="w">          </span><span class="nt">"freeze"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"90d"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"delete"</span><span class="p">:</span><span class="w"> </span><span class="p">{}}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="65-ilm">6.5 索引模板绑定 ILM（示例）</h3>
+<blockquote>
+<p>使用 _index_template（可组合模版）或 legacy 模板根据版本选择</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT</span><span class="w"> </span><span class="err">_i</span><span class="kc">n</span><span class="err">dex_</span><span class="kc">te</span><span class="err">mpla</span><span class="kc">te</span><span class="err">/</span><span class="kc">te</span><span class="err">mpla</span><span class="kc">te</span><span class="err">_order</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">"index_patterns"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"order_*"</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"template"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"settings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"number_of_replicas"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"index.lifecycle.name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"order_hot_warm_cold_policy"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"index.routing.allocation.require.data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hot"</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"mappings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"orderId"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"keyword"</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">"province"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"keyword"</span><span class="p">},</span>
+<span class="w">        </span><span class="nt">"createTime"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"date"</span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<blockquote>
+<p>注意：部分集群/版本也可使用 <code>index.routing.allocation.include</code> / <code>index.routing.allocation.require</code> / data_tier 相关字段，按集群版本确认。</p>
+</blockquote>
+<h3 id="66-ilm">6.6 ILM 实操注意事项（八条）— 保留并补充</h3>
+<ol>
+<li>ILM 无法自动解决路由层面的热点（路由打散必须由业务或 reindex 实施）。</li>
+<li>shrink 操作不可逆，且有前置条件（索引需只读且可迁移至单节点上进行 shrink）。</li>
+<li>ILM 有轮询延迟（默认轮询间隔），短时间误差属正常。</li>
+<li>forcemerge IO 高，请错峰执行或禁用。</li>
+<li>集群必须部署对应 data_tier 节点（hot/warm/cold），否则流转会卡住。</li>
+<li>不要随意手工修改索引 data_tier 或 allocation 标签，避免分片乱跑。</li>
+<li>freeze 适合长期归档但会降低查询速度。</li>
+<li>Delete 阶段建议先确保 SLM 快照可恢复再启用。</li>
+</ol>
+<h3 id="67-ilm">6.7 ILM 常见故障排查（快速对照）</h3>
+<ul>
+<li>索引未流转至下一阶段：可能缺乏对应 data_tier 节点或分片搬迁阻塞。命令：GET /index_name/_ilm/explain</li>
+<li>Rollover 不触发：确认写入是否走 alias，确认阈值配置是否合理。命令：GET /_alias/your_alias</li>
+<li>冻结后查询慢：检查 index settings 的 frozen flag。命令：GET index/_settings?filter_path=*.frozen</li>
+</ul>
+<hr />
+<h2 id="reindex">七、Reindex &amp; 迁移全场景方案（补充细化）</h2>
+<h3 id="_4">核心流程（零停机改造模版）</h3>
+<p>新建目标索引（含新 mapping/setting/ILM） → 执行 Reindex（可用 Painless 脚本转换）→ 双写阶段（业务同时写旧索引与新索引）→ 增量追赶（时间窗口或按 ID 范围重跑）→ 原子别名切换 → 观察与关闭双写 → 删除旧索引/归档</p>
+<p>示例 Reindex（脚本转换）：</p>
+<div class="codehilite"><pre><span></span><code><span class="err">POST _reindex</span>
+<span class="err">{</span>
+<span class="err">  "source": {"index": "order_v1"},</span>
+<span class="err">  "dest": {"index": "order_v2"},</span>
+<span class="err">  "script": {</span>
+<span class="err">    "source": """</span>
+<span class="err">      if (ctx._source.containsKey('o_id')) {</span>
+<span class="err">        ctx._source.order_id = String.valueOf(ctx._source.remove('o_id'));</span>
+<span class="err">      }</span>
+<span class="err">      if (ctx._source.containsKey('create_dt')) {</span>
+<span class="err">        ctx._source.create_time = ctx._source.remove('create_dt');</span>
+<span class="err">      }</span>
+<span class="err">    """</span>
+<span class="err">  },</span>
+<span class="err">  "conflicts": "proceed"  // 视需求选择</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>最佳实践：</p>
+<ul>
+<li>大量数据迁移使用 slices 并行化：POST _reindex?slices=10</li>
+<li>限流：requests_per_second 设置（例如 1000），避免 saturate 网络/磁盘</li>
+<li>长时间迁移使用 wait_for_completion=false 并监控 task API</li>
+<li>在跨集群迁移时使用 reindex from remote（注意带宽）</li>
+</ul>
+<h3 id="_5">不可原地修改清单</h3>
+<ul>
+<li>新增字段：可直接 PUT mapping</li>
+<li>修改已有字段类型/重命名/改变 analyzer：必须重建索引并 Reindex</li>
+</ul>
+<hr />
+<h2 id="_6">八、备份 / 快照 / 冷归档（补充）</h2>
+<ul>
+<li>强烈建议对核心业务数据使用 Snapshot（到远端仓库，如 S3）的 SLM（Snapshot Lifecycle Management），并在 delete 阶段前确保有可用最小保留快照策略。</li>
+<li>可搜索快照（Searchable Snapshots）：将冷数据使用对象存储成本更低的方式保留并允许查询，是冷归档的重要手段，配合 ILM cold 阶段可显著降低成本。</li>
+<li>恢复演练：定期演练从快照恢复，验证策略有效性。</li>
+</ul>
+<hr />
+<h2 id="_7">九、监控与告警（新增建议）</h2>
+<p>推荐监控指标（至少包含）：</p>
+<ul>
+<li>cluster health / status</li>
+<li>number_of_nodes / master-eligible nodes</li>
+<li>master heap usage / GC / large GC events</li>
+<li>cluster state size / pending tasks</li>
+<li>unassigned_shards / relocating_shards / initializing_shards</li>
+<li>indices recovery throughput / bytes/sec</li>
+<li>disk usage 与 watermark hits（per node）</li>
+<li>fielddata / query cache / request cache 消耗</li>
+<li>slow logs（search/ indexing）</li>
+</ul>
+<p>告警示例：</p>
+<ul>
+<li>master heap &gt; 70% 连续 5min</li>
+<li>cluster state size 突增 &gt; 2x baseline</li>
+<li>unassigned_shards &gt; 0 且时间 &gt; 10min</li>
+<li>disk usage &gt; high watermark（90%）</li>
+</ul>
+<hr />
+<h2 id="faq">十、常见问答（FAQ 快速提示）</h2>
+<p>Q: 索引主分片创建后能否增加？<br />
+A: 不能直接修改。可选方案：split API（满足条件）或新建索引 + reindex。</p>
+<p>Q: 改 routing 会影响已写文档吗？<br />
+A: 会。写入时 routing 决定 shard。变更 routing 要么 reindex（把文档重新写入新 routing），要么在读写时兼顾旧 routing，否则会产生分布式重复或更新丢失。</p>
+<p>Q: 分片数应多还是少？<br />
+A: 既不宜过多（元数据、Heap 问题），也不宜过少（单分片过大迁移成本高）。按预计规模与单分片目标容量折中，建议略偏多并保留弹性。</p>
+<hr />
+<h1 id="_8">结束语（落地提示）</h1>
+<p>我已把文档中的技术漏洞与实践盲点修正并补充了运维/迁移/监控相关内容。建议下一步：</p>
+<ul>
+<li>基于你们集群的 ES 版本（请回复版本号，例如 7.10 / 7.17 / 8.4 等），我可以把示例 API/字段（如 rollover 参数、index.template 写法、data_tier 配置）逐条对齐到你们版本的准确语法并输出最终可跑的 API 脚本。</li>
+<li>若需要，我可以把“修订后文档”拆成可直接执行的 runbook（例如：路由打散上生产、ILM policy 上线步骤、reindex 零停机脚本、监控与告警 playbook）。</li>
+</ul>
+<p>如果你要我继续把示例按你们的 ES 版本调整，请回复你们的 Elasticsearch 主版本号（例如：7.10 / 7.17 / 8.6）。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

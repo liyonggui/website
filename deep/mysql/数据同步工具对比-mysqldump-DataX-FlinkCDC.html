@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>数据同步工具对比：mysqldump / DataX / Flink CDC · 小番茄程序猿</title>
+<meta name="description" content="数据同步工具对比：mysqldump / DataX / Flink CDC —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>数据同步工具对比：mysqldump / DataX / Flink CDC</h1>
+  </div>
+  <article class="prose">
+<h1 id="mysqldump-datax-flink-cdc">数据同步工具对比：mysqldump / DataX / Flink CDC</h1>
+<h2 id="_1">一、总览</h2>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>类型</th>
+<th>实时/离线</th>
+<th>核心场景</th>
+<th>依赖</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>mysqldump</strong></td>
+<td>备份 / 全量迁移</td>
+<td>离线全量</td>
+<td>日常备份、跨机全量迁移、初始化从库</td>
+<td>无</td>
+</tr>
+<tr>
+<td><strong>DataX</strong></td>
+<td>异构批量同步</td>
+<td>离线批式</td>
+<td>数仓 ETL 批量抽取、异构库迁移</td>
+<td>无</td>
+</tr>
+<tr>
+<td><strong>Flink CDC</strong></td>
+<td>实时增量同步</td>
+<td><strong>实时流式</strong></td>
+<td>实时数仓、异构库实时同步、订阅变更</td>
+<td>binlog(ROW + GTID)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="mysqldump">二、mysqldump —— 备份 / 全量迁移（最基础）</h2>
+<p><strong>定位</strong>：MySQL 自带命令行工具，做<strong>全量逻辑备份</strong>，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。</p>
+<p><strong>原理</strong>：
+- 逐表 <code>SELECT</code> 数据 → 生成 <code>INSERT</code> 语句
+- 恢复时 <code>mysql &lt; dump.sql</code> 逐条执行</p>
+<p><strong>关键参数</strong>：
+- <code>--single-transaction</code>：InnoDB 一致性快照，避免锁表（基于 MVCC）
+- <code>--master-data=2</code>：记录 binlog 位置，配合建立从库复制
+- <code>--routines --triggers</code>：导出存储过程/触发器</p>
+<p><strong>特点</strong>：
+- 单机全量、离线，不支持持续增量
+- 大库全量备份慢（大表尤其明显）
+- InnoDB 依赖 MVCC 避免锁表；MyISAM 会锁表</p>
+<p><strong>适用</strong>：日常备份、跨机全量迁移、初始化从库（冷备份兜底）。</p>
+<h2 id="datax">三、DataX —— 异构批量同步（离线批式，阿里巴巴）</h2>
+<p><strong>定位</strong>：<strong>异构数据源之间高性能批量同步</strong>（离线），支持 MySQL/Oracle/HBase/HDFS/OSS 等。</p>
+<p><strong>原理</strong>：
+- 读插件（Reader）→ 任务切分（多个 Channel 并发）→ 写插件（Writer）
+- 内存通道传输，支持<strong>断点续传</strong></p>
+<p><strong>特点</strong>：
+- <strong>批量 + 并发</strong>，可并发分片，吞吐远高于 mysqldump
+- <strong>异构</strong>：跨数据库类型（Oracle→MySQL、MySQL→HDFS）
+- <strong>离线批式</strong>，非实时；需定时调度（Cron/调度平台）触发</p>
+<p><strong>适用</strong>：数仓 ETL 批量抽取、异构库迁移、全量/增量（配合时间戳字段）同步。</p>
+<h2 id="flink-cdc-flink">四、Flink CDC —— 实时增量同步（流式，Flink 社区）</h2>
+<p><strong>定位</strong>：基于 <strong>binlog 的实时变更数据捕获</strong>，把 MySQL 增删改<strong>流式</strong>同步到下游（Kafka/数仓/另一库）。</p>
+<p><strong>原理</strong>：
+- 伪装成 MySQL 从库，解析 binlog（内核基于 Debezium）
+- 捕获每行变更 → 以流方式持续推送</p>
+<p><strong>特点</strong>：
+- <strong>实时</strong>（秒级延迟），持续监听 binlog
+- 支持整库/整表/增量启动，可做<strong>精确一次</strong>（exactly-once）语义
+- 轻量：Flink CDC Pipeline 可直接库到库
+- 依赖 MySQL binlog（需 ROW 格式 + GTID 开启）</p>
+<p><strong>适用</strong>：实时数仓（CDC 入仓）、异构库实时同步、订阅变更事件驱动。</p>
+<h2 id="_2">五、三者核心对比</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>mysqldump</th>
+<th>DataX</th>
+<th>Flink CDC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据量</td>
+<td>全量</td>
+<td>全量 + 增量</td>
+<td>增量为主（可全量初始化）</td>
+</tr>
+<tr>
+<td>实时性</td>
+<td>离线</td>
+<td>离线批式（秒~分钟级任务）</td>
+<td><strong>秒级实时</strong></td>
+</tr>
+<tr>
+<td>同步方向</td>
+<td>单机导出</td>
+<td>多对多异构</td>
+<td>主→从实时流</td>
+</tr>
+<tr>
+<td>性能</td>
+<td>慢（单线程）</td>
+<td>高（并发分片）</td>
+<td>高（流式）</td>
+</tr>
+<tr>
+<td>运维成本</td>
+<td>低（自带）</td>
+<td>中（部署+调度）</td>
+<td>高（Flink 集群）</td>
+</tr>
+<tr>
+<td>出错恢复</td>
+<td>重跑</td>
+<td>断点续传</td>
+<td>checkpoint 精确一次</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">六、生产选型建议</h2>
+<table>
+<thead>
+<tr>
+<th>业务诉求</th>
+<th>推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>日常备份 / 误删恢复兜底</td>
+<td><strong>mysqldump</strong>（+ binlog PITR）</td>
+</tr>
+<tr>
+<td>跨库全量迁移 / 数仓离线 ETL</td>
+<td><strong>DataX</strong>（离线批量，吞吐高）</td>
+</tr>
+<tr>
+<td>实时数仓 / 业务实时同步</td>
+<td><strong>Flink CDC</strong>（binlog 流式）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">七、一句话记忆</h2>
+<blockquote>
+<p><strong>mysqldump</strong> = 备份全量（动它保底）；<strong>DataX</strong> = 离线批量异构同步（搬数据）；<strong>Flink CDC</strong> = 实时 binlog 增量同步（实时抄数据）。</p>
+</blockquote>
+<h2 id="_5">八、面试简述</h2>
+<blockquote>
+<p>三种数据同步/迁移工具：<strong>mysqldump</strong> 是 MySQL 自带的全量逻辑备份，离线、单机，用于日常备份与全量迁移；<strong>DataX</strong> 是阿里异构批量同步框架，离线、并发分片、吞吐高，用于数仓 ETL 和异构库迁移；<strong>Flink CDC</strong> 是基于 binlog 的实时增量同步，秒级延迟、精确一次，用于实时数仓和实时同步。选型：备份用 mysqldump，离线搬数用 DataX，实时同步用 Flink CDC。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

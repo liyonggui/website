@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景15：MySQL 高可用（主从切换 / 故障演练） · 小番茄程序猿</title>
+<meta name="description" content="场景15：MySQL 高可用（主从切换 / 故障演练） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景15：MySQL 高可用（主从切换 / 故障演练）</h1>
+  </div>
+  <article class="prose">
+<h1 id="15mysql">场景15：MySQL 高可用（主从切换 / 故障演练）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>单点 MySQL 一旦故障，整个服务不可用。<strong>高可用（HA）</strong> 的核心是：故障时能<strong>快速探测 + 自动切换</strong>，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓扑，演示 HA 能力。</p>
+<blockquote>
+<p>高可用分两层：
+- <strong>读高可用</strong>：主库故障时读请求切到从库（读写分离天然提供）
+- <strong>写高可用</strong>：需要"主从切换"（提升从库为新主），常由 MHA / Orchestrator 自动完成</p>
+</blockquote>
+<h2 id="_2">二、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 复制拓扑监控（主/从 server_id、版本、只读状态）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/ha/topology"</span>
+
+<span class="c1"># 2. 健康探测（主库/从库可用性 + 复制链路健康）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/ha/probe"</span>
+
+<span class="c1"># 3. 读写分离故障转移演练：主库正常（读走主库）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/ha/failover-demo?simulateMasterDown=false&amp;rounds=20"</span>
+
+<span class="c1"># 4. 读写分离故障转移演练：主库故障（读自动切从库）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/ha/failover-demo?simulateMasterDown=true&amp;rounds=20"</span>
+
+<span class="c1"># 5. 主从切换流程演示（提升从库为新主库的 SQL 步骤）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/ha/switch-plan"</span>
+
+<span class="c1"># 6. 故障转移吞吐对比（正常读主 vs 主故障切从）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/ha/failover-bench?concurrency=50&amp;total=20000"</span>
+</code></pre></div>
+
+<h2 id="_3">三、实测结果</h2>
+<h3 id="1">1. 拓扑监控</h3>
+<div class="codehilite"><pre><span></span><code>master: server_id=1, read_only=0, version=8.4.9
+replica: server_id=2, read_only=1, version=8.4.9
+</code></pre></div>
+
+<p>→ 主写从读，拓扑清晰，从库 <code>read_only=1</code> 防止误写。</p>
+<h3 id="2">2. 健康探测</h3>
+<p>主库/从库均 <code>alive=true</code>，复制链路 <code>replicationHealthy=true</code>（写主读从验证）。</p>
+<h3 id="3">3. 故障转移演练（读写分离提供读高可用）</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>masterOk</th>
+<th>replicaOk</th>
+<th>读可用性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主库正常</td>
+<td>10/10</td>
+<td>0/10</td>
+<td>100%</td>
+</tr>
+<tr>
+<td><strong>主库故障</strong></td>
+<td>0/10</td>
+<td><strong>10/10</strong></td>
+<td><strong>100%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>→ 主库故障时读请求<strong>自动切从库</strong>，读服务持续可用（读高可用）。</p>
+<h3 id="4">4. 故障转移吞吐对比</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>QPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>正常读主库</td>
+<td>8892</td>
+</tr>
+<tr>
+<td>故障切从库</td>
+<td>16722</td>
+</tr>
+</tbody>
+</table>
+<p>→ 从库读吞吐甚至更高（主库还承担写负载）。<strong>从库容量决定故障期间的读能力</strong>，若从库承接不下全部读流量会雪崩。</p>
+<h2 id="_4">四、主从切换流程（写高可用）</h2>
+<div class="codehilite"><pre><span></span><code>1. 确认从库追平：SHOW REPLICA STATUS → Seconds_Behind_Source=0
+2. 停主库写入（可选，视切换策略）
+3. 停止从库复制：STOP REPLICA;
+4. 提升从库为主库：RESET REPLICA ALL;
+5. 关闭从库只读：SET GLOBAL read_only=OFF; SET GLOBAL super_read_only=OFF;
+6. 其他从库改指向新主库：CHANGE REPLICATION SOURCE TO ...; START REPLICA;
+7. 应用层切新主库地址，原主库降级为新从库重新挂复制
+</code></pre></div>
+
+<p>切换策略对比：<strong>MHA</strong>（半自动，分钟级）/ <strong>Orchestrator</strong>（自动，秒级）/ 手动脚本。生产常用 <strong>Orchestrator + 探活</strong> 实现自动故障转移（探活 → 选主 → 切换 → VIP 漂移）。</p>
+<h2 id="_5">五、生产环境故障转移中间件对比</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>类型</th>
+<th style="text-align: center;">自动故障转移</th>
+<th>典型 RTO</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Orchestrator</strong></td>
+<td>自动</td>
+<td style="text-align: center;">✅</td>
+<td>秒级</td>
+<td>当前最主流，能处理复杂拓扑，GitHub 大规模生产验证</td>
+</tr>
+<tr>
+<td><strong>MHA</strong></td>
+<td>半自动/准自动</td>
+<td style="text-align: center;">✅</td>
+<td>秒~分钟级</td>
+<td>老牌经典，成熟稳定，需脚本编排</td>
+</tr>
+<tr>
+<td><strong>MGR / InnoDB Cluster</strong></td>
+<td>官方组复制</td>
+<td style="text-align: center;">✅</td>
+<td>秒级</td>
+<td>MySQL 原生，Router 做路由，官方推荐</td>
+</tr>
+<tr>
+<td><strong>PXC (Galera)</strong></td>
+<td>同步多主</td>
+<td style="text-align: center;">✅</td>
+<td>秒级</td>
+<td>强一致，多主，但写放大、对网络敏感</td>
+</tr>
+<tr>
+<td><strong>DRBD + Pacemaker</strong></td>
+<td>存储层</td>
+<td style="text-align: center;">✅</td>
+<td>秒级</td>
+<td>双机热备，需共享/块复制，VIP 漂移</td>
+</tr>
+<tr>
+<td><strong>Keepalived</strong></td>
+<td>VIP 层</td>
+<td style="text-align: center;">✅（仅漂 IP）</td>
+<td>秒级</td>
+<td>只漂 VIP，不切换数据库状态，需配合探活</td>
+</tr>
+</tbody>
+</table>
+<p><strong>选型建议</strong>
+- 单主多从 + 读写分离：<strong>Orchestrator</strong> 或 <strong>MHA</strong>
+- 要官方原生、自动化、易运维：<strong>InnoDB Cluster (MGR + MySQL Router)</strong>
+- 强一致、多主、不允许丢数据：<strong>MGR 多主 / PXC</strong>
+- 云数据库（RDS/Aurora）：自带高可用，无需自建中间件</p>
+<p><strong>原理要点</strong>
+- <strong>Orchestrator</strong>：持续监控复制拓扑，故障自动选主（数据最全的从库）→ 提升 → 重挂其他从库 → VIP/路由切换；Raft 协调器保证自身高可用。
+- <strong>MHA</strong>：Manager 探活主库，故障自动选主、补 binlog（尽力补齐）、提升、重挂复制。
+- <strong>InnoDB Cluster = MGR + MySQL Shell + MySQL Router</strong>：MGR 组协议自动选主，Router 做读写路由+故障转移，应用几乎无感。
+- <strong>PXC / Galera</strong>：同步多主广播，任一点故障自动摘除，剩余节点继续服务（强一致无丢数据）。
+- 配合<strong>半同步复制</strong>可将 RPO 降到 0；<strong>应用接入</strong>（MySQL Router / VIP / 连接池多节点 failover）三者结合实现应用无感切换。</p>
+<h2 id="_6">六、高可用工程要点</h2>
+<ol>
+<li><strong>从库容量要够</strong>：故障转移后从库承接全部读流量，容量不足会二次雪崩。</li>
+<li><strong>自动故障转移工具</strong>：Orchestrator 自动探活/选主/VIP 漂移，比手动快且稳。</li>
+<li><strong>数据追平才切</strong>：切换前必须 <code>Seconds_Behind_Source=0</code>，否则丢数据（GTID 复制可自动定位位置）。</li>
+<li><strong>半同步复制</strong>：主库提交需从库 ACK，减少切换时丢数据风险（RPO≈0）。</li>
+<li><strong>VIP/路由漂移</strong>：应用连 VIP，切换时 VIP 漂移到新主，应用无感。</li>
+<li><strong>只读治理</strong>：从库 <code>read_only+super_read_only</code> 双保险，防止误写。</li>
+<li><strong>故障演练常态化</strong>：定期演练切换，验证切换脚本与流程，避免"纸上 HA 真宕机"。</li>
+</ol>
+<h2 id="_7">七、面试简述</h2>
+<blockquote>
+<p><strong>MySQL 高可用</strong>：主从复制 + 读写分离提供<strong>读高可用</strong>（主库故障读切从库，可用性 100%）；<strong>写高可用</strong>需主从切换（STOP REPLICA → RESET REPLICA ALL → 关只读 → 重挂复制 → 应用切新主），常由 MHA/Orchestrator 自动完成（探活/选主/VIP 漂移）。关键点：从库容量要够承接故障读流量、切换前数据追平（Seconds_Behind_Source=0）、半同步复制降低 RPO、VIP 漂移让应用无感、定期故障演练。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

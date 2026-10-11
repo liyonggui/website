@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B11：冷热分离的查询路由 · 小番茄程序猿</title>
+<meta name="description" content="补测B11：冷热分离的查询路由 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B11：冷热分离的查询路由</h1>
+  </div>
+  <article class="prose">
+<h1 id="b11">补测B11：冷热分离的查询路由</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>数据冷热分离后（热表存近期高频数据、归档表存历史冷数据），查询需<strong>应用层路由</strong>：热数据查热表、历史数据查归档表，避免查询扫全量大表。</p>
+<h2 id="_2">二、路由原理</h2>
+<div class="codehilite"><pre><span></span><code>业务查询(create_time/距今天数)
+    │
+    ├── 距今 ≤ 热边界(如7天) → 热表 t_order_data
+    └── 距今 &gt;  热边界        → 归档表 t_order_archive
+</code></pre></div>
+
+<ul>
+<li><strong>路由规则</strong>：按业务时间（<code>create_time</code> 距今天数）判断冷热。</li>
+<li><strong>路由查询</strong>：只查目标单表，走 <code>create_time</code> 索引范围查询，避免扫全量。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 冷热表状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hotcold/status"</span>
+
+<span class="c1"># 2. 路由查询：距今2天（应走热表）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hotcold/route?daysAgo=2&amp;hotBoundaryDays=7"</span>
+
+<span class="c1"># 3. 路由查询：距今100天（应走归档表）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hotcold/route?daysAgo=100&amp;hotBoundaryDays=7"</span>
+
+<span class="c1"># 4. 路由 vs 全表查询性能对比</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hotcold/bench?rounds=50"</span>
+</code></pre></div>
+
+<blockquote>
+<p>依赖场景17的表（t_order_data + t_order_archive），需先 <code>curl "http://localhost:8080/archive/init?months=12&amp;perDay=300"</code> 初始化 + <code>curl "http://localhost:8080/archive/archive?archiveDays=30"</code> 归档。</p>
+</blockquote>
+<h2 id="108">四、实测结果（10.8万行）</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>路由：距今2天</td>
+<td>→ <strong>热表</strong> t_order_data、命中=true</td>
+</tr>
+<tr>
+<td>路由：距今100天</td>
+<td>→ <strong>归档表</strong> t_order_archive、命中=true</td>
+</tr>
+<tr>
+<td><strong>性能对比</strong></td>
+<td>路由 <strong>0.9ms</strong> vs 全表 <strong>2.1ms</strong>，<strong>快 2.1 倍</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心</strong>：路由按时间正确分派到热表/归档表并命中；10.8万行数据下路由只扫单表，快 2.1 倍（数据量越大差距越大）。</p>
+<h2 id="_4">五、工程要点</h2>
+<ol>
+<li><strong>路由字段</strong>：用业务时间（<code>create_time</code>）做冷热分界，语义清晰。</li>
+<li><strong>索引</strong>：热表/归档表的 <code>create_time</code> 需建索引，路由用范围查询走索引。</li>
+<li><strong>避免函数</strong>：<code>DATE(create_time)=?</code> 会使索引失效，用 <code>create_time &gt;= ? AND &lt; ?</code> 范围。</li>
+<li><strong>冷热边界</strong>：可配置（如 7 天/30 天），按访问频率定。</li>
+<li><strong>路由兜底</strong>：目标表未命中时可 fallback 查另一张表（防误路由）。</li>
+<li><strong>大数据量才体现优势</strong>：小数据量全缓存时路由/全表差异小。</li>
+</ol>
+<h2 id="_5">六、踩坑记录（性能对比失真）</h2>
+<p>小数据量（9000行）全在 buffer_pool 缓存，全表 COUNT 也快，路由/全表差异失真。<strong>需大数据量（10.8万行）</strong>才体现路由优势。且路由查询用 <code>DATE(create_time)</code> 会索引失效，改为范围查询后走索引更快。</p>
+<h2 id="_6">七、面试简述</h2>
+<blockquote>
+<p><strong>冷热分离查询路由</strong>：按业务时间把热数据路由到热表、历史冷数据路由到归档表，避免查全量大表。实测10.8万行：路由查询0.9ms vs 全表2.1ms（快2.1倍）。要点：按 create_time 分界路由、建索引、范围查询避免索引失效、大数据量才体现优势。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

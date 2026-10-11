@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景11：主从延迟治理（写后读一致性方案） · 小番茄程序猿</title>
+<meta name="description" content="场景11：主从延迟治理（写后读一致性方案） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景11：主从延迟治理（写后读一致性方案）</h1>
+  </div>
+  <article class="prose">
+<h1 id="11">场景11：主从延迟治理（写后读一致性方案）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>读写分离（场景6）把读压力分流到从库，但引入<strong>主从延迟</strong>：写主库后，从库需要经复制（binlog → relay log → SQL apply）才能同步，延迟窗口内从库读到的是<strong>旧数据</strong>。若业务"写后立即读"（如下单后查订单），会读到旧值，造成数据不一致。</p>
+<p>本场景聚焦<strong>如何治理"写后读"不一致</strong>，对比三种读方案：<strong>强一致读主库 / 最终一致读从库 / 延迟双读（Read-Your-Writes）</strong>。</p>
+<h2 id="_2">二、核心机制</h2>
+<ul>
+<li><strong>主从延迟</strong>：写主库提交后，从库滞后 <code>Seconds_Behind_Source</code> 才应用，窗口内读从库读到旧值</li>
+<li><strong>强一致读</strong>：写后读主库，100% 读到最新，但读压力全集中主库</li>
+<li><strong>最终一致读</strong>：写后读从库，分流读压力，但延迟窗口内可能读不到刚写的数据</li>
+<li><strong>延迟双读</strong>：写后先读从库，读不到（延迟）则回主库重读，兼顾一致性与读分流</li>
+</ul>
+<h2 id="_3">三、实测结果</h2>
+<p>演示表 <code>t_delay_read</code>，人为设置从库复制延迟 <code>SOURCE_DELAY=2</code>（2秒）放大效果。</p>
+<h3 id="1-delay-readwrite-then-read">1. 写后读一致性对比（<code>/delay-read/write-then-read</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>读路径</th>
+<th>结果</th>
+<th>一致性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>写主库后立即读<strong>从库</strong></td>
+<td><strong>NULL（读不到）</strong></td>
+<td>❌（最终一致，延迟窗口内不一致）</td>
+</tr>
+<tr>
+<td>写主库后立即读<strong>主库</strong></td>
+<td>v80365（读到最新）</td>
+<td>✅（强一致）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：从库延迟 2s 时，写主库后立即读从库读不到刚写的数据，读主库读到最新。<strong>强一致读主库、最终一致读从库的取舍</strong>。</p>
+<h3 id="2-read-your-writesdelay-readdelay-double-read">2. 延迟双读（Read-Your-Writes，<code>/delay-read/delay-double-read</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>直接从从库读到</td>
+<td>0/10（延迟 2s 读不到）</td>
+</tr>
+<tr>
+<td>回主库读到</td>
+<td>10/10</td>
+</tr>
+<tr>
+<td><strong>总一致性命中</strong></td>
+<td><strong>10/10（100%）</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：延迟双读先读从库，未命中（延迟）回主库，<strong>保证 100% 一致性</strong>，且大部分读请求分流到从库（延迟&lt;窗口时）。</p>
+<h3 id="3-delay-readbench">3. 三种方案一致性命中率（<code>/delay-read/bench</code>）</h3>
+<p>并发 10、1000 请求、从库延迟 2s：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>QPS</th>
+<th>P99</th>
+<th>一致性命中</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>最终一致读从库</strong></td>
+<td>542</td>
+<td>4ms</td>
+<td><strong>0/1000</strong>（延迟窗口全不一致）</td>
+</tr>
+<tr>
+<td><strong>强一致读主库</strong></td>
+<td>543</td>
+<td>4ms</td>
+<td>1000/1000</td>
+</tr>
+<tr>
+<td><strong>延迟双读</strong></td>
+<td>380</td>
+<td>10ms</td>
+<td><strong>1000/1000</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：
+- 最终一致读从库性能最好（QPS 542），但延迟窗口内一致性命中 <strong>0%</strong>
+- 强一致读主库 100% 一致、性能好（QPS 543），但读压力全压主库
+- 延迟双读 100% 一致，但回主库有额外开销（QPS 380、P99 10ms）</p>
+<h2 id="_4">四、生产避坑准则</h2>
+<ol>
+<li><strong>关键"写后读"走主库</strong>：下单后立即查订单、支付回调等，写后读主库保证强一致</li>
+<li><strong>可容忍延迟的读走从库</strong>：列表、报表、统计等，读从库摊薄主库压力</li>
+<li><strong>延迟双读保一致</strong>：无法接受最终一致的读，用"先从库、读不到回主库"的延迟双读</li>
+<li><strong>监控主从延迟</strong>：<code>Seconds_Behind_Source</code> 超过阈值（如 2s）告警，延迟过大时读走主库兜底</li>
+<li><strong>半同步复制</strong>：对数据一致性要求高时，用半同步复制（从库确认后主库才提交）缩短延迟窗口</li>
+</ol>
+<h2 id="_5">五、面试简述</h2>
+<blockquote>
+<p><strong>主从延迟治理（写后读一致性）</strong>：读写分离引入"写主库后读从库读不到刚写数据"的不一致（从库延迟 <code>Seconds_Behind_Source</code>）。实测设置从库延迟 2s：写后立即读从库返回 NULL（不一致）、读主库读到最新（强一致）；延迟双读（先读从库读不到回主库）总一致性命中 100%；并发对比：最终一致读从库 QPS 最高但一致 0%、强一致读主库 100% 一致但全压主库、延迟双读 100% 一致但略有开销。核心：关键写后读走主库或延迟双读，可容忍延迟读从库，监控延迟阈值并及时切换兜底。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

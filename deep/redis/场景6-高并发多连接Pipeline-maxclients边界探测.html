@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>docker-compose.yml 中限制 maxclients 为一个较小值（便于触发边界） · 小番茄程序猿</title>
+<meta name="description" content="docker-compose.yml 中限制 maxclients 为一个较小值（便于触发边界） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>docker-compose.yml 中限制 maxclients 为一个较小值（便于触发边界）</h1>
+  </div>
+  <article class="prose">
+<h2 id="6-pipeline-maxclients">场景 6: 高并发多连接 Pipeline — maxclients 边界探测</h2>
+<h3 id="61">6.1 背景与问题</h3>
+<div class="codehilite"><pre><span></span><code>生产现象:
+  微服务拆分后，十几个服务共享一个 Redis 实例
+  每个服务内部又有多线程 Pipeline 写入
+  连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → 连接池耗尽 → 大面积报错
+
+核心问题:
+  1. 当前架构每个 Worker 线程独占一条 Redis 连接，并发 = 连接数
+  2. 没有客户端侧连接数限制
+  3. 超过 maxclients 后新连接被拒，业务直接报错
+</code></pre></div>
+
+<h3 id="62">6.2 压测架构</h3>
+<div class="codehilite"><pre><span></span><code>模式 DIRECT（当前默认）:
+  Worker-1 ── redisClient.connect() ── 连接-1 ── Pipeline 循环（占住不放）
+  Worker-2 ── redisClient.connect() ── 连接-2 ── Pipeline 循环（占住不放）
+  ...
+  Worker-N ── redisClient.connect() ── 连接-N ── Pipeline 循环
+  ↑ 并发 = N → 连接数 = N，无上限，终将撞向 maxclients
+
+模式 POOL（对比方案）:
+  Worker-1 ── pool.borrowObject() ── 拿到连接 ── Pipeline ── pool.returnObject()
+  Worker-2 ── pool.borrowObject() ── 拿到连接 ── Pipeline ── pool.returnObject()
+  ...
+  Worker-N ── pool.borrowObject() ── 池已满 → 等待超时 → 返回错误
+  ↑ 连接数上限 = poolMaxTotal，超出的 Worker 排队等待而不是创建新连接
+</code></pre></div>
+
+<h3 id="63">6.3 探测指标</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Redis 服务端</td>
+<td style="text-align: left;"><code>connected_clients</code></td>
+<td style="text-align: left;"><code>INFO clients</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;"><code>rejected_connections</code></td>
+<td style="text-align: left;"><code>INFO stats</code>（累计 reject 数，监控 delta 更重要）</td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;"><code>maxclients</code></td>
+<td style="text-align: left;"><code>INFO clients</code>（硬上限，以实际部署的 <code>INFO clients</code> 返回值为准）</td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;"><code>blocked_clients</code></td>
+<td style="text-align: left;"><code>INFO clients</code>（<strong>正在执行阻塞命令的客户端数</strong>，如 BLPOP/BRPOP/XREAD BLOCK，并非被拒绝的连接数）</td>
+</tr>
+<tr>
+<td style="text-align: left;">客户端</td>
+<td style="text-align: left;"><code>connectSuccess / connectFail</code></td>
+<td style="text-align: left;">应用层计数</td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">当前活跃连接数</td>
+<td style="text-align: left;"><code>directConns.size()</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">连接池状态</td>
+<td style="text-align: left;"><code>poolActive / poolIdle / poolWaiters</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">吞吐量 / 延迟</td>
+<td style="text-align: left;">Pipeline 批次指标</td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">等待队列长度 / 平均等待时间</td>
+<td style="text-align: left;">Semaphore queue / pool waiters 趋势（衡量用户感知延迟）</td>
+</tr>
+<tr>
+<td style="text-align: left;">系统层</td>
+<td style="text-align: left;">文件描述符 (<code>ulimit -n</code>)</td>
+<td style="text-align: left;">OS 级</td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">TCP 连接数 / ephemeral port 使用率</td>
+<td style="text-align: left;"><code>netstat</code> / <code>ss</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">网络丢包 / CPU</td>
+<td style="text-align: left;"><code>ifconfig</code> / <code>top</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="64">6.4 测试方法</h3>
+<h4 id="redis-maxclients">Redis maxclients 说明</h4>
+<div class="codehilite"><pre><span></span><code>Redis 默认 maxclients 常见为 10000，但不同发行版、容器镜像或配置可能修改此值。
+务必以实际部署的 redis-server 执行 INFO clients 获取的 maxclients 值为准：
+  docker exec &lt;redis-container&gt; redis-cli INFO clients | grep maxclients
+</code></pre></div>
+
+<h4 id="docker-compose">Docker Compose 调整</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># docker-compose.yml 中限制 maxclients 为一个较小值（便于触发边界）</span>
+<span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">redis-server --appendonly no --save "" --maxclients 500</span>
+</code></pre></div>
+
+<h4 id="rest">REST 端点</h4>
+<div class="codehilite"><pre><span></span><code>GET  /maxclients/metrics          -- 当前指标快照（含 Redis INFO 采样）
+POST /maxclients/start            -- 启动压测
+      ?concurrency=100&amp;batchSize=20&amp;mode=DIRECT
+POST /maxclients/stop             -- 停止压测
+POST /maxclients/sweep            -- 自动遍历 concurrency 梯度
+GET  /maxclients/sweep/results    -- 查看 Sweep 对比报告
+</code></pre></div>
+
+<h4 id="_1">单点测试</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. DIRECT 模式 100 并发（预期连接数=100，正常）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/maxclients/start?concurrency=100&amp;batchSize=20&amp;mode=DIRECT"</span>
+
+<span class="c1"># 观察指标</span>
+curl<span class="w"> </span>http://localhost:8082/maxclients/metrics
+
+<span class="c1"># 2. DIRECT 模式 600 并发（预期超过 maxclients=500，出现拒绝）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/maxclients/start?concurrency=600&amp;batchSize=20&amp;mode=DIRECT"</span>
+
+<span class="c1"># 3. POOL 模式对比：600 并发但连接池上限=50</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/maxclients/start?concurrency=600&amp;batchSize=20&amp;mode=POOL"</span>
+
+<span class="c1"># 4. 停止</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/maxclients/stop"</span>
+</code></pre></div>
+
+<h4 id="sweep">Sweep 自动遍历</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># DIRECT 模式 Sweep</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/maxclients/sweep?batchSize=20&amp;mode=DIRECT"</span>
+
+<span class="c1"># POOL 模式 Sweep 对比</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/maxclients/sweep?batchSize=20&amp;mode=POOL"</span>
+
+<span class="c1"># 查看结果</span>
+curl<span class="w"> </span>http://localhost:8082/maxclients/sweep/results
+</code></pre></div>
+
+<h3 id="65-direct-vs-pool">6.5 DIRECT vs POOL 预期行为</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">DIRECT 模式</th>
+<th style="text-align: left;">POOL 模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>连接数</strong></td>
+<td style="text-align: left;">= concurrency（无上限）</td>
+<td style="text-align: left;">≤ poolMaxTotal（硬上限）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>超出 maxclients 时</strong></td>
+<td style="text-align: left;"><code>redisClient.connect()</code> 抛异常 → Worker 退出 → <code>connectFail++</code></td>
+<td style="text-align: left;">连接池已满 → Worker 阻塞等待 → 不创建新连接</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Redis 行为</strong></td>
+<td style="text-align: left;"><code>rejected_connections++</code>，日志 <code>max number of clients reached</code></td>
+<td style="text-align: left;"><code>rejected_connections</code> 不增加</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>对业务影响</strong></td>
+<td style="text-align: left;">部分请求直接失败（不可恢复）</td>
+<td style="text-align: left;">请求排队/超时（可恢复）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>吞吐</strong></td>
+<td style="text-align: left;">连接成功前吞吐高，达到上限后新 Worker 全失败</td>
+<td style="text-align: left;">受 poolMaxTotal 限制，但所有请求都能排队获得服务</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>延迟</strong></td>
+<td style="text-align: left;">低延迟（直连）直到崩溃</td>
+<td style="text-align: left;">高并发下 borrowObject 有等待延迟</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pub/Sub</strong></td>
+<td style="text-align: left;">✅ 天然支持</td>
+<td style="text-align: left;">✅ 支持，但<strong>订阅连接需专用独立长连接</strong>（不能混入通用池被复用）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="66">6.6 关键发现</h3>
+<h4 id="661">6.6.1 连接数临界点</h4>
+<div class="codehilite"><pre><span></span><code>connected_clients 逼近 maxclients 时：
+  ├── connected_clients &lt; maxclients × 0.8   → 正常，延迟稳定
+  ├── connected_clients = maxclients × 0.9   → 延迟开始抖动
+  └── connected_clients = maxclients         → 新连接REJECT，connectFail 飙升
+</code></pre></div>
+
+<h4 id="662-direct">6.6.2 DIRECT 模式的致命缺陷</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 当前代码：每个 Worker 独占一条连接，停不下来</span>
+<span class="n">StatefulRedisConnection</span><span class="o">&lt;</span><span class="n">String</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redisClient</span><span class="p">.</span><span class="na">connect</span><span class="p">(...);</span>
+<span class="c1">// 如果 connect 成功，这个连接就一直被这个线程占着</span>
+<span class="c1">// Worker 线程在执行 Pipeline 主循环，不会退出</span>
+<span class="c1">// 连接数 = Worker 数，没有收缩机制</span>
+</code></pre></div>
+
+<h4 id="663-pool">6.6.3 POOL 模式的 "熔断" 效应</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 连接池：硬上限保护</span>
+<span class="n">GenericObjectPool</span><span class="w"> </span><span class="n">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ConnectionPoolSupport</span><span class="p">.</span><span class="na">createGenericObjectPool</span><span class="p">(...);</span>
+<span class="n">pool</span><span class="p">.</span><span class="na">setMaxTotal</span><span class="p">(</span><span class="mi">50</span><span class="p">);</span><span class="w">              </span><span class="c1">// 最多 50 个连接</span>
+<span class="n">pool</span><span class="p">.</span><span class="na">setBlockWhenExhausted</span><span class="p">(</span><span class="kc">true</span><span class="p">);</span><span class="w">  </span><span class="c1">// 池满了就等</span>
+<span class="n">pool</span><span class="p">.</span><span class="na">setMaxWait</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofMillis</span><span class="p">(</span><span class="mi">200</span><span class="p">));</span><span class="w">  </span><span class="c1">// 等 200ms 还拿不到就超时</span>
+</code></pre></div>
+
+<h3 id="67">6.7 核心结论</h3>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────┐
+│                   场景 6 核心发现                            │
+├─────────────────────────────────────────────────────────────┤
+│  1. DIRECT 模式 = 连接数无上限，高并发必撞 maxclients       │
+│     - 连接被拒后业务直接失败，没有优雅降级机制              │
+│     - 连接一旦创建就占住不放，没有复用                      │
+│                                                             │
+│  2. POOL 模式 = 连接池硬上限，天然的熔断器                  │
+│     - 连接数稳定在 poolMaxTotal，绝不超标                   │
+│     - "池满等待" 比 "连接被拒" 更优雅                      │
+│     - 连接复用减少 TCP 开销                                 │
+│                                                             │
+│  3. 生产环境强烈建议:                                       │
+│     - 永远用连接池或 Semaphore，不要裸露无限制 connect()    │
+│     - poolMaxTotal 配置公式（含运维预留）:                   │
+│       poolMaxTotal_per_instance ≤                           │
+│         floor((maxclients - reserved_for_ops)               │
+│               / instance_count / safetyFactor)              │
+│       · reserved_for_ops: 哨兵/监控/运维预留, 建议 50~200   │
+│       · safetyFactor: 1.1~1.3（缓冲突发峰值）              │
+│       · 例: maxclients=10000, 实例=10, reserved=200,       │
+│               safetyFactor=1.2 → floor(9800/10/1.2)=650    │
+│     - 以实际 INFO clients 的 maxclients 为准（发行版可能不同）│
+│     - 监控 connected_clients 逼近 maxclients 时告警         │
+│                                                             │
+│  4. 监控 rejected_connections 的 δ（增长速率）:             │
+│     - 累计值 &gt; 0 只说明"曾经发生过拒绝"                    │
+│     - delta &gt; 0 说明"当前正在发生拒绝" → 紧急告警          │
+└─────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h3 id="68-docker-maxclients500-sweep-8">6.8 三种模式实测对比（Docker, maxclients=500, sweep 8 步）</h3>
+<h4 id="setex-pipeline-batch20-sweep-conc-10360">SETEX Pipeline, batch=20, sweep conc 10→360</h4>
+<table>
+<thead>
+<tr>
+<th>conc</th>
+<th>DIRECT 裸<br>cmd/s / 连接</th>
+<th>DIRECT+Semaphore<br>cmd/s / 连接(sem)</th>
+<th>POOL<br>cmd/s / 连接</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10</td>
+<td>133k / 9</td>
+<td><strong>164k</strong> / 8 (6/50)</td>
+<td>52k / 10</td>
+</tr>
+<tr>
+<td>60</td>
+<td>141k / 6</td>
+<td><strong>191k</strong> / 14 (11/50)</td>
+<td>59k / 14</td>
+</tr>
+<tr>
+<td>110</td>
+<td>164k / 9</td>
+<td><strong>154k</strong> / 8 (4/50)</td>
+<td>58k / 13</td>
+</tr>
+<tr>
+<td>160</td>
+<td>150k / 9</td>
+<td><strong>178k</strong> / 10 (5/50)</td>
+<td>59k / 14</td>
+</tr>
+<tr>
+<td>210</td>
+<td>131k / 11</td>
+<td><strong>186k</strong> / 11 (5/50)</td>
+<td>58k / 14</td>
+</tr>
+<tr>
+<td>260</td>
+<td>142k / 16</td>
+<td><strong>141k</strong> / 10 (3/50)</td>
+<td>58k / 16</td>
+</tr>
+<tr>
+<td>310</td>
+<td>137k / 14</td>
+<td>63k / 9 (1/50)</td>
+<td>59k / 17</td>
+</tr>
+<tr>
+<td>360</td>
+<td>139k / 13</td>
+<td><strong>137k</strong> / 13 (4/50)</td>
+<td>64k / 18</td>
+</tr>
+<tr>
+<td><strong>均吞吐</strong></td>
+<td>~<strong>140k</strong></td>
+<td>~<strong>155k</strong> ⭐</td>
+<td>~58k</td>
+</tr>
+<tr>
+<td><strong>均连接</strong></td>
+<td>~<strong>360</strong>条（=并发数）</td>
+<td>~<strong>10</strong> 条（上限 50）</td>
+<td>~<strong>14</strong> 条（上限 50）</td>
+</tr>
+<tr>
+<td><strong>拒绝</strong></td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td><strong>吞吐/连接</strong></td>
+<td>388 cmd/s/conn</td>
+<td><strong>15,500 cmd/s/conn</strong></td>
+<td>4,143 cmd/s/conn</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>测试条件</strong>: Docker 单机, Redis 7.x, maxclients=500, SETEX Pipeline batch=20, value=16B, TTL=2s, Lettuce 异步 IO。
+"吞吐/连接" 受 batch size、Pipeline depth、命令类型、网络延迟等因素显著影响，跨环境对比时需注明条件。</p>
+</blockquote>
+<h4 id="681-semaphore">6.8.1 极限压测：Semaphore 硬上限验证</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 500 并发，Semaphore 仅允许 5 条连接，证明硬上限生效</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/maxclients/start?concurrency=500&amp;mode=DIRECT&amp;directMaxConn=5&amp;directConnTimeoutMs=500"</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">值</th>
+<th style="text-align: left;">含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">semaphoreMax / semaphoreUsed</td>
+<td style="text-align: left;"><strong>5 / 5 (100%)</strong></td>
+<td style="text-align: left;">全部许可被占满</td>
+</tr>
+<tr>
+<td style="text-align: left;">semaphorePermits</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">无空闲许可</td>
+</tr>
+<tr>
+<td style="text-align: left;">semaphoreQueueLength</td>
+<td style="text-align: left;">231（瞬时值）</td>
+<td style="text-align: left;">231 个 Worker 排队等许可</td>
+</tr>
+<tr>
+<td style="text-align: left;">connectSuccess</td>
+<td style="text-align: left;">271</td>
+<td style="text-align: left;">271 个 Worker 获得许可 → 连接成功</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>connectFail</strong></td>
+<td style="text-align: left;"><strong>231</strong></td>
+<td style="text-align: left;">231 个 Worker 等 500ms 超时 → 客户端优雅拒绝</td>
+</tr>
+<tr>
+<td style="text-align: left;">directConnCount</td>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">始终 5 条 Redis 连接</td>
+</tr>
+<tr>
+<td style="text-align: left;">redisConnectedClients</td>
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">Redis 侧确认（5+1+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>redisRejectedConnections</strong></td>
+<td style="text-align: left;"><strong>0</strong></td>
+<td style="text-align: left;">Redis 零拒绝！全部压力在客户端消解</td>
+</tr>
+<tr>
+<td style="text-align: left;">totalCommands</td>
+<td style="text-align: left;">1,640 万</td>
+<td style="text-align: left;">仅 5 条连接 60 秒内处理</td>
+</tr>
+<tr>
+<td style="text-align: left;">totalErrors</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">管线命令零错误</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>关键结论：
+  Semaphore 在客户端侧完成了"熔断"，231 个 Worker 连接请求被拦截在客户端，
+  没有到达 Redis。Redis 只需承受 5 条连接的管线压力。
+  如果不用 Semaphore，500 条连接直连 Redis → 全部 connect() 成功 → connected_clients 飙升 → 撞 maxclients。
+</code></pre></div>
+
+<h4 id="682">6.8.2 三种模式对比结论</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">DIRECT（裸）</th>
+<th style="text-align: left;">POOL</th>
+<th style="text-align: left;"><strong>DIRECT + Semaphore</strong> ⭐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>吞吐</strong></td>
+<td style="text-align: left;">140k cmd/s</td>
+<td style="text-align: left;">58k cmd/s</td>
+<td style="text-align: left;"><strong>155k cmd/s</strong>（最高）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>连接数</strong></td>
+<td style="text-align: left;">= 并发数（无上限）</td>
+<td style="text-align: left;">≤ poolMaxTotal</td>
+<td style="text-align: left;">≤ semaphoreMax</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>连接效率</strong></td>
+<td style="text-align: left;">388/cmd/s/conn</td>
+<td style="text-align: left;">4,143/cmd/s/conn</td>
+<td style="text-align: left;"><strong>15,500/cmd/s/conn</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Redis 压力</strong></td>
+<td style="text-align: left;">❌ 高（N 条连接）</td>
+<td style="text-align: left;">✅ 低</td>
+<td style="text-align: left;">✅ 极低（仅 5-10 条）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>故障模式</strong></td>
+<td style="text-align: left;">撞 maxclients 后全炸</td>
+<td style="text-align: left;">池满排队/超时</td>
+<td style="text-align: left;">许可耗尽 → 客户端拒绝</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>适用场景</strong></td>
+<td style="text-align: left;">低并发已知安全</td>
+<td style="text-align: left;">多服务共享 Redis</td>
+<td style="text-align: left;"><strong>单租户高吞吐 + 安全兜底</strong> ⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pub/Sub</strong></td>
+<td style="text-align: left;">✅ 天然</td>
+<td style="text-align: left;">✅ 需专用独立长连接（不混入池复用）</td>
+<td style="text-align: left;">✅ 天然</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>redisRejectedConnections</strong></td>
+<td style="text-align: left;">可能&gt;0</td>
+<td style="text-align: left;">永远 0</td>
+<td style="text-align: left;"><strong>永远 0</strong></td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>DIRECT + Semaphore = 裸 DIRECT 的吞吐 + POOL 的安全性 + Pub/Sub 支持
+
+  只用 10 条连接打满 ~155k cmd/s，同时有 Semaphore 硬上限兜底，
+  永远不会让 Redis 看到超额连接。
+
+  不是"DIRECT 没有用"，而是"裸 DIRECT 不安全"——
+  加一个 Semaphore 就是又快又安全的最优方案。
+</code></pre></div>
+
+<h3 id="69-direct-semaphore">6.9 核心架构：DIRECT + Semaphore 实现原理</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// Semaphore 许可 = 连接数硬上限</span>
+<span class="c1">// fairness=true: 公平模式，FIFO 排队，避免饥饿，但吞吐略低于非公平模式</span>
+<span class="n">Semaphore</span><span class="w"> </span><span class="n">connSemaphore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Semaphore</span><span class="p">(</span><span class="n">directMaxConnections</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">);</span>
+
+<span class="c1">// 每个 Worker 通过 Semaphore 获取连接许可</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">directPipelineWorker</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">workerId</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 1. 获取许可（超时 → 优雅降级）</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">connSemaphore</span><span class="p">.</span><span class="na">tryAcquire</span><span class="p">(</span><span class="n">timeoutMs</span><span class="p">,</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">MILLISECONDS</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">connectFail</span><span class="o">++</span><span class="p">;</span><span class="w">   </span><span class="c1">// 客户端侧熔断，不连 Redis</span>
+<span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 2. 获取许可后创建连接</span>
+<span class="w">        </span><span class="n">StatefulRedisConnection</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redisClient</span><span class="p">.</span><span class="na">connect</span><span class="p">(...);</span>
+<span class="w">        </span><span class="n">connectSuccess</span><span class="o">++</span><span class="p">;</span>
+<span class="w">        </span><span class="c1">// 3. 持许可跑 Pipeline 循环（高吞吐）</span>
+<span class="w">        </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">running</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">runBatch</span><span class="p">(...);</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 4. 归还许可 → 注意同步关闭/归还连接，避免连接泄漏</span>
+<span class="w">        </span><span class="n">conn</span><span class="p">.</span><span class="na">close</span><span class="p">();</span>
+<span class="w">        </span><span class="n">connSemaphore</span><span class="p">.</span><span class="na">release</span><span class="p">();</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Semaphore 优化建议</strong>：</p>
+<div class="codehilite"><pre><span></span><code>当前实现: 每次获取许可 → 新建连接 → 用完关闭
+问题: TCP 握手、认证等操作重复发生，在许可频繁交接时产生额外开销
+
+优化方案 A（推荐）: Semaphore 许可槽 = 长连接
+  - 每个 permit 对应一条常驻连接
+  - Worker 拿到 permit → 直接复用对应连接
+  - Worker 释放 permit → 连接回到槽中供下个 Worker 使用
+  - 无需重复 connect()/close()
+
+优化方案 B: Semaphore + 小型连接池
+  - Semaphore 控制同时活跃的 Worker 数
+  - 连接池（maxTotal = directMaxConnections）负责连接复用与重连
+  - Worker: semaphore.tryAcquire() → pool.borrowObject() → ... → pool.returnObject() → semaphore.release()
+
+选择:
+  高 Pipeline 吞吐场景 → 方案 A（一条连接用一个 Worker 长时间持留最稳）
+  Worker 频繁进出 → 方案 B（池负责连接生命周期管理）
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>安全公式:  directMaxConnections = maxclients × 0.7 / 服务实例数
+          例: maxclients=10000, 10 实例 → 10000×0.7/10 = 700，设 500 保险
+</code></pre></div>
+
+<h3 id="610">6.10 生产监控基线</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># ========== Redis 侧告警 ==========</span>
+
+connected_clients<span class="w"> </span>&gt;<span class="w"> </span>maxclients<span class="w"> </span>×<span class="w"> </span><span class="m">0</span>.7<span class="w">  </span>→<span class="w">  </span>P1<span class="w"> </span>告警：连接数逼近上限
+connected_clients<span class="w"> </span>&gt;<span class="w"> </span>maxclients<span class="w"> </span>×<span class="w"> </span><span class="m">0</span>.9<span class="w">  </span>→<span class="w">  </span>P0<span class="w"> </span>告警：即将拒绝连接
+
+<span class="c1"># rejected_connections 关键：监控 delta（增长速率），而非只看累计值</span>
+rejected_connections<span class="w"> </span>累计值<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span><span class="w">  </span>→<span class="w">  </span>仅说明<span class="s2">"曾经发生过拒绝"</span>（历史问题）
+rejected_connections<span class="w"> </span>delta<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span><span class="w">   </span>→<span class="w">  </span>P0<span class="w"> </span>告警：当前正在拒绝连接（紧急）
+
+<span class="c1"># blocked_clients 持续上升 →  大量客户端在执行阻塞命令（BLPOP/XREAD BLOCK），非连接排队</span>
+
+<span class="c1"># ========== 客户端侧告警（DIRECT+Semaphore） ==========</span>
+
+semaphoreUsed<span class="w"> </span>/<span class="w"> </span>semaphoreMax<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span>.8<span class="w">     </span>→<span class="w">  </span>连接许可逼近上限
+semaphoreQueueLength<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span><span class="w">               </span>→<span class="w">  </span>有<span class="w"> </span>Worker<span class="w"> </span>在排队等许可（监控趋势，持续增长需扩容）
+semaphoreAvgWaitTime<span class="w"> </span>&gt;<span class="w"> </span>阈值<span class="w">            </span>→<span class="w">  </span>用户感知延迟正在上升
+connectFail<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span><span class="w">                        </span>→<span class="w">  </span>有<span class="w"> </span>Worker<span class="w"> </span><span class="nv">等候许超时</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>客户端限流生效中
+
+<span class="c1"># ========== 客户端侧告警（POOL） ==========</span>
+
+poolNumActive<span class="w"> </span>/<span class="w"> </span>poolMaxTotal<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span>.8<span class="w">     </span>→<span class="w">  </span>连接池即将耗尽
+poolNumWaiters<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span><span class="w">                     </span>→<span class="w">  </span>有请求在排队等连接
+connectFail<span class="w"> </span>&gt;<span class="w"> </span><span class="m">0</span><span class="w">                        </span>→<span class="w">  </span>连接创建失败
+
+<span class="c1"># ========== 系统层监控 ==========</span>
+
+文件描述符使用率<span class="w"> </span>&gt;<span class="w"> </span><span class="m">80</span>%<span class="w"> </span><span class="o">(</span><span class="nb">ulimit</span><span class="w"> </span>-n<span class="o">)</span><span class="w">     </span>→<span class="w">  </span>连接数可能触及<span class="w"> </span>OS<span class="w"> </span>限制
+ephemeral<span class="w"> </span>port<span class="w"> </span>使用率<span class="w"> </span>&gt;<span class="w"> </span><span class="m">60</span>%<span class="w">            </span>→<span class="w">  </span>客户端端口可能耗尽
+TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增长<span class="w">          </span>→<span class="w">  </span>连接泄漏风险
+网络丢包<span class="w"> </span>/<span class="w"> </span>CPU<span class="w"> </span>饱和<span class="w">                     </span>→<span class="w">  </span>非<span class="w"> </span>Redis<span class="w"> </span>侧瓶颈
+
+<span class="c1"># 压测时需要同时收集: netstat -an | grep ESTABLISHED | wc -l、</span>
+<span class="c1"># ulimit -n、ifconfig 丢包计数、top/htop</span>
+</code></pre></div>
+
+<h3 id="612-pre-warm">6.12 连接池预热（Pre-warm）</h3>
+<h4 id="6121">6.12.1 问题：连接池的"首请求惩罚"</h4>
+<div class="codehilite"><pre><span></span><code>commons-pool2 的连接池默认是懒加载：
+  创建 Pool → 池空（0 条连接）→ 第一个 Worker borrow → 触发 Supplier → TCP 握手 → 拿到连接
+                                                     ↑
+                                               第一个请求要多花 1~5ms
+
+虽然握手很快（毫秒级），但在高并发场景下：
+  - 第 0ms: 500 个 Worker 同时涌进来，全触发 Supplier
+  - 前几个成功握手，后面的排队等待
+  - 导致压测起步阶段出现短暂延迟尖刺
+</code></pre></div>
+
+<h4 id="6122">6.12.2 方案：异步预热</h4>
+<p><strong>通用方法（不依赖 <code>preparePool()</code> — 所有连接池库都可用）：</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 并非所有客户端库都有 preparePool() API。</span>
+<span class="c1">// 通用做法：后台线程循环 borrow()/return() 若干次以建立 minIdle 连接。</span>
+
+<span class="n">CompletableFuture</span><span class="p">.</span><span class="na">runAsync</span><span class="p">(()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">poolMinIdle</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="c1">// borrow → 触发 Supplier（TCP 握手 + 认证）→ return</span>
+<span class="w">            </span><span class="n">connectionPool</span><span class="p">.</span><span class="na">returnObject</span><span class="p">(</span><span class="n">connectionPool</span><span class="p">.</span><span class="na">borrowObject</span><span class="p">());</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="n">log</span><span class="p">.</span><span class="na">info</span><span class="p">(</span><span class="s">"POOL 预热完成（通用 borrow/return 循环）: {} 条连接"</span><span class="p">,</span><span class="w"> </span><span class="n">connectionPool</span><span class="p">.</span><span class="na">getNumIdle</span><span class="p">());</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">Exception</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">log</span><span class="p">.</span><span class="na">warn</span><span class="p">(</span><span class="s">"POOL 预热失败（不影响后续 borrow，Worker 将走 lazy init）: {}"</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="na">getMessage</span><span class="p">());</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">});</span>
+
+<span class="c1">// 若库支持 preparePool()（如 commons-pool2），可直接使用：</span>
+<span class="c1">// connectionPool.preparePool();</span>
+</code></pre></div>
+
+<p><strong>预热必须容错</strong>：
+- 异步预热不应阻塞服务启动
+- 预热失败应记录日志/指标但不抛异常 → Worker 仍可通过 lazy 借用正常获取连接
+- 建议增加重试/退避策略（如预热失败后等 5s 重试一次）</p>
+<div class="codehilite"><pre><span></span><code>时间线：
+
+  同步预热                                异步预热
+  ────────                               ────────
+  createPool()                           createPool()
+    │                                      │
+    ├─ preparePool() ← 卡住等握手           ├─ runAsync(preparePool) → 立刻返回
+    │    ├─ 握手1                          │
+    │    ├─ 握手2                          ├─ start() ← 立刻开始
+    │    └─ 握手3   耗时 ~5ms              │
+    │                                      │   后台线程在握手...
+    ├─ start()                              │
+                                             ▼
+                                           预热完成前 Worker 走 lazy borrow
+                                           预热完成后 Worker 直接拿，零握手
+
+  启动慢 5ms，零风险                       启动快 + 握手照做
+</code></pre></div>
+
+<h4 id="6123-vs-vs">6.12.3 不预热 vs 同步预热 vs 异步预热</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">不预热</th>
+<th style="text-align: left;">同步预热</th>
+<th style="text-align: left;">异步预热（推荐）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>启动速度</strong></td>
+<td style="text-align: left;">⚡ 最快</td>
+<td style="text-align: left;">🐌 多等握手时间</td>
+<td style="text-align: left;">⚡ 最快</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>首个请求延迟</strong></td>
+<td style="text-align: left;">❌ 多 1~5ms（握手）</td>
+<td style="text-align: left;">✅ 零握手</td>
+<td style="text-align: left;">⚡ 大概率零握手*</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>预热失败影响</strong></td>
+<td style="text-align: left;">无</td>
+<td style="text-align: left;">❌ 启动失败</td>
+<td style="text-align: left;">✅ 不影响，Worker 走 lazy</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>代码复杂度</strong></td>
+<td style="text-align: left;">最简单</td>
+<td style="text-align: left;">简单</td>
+<td style="text-align: left;">多一行 <code>runAsync</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>*如果预热线程跑得比第一个请求慢，第一个请求仍走 lazy borrow，不会报错。</p>
+</blockquote>
+<h4 id="6124">6.12.4 预热适用所有中间件</h4>
+<div class="codehilite"><pre><span></span><code>定律：只要涉及连接池，就值得预热。
+
+  MySQL/PG    → HikariCP 自带 initialization-fail-timeout
+  Redis       → ConnectionPoolSupport + preparePool()
+  Kafka       → 启动后立即 send 空消息，或用 adminClient.describeCluster()
+  RabbitMQ    → 启动后预创建 channel / 声明队列
+  MongoDB     → driver 自带连接池预热（minPoolSize）
+  HTTP 客户端 → PoolingHttpClientConnectionManager + 启动后发一次请求
+  gRPC        → ManagedChannel.getState(true) 等待就绪
+
+根因：
+  TCP 握手 + TLS 协商 + 中间件认证，加起来 10ms~200ms
+  预热把它从"第一个用户请求"挪到"后台启动时"
+  用户无感，连接就绪。
+</code></pre></div>
+
+<hr />
+<h3 id="613-6-checklist">6.13 场景 6 总结：生产落地 checklist</h3>
+<h4 id="6131">6.13.1 问题根源</h4>
+<div class="codehilite"><pre><span></span><code>问题: 微服务拆分后，每个 Worker 线程独占/新建 Redis 连接 →
+     连接数随并发线性增长 → 触发 maxclients → rejected_connections → 业务失败。
+
+根因:
+  - 无客户端侧连接数限制
+  - 无连接复用（每次 Worker 启动都建新连接）
+  - 连接创建/保留无上限
+</code></pre></div>
+
+<h4 id="6132">6.13.2 三种方案对比</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">DIRECT（裸）</th>
+<th style="text-align: left;">POOL</th>
+<th style="text-align: left;"><strong>DIRECT + Semaphore</strong> ⭐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>吞吐</strong></td>
+<td style="text-align: left;">~140k cmd/s</td>
+<td style="text-align: left;">~58k cmd/s</td>
+<td style="text-align: left;"><strong>~155k cmd/s</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>连接数</strong></td>
+<td style="text-align: left;">= 并发数（无上限）</td>
+<td style="text-align: left;">≤ poolMaxTotal</td>
+<td style="text-align: left;">≤ semaphoreMax</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Redis 保护</strong></td>
+<td style="text-align: left;">❌ 无</td>
+<td style="text-align: left;">✅ 池硬上限</td>
+<td style="text-align: left;">✅ 客户端硬上限</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>故障模式</strong></td>
+<td style="text-align: left;">撞 maxclients → 全炸</td>
+<td style="text-align: left;">池满排队/超时</td>
+<td style="text-align: left;">许可耗尽 → 客户端拒绝</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>连接复用</strong></td>
+<td style="text-align: left;">❌ 每次新建</td>
+<td style="text-align: left;">✅ 池内复用</td>
+<td style="text-align: left;">⚡ Semaphore 许可控制（建议搭配长连接/池复用）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pub/Sub</strong></td>
+<td style="text-align: left;">✅ 天然</td>
+<td style="text-align: left;">✅ 需专用连接</td>
+<td style="text-align: left;">✅ 天然</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>推荐场景</strong></td>
+<td style="text-align: left;">低并发已知安全</td>
+<td style="text-align: left;">多服务共享 Redis</td>
+<td style="text-align: left;">单租户高吞吐 + 安全兜底</td>
+</tr>
+</tbody>
+</table>
+<h4 id="6133-poolmaxtotal">6.13.3 poolMaxTotal 安全公式</h4>
+<div class="codehilite"><pre><span></span><code>poolMaxTotal_per_instance ≤ floor((maxclients - reserved_for_ops) / instance_count / safetyFactor)
+
+  reserved_for_ops: 哨兵、监控、运维脚本预留（建议 50~200，视环境调整）
+  safetyFactor: 1.1~1.3
+
+示例:
+  maxclients=10000, instance_count=10, reserved_for_ops=200, safetyFactor=1.2
+  → floor((10000 - 200) / 10 / 1.2) = floor(9800 / 10 / 1.2) = floor(816.7) = 650
+
+  directMaxConnections（DIRECT+Semaphore）同理：
+  directMaxConnections ≤ floor((maxclients - reserved_for_ops) / instance_count / safetyFactor)
+</code></pre></div>
+
+<h4 id="6134">6.13.4 监控告警基线</h4>
+<div class="codehilite"><pre><span></span><code>Redis 侧:
+  connected_clients &gt; maxclients × 0.7  →  P1 警告
+  connected_clients &gt; maxclients × 0.9  →  P0 紧急
+  rejected_connections delta &gt; 0        →  P0 紧急（当前正在拒绝连接！）
+
+客户端侧:
+  poolActive/poolMaxTotal &gt; 0.8         →  池即将耗尽
+  semaphoreUsed/semaphoreMax &gt; 0.8      →  许可即将耗尽
+  poolNumWaiters / semaphoreQueueLength持续增长 → 立即扩容
+
+系统层:
+  ulimit -n 使用率 &gt; 80%                →  OS 文件描述符瓶颈
+  ephemeral port 使用率 &gt; 60%          →  客户端端口可能耗尽
+</code></pre></div>
+
+<h4 id="6135">6.13.5 核心建议（一条条可执行）</h4>
+<div class="codehilite"><pre><span></span><code>1. 不要让 Worker 无限制 connect(): 客户端侧必须有硬上限（Pool 或 Semaphore）
+2. 命令型调用优先使用连接池（pool），Pub/Sub 用专用独立长连接或单独 pool
+3. 高吞吐短命命令 + 需要 Pub/Sub → DIRECT + Semaphore（或 Semaphore + 池组合）
+4. poolMaxTotal 按公式计算：务必预留运维/监控连接名额
+5. 连接池异步预热：不阻塞启动，预热失败优雅降级（不抛异常）
+6. 监控 rejected_connections 的 delta（增长速率），而非只看累计值
+7. 压测时同时收集系统层指标（ulimit、ephemeral ports、TCP 连接数、网络丢包）
+8. Semaphore 公平模式（fairness=true）避免饥饿，但略降吞吐——根据场景选择
+9. 以实际 INFO clients 返回的 maxclients 为准（不同发行版/镜像可能不同）
+10. blocked_clients 表示阻塞命令等待中的客户端（BLPOP/XREAD），非被拒绝的连接
+</code></pre></div>
+
+<h4 id="6136">6.13.6 一句话结论</h4>
+<blockquote>
+<p><strong>DIRECT+Semaphore 以仅 10 条连接打满 ~155k cmd/s 吞吐 + Redis 零拒绝 + Pub/Sub 天然支持，是单租户高吞吐场景的最优方案。无论选哪种方案，都必须把 maxclients / reserved_for_ops / instance_count 纳入配置和监控策略。</strong></p>
+</blockquote>
+<p>```</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

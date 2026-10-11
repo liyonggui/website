@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis 单体工具类使用文档 · 小番茄程序猿</title>
+<meta name="description" content="Redis 单体工具类使用文档 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Redis 单体工具类使用文档</h1>
+  </div>
+  <article class="prose">
+<h1 id="redis">Redis 单体工具类使用文档</h1>
+<p>面向<strong>单节点单机 Redis</strong>（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回
+<code>RedisResult&lt;T&gt;</code>，业务层通过 <code>isSuccess()</code> 判断结果，<code>getData()</code> 取数据。</p>
+<blockquote>
+<p><strong>当前项目架构</strong>：工具类保持单体语义不变，但 <code>RedisConfig</code> 已扩展为 <strong>3 分片模式</strong>——
+批处理消费者 (<code>UserSetBatchConsumer</code>) 通过 <code>redisShard0/1/2</code> 三个独立 <code>ReactiveStringRedisTemplate</code>
+按 <code>vu % 3</code> 哈希路由到 3 个 Redis 实例（6379/6380/6381）。各分片仍为单节点单机，
+本章工具类适用于任意单个分片的直接操作。详见《Redis单体K6压测说明》第十章。</p>
+</blockquote>
+<h2 id="_1">一、总体设计</h2>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config/RedisConfig</code></td>
+<td>单体连接配置，Lettuce 连接池由 <code>application.yml</code> 自动装配；自定义序列化</td>
+</tr>
+<tr>
+<td><code>common</code></td>
+<td><code>RedisResult</code> 统一结果 / <code>RedisResultCode</code> 结果码 / <code>RedisConstants</code> 阈值 / <code>RedisAssert</code> 参数校验 / <code>RedisSafetyException</code> 安全异常</td>
+</tr>
+<tr>
+<td><code>core/AbstractRedisSupport</code></td>
+<td>统一执行模板：耗时统计 + 异常分类拦截 + 结果封装</td>
+</tr>
+<tr>
+<td><code>core/Redis*Util</code></td>
+<td>10 大功能模块工具类</td>
+</tr>
+</tbody>
+</table>
+<h3 id="redisresultt">统一返回结果 <code>RedisResult&lt;T&gt;</code></h3>
+<div class="codehilite"><pre><span></span><code><span class="n">result</span><span class="p">.</span><span class="na">isSuccess</span><span class="p">();</span><span class="w">   </span><span class="c1">// 是否成功</span>
+<span class="n">result</span><span class="p">.</span><span class="na">getData</span><span class="p">();</span><span class="w">     </span><span class="c1">// 数据</span>
+<span class="n">result</span><span class="p">.</span><span class="na">getCode</span><span class="p">();</span><span class="w">     </span><span class="c1">// 结果码：0 成功 / A001 参数错 / B001 连接失败 / B002 超时 / B003 命令错 / C001 安全拦截</span>
+<span class="n">result</span><span class="p">.</span><span class="na">getMessage</span><span class="p">();</span><span class="w">  </span><span class="c1">// 描述</span>
+<span class="n">result</span><span class="p">.</span><span class="na">getCostMillis</span><span class="p">();</span><span class="w"> </span><span class="c1">// 命令耗时(ms)</span>
+</code></pre></div>
+
+<h3 id="_2">异常分类</h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>含义</th>
+<th>触发场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>A001</code></td>
+<td>参数校验失败</td>
+<td>key 为空、过期时间为负</td>
+</tr>
+<tr>
+<td><code>B001</code></td>
+<td>连接失败</td>
+<td>Redis 不可达、连接池耗尽</td>
+</tr>
+<tr>
+<td><code>B002</code></td>
+<td>执行超时</td>
+<td>命令超过读超时</td>
+</tr>
+<tr>
+<td><code>B003</code></td>
+<td>命令执行错误</td>
+<td>类型不匹配、语法错误</td>
+</tr>
+<tr>
+<td><code>C001</code></td>
+<td>安全拦截</td>
+<td>分页超上限等</td>
+</tr>
+</tbody>
+</table>
+<h2 id="applicationyml">二、连接配置（application.yml）</h2>
+<div class="codehilite"><pre><span></span><code><span class="nt">spring</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">redis</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${REDIS_HOST:localhost}</span>
+<span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${REDIS_PORT:6379}</span>
+<span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${REDIS_PASSWORD:}</span>
+<span class="w">    </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3000ms</span><span class="w">          </span><span class="c1"># 读写超时</span>
+<span class="w">    </span><span class="nt">lettuce</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">pool</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">max-active</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8</span><span class="w">         </span><span class="c1"># 已从 16 收敛至 8（Tier 2 优化）</span>
+<span class="w">        </span><span class="nt">max-idle</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">           </span><span class="c1"># 已从 8 收敛至 4</span>
+<span class="w">        </span><span class="nt">min-idle</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">        </span><span class="nt">max-wait</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3000ms</span>
+</code></pre></div>
+
+<h2 id="_3">三、模块使用示例</h2>
+<h3 id="1-keyrediskeyutil">模块1：通用 Key（RedisKeyUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">keyUtil</span><span class="p">.</span><span class="na">setEx</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="s">"v"</span><span class="p">,</span><span class="w"> </span><span class="mi">60</span><span class="p">);</span><span class="w">            </span><span class="c1">// SETEX 60 秒</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">pSetEx</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="s">"v"</span><span class="p">,</span><span class="w"> </span><span class="mi">1500</span><span class="p">);</span><span class="w">         </span><span class="c1">// PSETEX 1500 毫秒</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">exists</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">                     </span><span class="c1">// EXISTS</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">existsBatch</span><span class="p">(</span><span class="n">Arrays</span><span class="p">.</span><span class="na">asList</span><span class="p">(</span><span class="s">"a"</span><span class="p">,</span><span class="s">"b"</span><span class="p">));</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">unlink</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">                     </span><span class="c1">// UNLINK 异步删除（推荐）</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">del</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">                        </span><span class="c1">// DEL 同步删除</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">expire</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="mi">60</span><span class="p">);</span><span class="w">                 </span><span class="c1">// EXPIRE</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">ttl</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w"> </span><span class="n">keyUtil</span><span class="p">.</span><span class="na">pTtl</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">     </span><span class="c1">// TTL / PTTL</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">persist</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">                    </span><span class="c1">// 移除过期</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">renameNx</span><span class="p">(</span><span class="s">"old"</span><span class="p">,</span><span class="w"> </span><span class="s">"new"</span><span class="p">);</span><span class="w">          </span><span class="c1">// RENAMENX</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">type</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">                        </span><span class="c1">// TYPE</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">memoryUsage</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">                </span><span class="c1">// 查大 key 内存（Lua 实现，见第六节第 4 点）</span>
+<span class="n">keyUtil</span><span class="p">.</span><span class="na">scan</span><span class="p">(</span><span class="s">"user:*"</span><span class="p">,</span><span class="w"> </span><span class="mi">100</span><span class="p">);</span><span class="w">            </span><span class="c1">// SCAN 分页遍历（替代 keys *）</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：删除大 key 优先 <code>unlink</code>；遍历只能用 <code>scan</code>。</li>
+<li><strong>禁用场景</strong>：❌ <code>keys *</code> 全库扫描（已屏蔽，只提供 scan）。</li>
+</ul>
+<h3 id="2stringredisstringutil">模块2：String（RedisStringUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">stringUtil</span><span class="p">.</span><span class="na">set</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="s">"v"</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">mSet</span><span class="p">(</span><span class="n">map</span><span class="p">);</span><span class="w"> </span><span class="n">stringUtil</span><span class="p">.</span><span class="na">mGet</span><span class="p">(</span><span class="n">keys</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">append</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="s">"abc"</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">getRange</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">);</span><span class="w"> </span><span class="n">stringUtil</span><span class="p">.</span><span class="na">setRange</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="s">"x"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">strLen</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">incr</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w"> </span><span class="n">stringUtil</span><span class="p">.</span><span class="na">incrBy</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">incrByFloat</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="mf">1.5</span><span class="p">);</span><span class="w"> </span><span class="n">stringUtil</span><span class="p">.</span><span class="na">decr</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span>
+<span class="n">stringUtil</span><span class="p">.</span><span class="na">setNxEx</span><span class="p">(</span><span class="s">"lock:order"</span><span class="p">,</span><span class="w"> </span><span class="n">uuid</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">);</span><span class="w">  </span><span class="c1">// 单体分布式锁加锁</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：<code>incrByFloat</code> 有精度问题，金额慎用；锁 value 用唯一标识，解锁走 Lua。</li>
+<li><strong>序列化一致性</strong>：本模块走 <code>StringRedisTemplate</code>（原始字符串）。与主 <code>RedisTemplate</code>（JSON）写入的 key <strong>不可混用</strong>——JSON 会落库带引号的串，导致 <code>append</code>/<code>strLen</code>/<code>getRange</code> 长度/内容偏差（详见第六节第 1 点）。</li>
+<li><strong>禁用场景</strong>：❌ 用单体锁做强一致跨服务互斥（Redis 宕机锁失效）。</li>
+</ul>
+<h3 id="3listredislistutil">模块3：List（RedisListUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">listUtil</span><span class="p">.</span><span class="na">lPush</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="s">"a"</span><span class="p">);</span><span class="w"> </span><span class="n">listUtil</span><span class="p">.</span><span class="na">rPush</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="s">"b"</span><span class="p">);</span>
+<span class="n">listUtil</span><span class="p">.</span><span class="na">lPushBatch</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="s">"a"</span><span class="p">,</span><span class="s">"b"</span><span class="p">);</span><span class="w"> </span><span class="n">listUtil</span><span class="p">.</span><span class="na">rPushBatch</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="s">"c"</span><span class="p">,</span><span class="s">"d"</span><span class="p">);</span>
+<span class="n">listUtil</span><span class="p">.</span><span class="na">lPop</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w"> </span><span class="n">listUtil</span><span class="p">.</span><span class="na">rPop</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span>
+<span class="n">listUtil</span><span class="p">.</span><span class="na">blPop</span><span class="p">(</span><span class="s">"q"</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">);</span><span class="w"> </span><span class="n">listUtil</span><span class="p">.</span><span class="na">brPop</span><span class="p">(</span><span class="s">"q"</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">);</span><span class="w">   </span><span class="c1">// 阻塞队列</span>
+<span class="n">listUtil</span><span class="p">.</span><span class="na">rPopLPush</span><span class="p">(</span><span class="s">"src"</span><span class="p">,</span><span class="s">"dst"</span><span class="p">);</span><span class="w">                   </span><span class="c1">// 可靠队列</span>
+<span class="n">listUtil</span><span class="p">.</span><span class="na">lPage</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">100</span><span class="p">);</span><span class="w">                        </span><span class="c1">// 分页查询（推荐）</span>
+<span class="n">listUtil</span><span class="p">.</span><span class="na">lIndex</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w"> </span><span class="n">listUtil</span><span class="p">.</span><span class="na">lLen</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span>
+<span class="n">listUtil</span><span class="p">.</span><span class="na">lSet</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="s">"x"</span><span class="p">);</span><span class="w"> </span><span class="n">listUtil</span><span class="p">.</span><span class="na">lRem</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="s">"a"</span><span class="p">);</span><span class="w"> </span><span class="n">listUtil</span><span class="p">.</span><span class="na">lTrim</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">99</span><span class="p">);</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：阻塞弹出占用连接，超时别设太长；对外用 <code>lPage</code> 分页。</li>
+<li><strong>禁用场景</strong>：❌ <code>lRange(key, 0, -1)</code> 全量拉取大列表。</li>
+</ul>
+<h3 id="4hashredishashutil">模块4：Hash（RedisHashUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">hashUtil</span><span class="p">.</span><span class="na">hSet</span><span class="p">(</span><span class="s">"user:1"</span><span class="p">,</span><span class="s">"name"</span><span class="p">,</span><span class="s">"tom"</span><span class="p">);</span>
+<span class="n">hashUtil</span><span class="p">.</span><span class="na">hMSet</span><span class="p">(</span><span class="s">"user:1"</span><span class="p">,</span><span class="w"> </span><span class="n">map</span><span class="p">);</span>
+<span class="n">hashUtil</span><span class="p">.</span><span class="na">hGet</span><span class="p">(</span><span class="s">"user:1"</span><span class="p">,</span><span class="s">"name"</span><span class="p">);</span>
+<span class="n">hashUtil</span><span class="p">.</span><span class="na">hMGet</span><span class="p">(</span><span class="s">"user:1"</span><span class="p">,</span><span class="w"> </span><span class="n">Arrays</span><span class="p">.</span><span class="na">asList</span><span class="p">(</span><span class="s">"name"</span><span class="p">,</span><span class="s">"age"</span><span class="p">));</span><span class="w">  </span><span class="c1">// 推荐</span>
+<span class="n">hashUtil</span><span class="p">.</span><span class="na">hGetAll</span><span class="p">(</span><span class="s">"user:1"</span><span class="p">);</span><span class="w">                              </span><span class="c1">// 大 hash 告警</span>
+<span class="n">hashUtil</span><span class="p">.</span><span class="na">hKeys</span><span class="o">/</span><span class="n">hVals</span><span class="o">/</span><span class="n">hLen</span><span class="o">/</span><span class="n">hExists</span><span class="p">(...);</span>
+<span class="n">hashUtil</span><span class="p">.</span><span class="na">hIncrBy</span><span class="p">(</span><span class="s">"user:1"</span><span class="p">,</span><span class="s">"age"</span><span class="p">,</span><span class="mi">1</span><span class="p">);</span><span class="w"> </span><span class="n">hashUtil</span><span class="p">.</span><span class="na">hIncrByFloat</span><span class="p">(...);</span>
+<span class="n">hashUtil</span><span class="p">.</span><span class="na">hDel</span><span class="p">(</span><span class="s">"user:1"</span><span class="p">,</span><span class="s">"name"</span><span class="p">);</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：字段数超阈值 <code>hGetAll</code> 打告警，优先 <code>hMGet</code>。</li>
+<li><strong>禁用场景</strong>：⚠️ 对超大 hash 频繁 <code>hGetAll</code>。</li>
+</ul>
+<h3 id="5setredissetutil">模块5：Set（RedisSetUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">setUtil</span><span class="p">.</span><span class="na">sAdd</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="s">"a"</span><span class="p">,</span><span class="s">"b"</span><span class="p">);</span><span class="w"> </span><span class="n">setUtil</span><span class="p">.</span><span class="na">sRem</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="s">"a"</span><span class="p">);</span>
+<span class="n">setUtil</span><span class="p">.</span><span class="na">sPop</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w"> </span><span class="n">setUtil</span><span class="p">.</span><span class="na">sRandMember</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">);</span>
+<span class="n">setUtil</span><span class="p">.</span><span class="na">sMembers</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w">     </span><span class="c1">// 大 set 告警</span>
+<span class="n">setUtil</span><span class="p">.</span><span class="na">sCard</span><span class="p">(</span><span class="s">"k"</span><span class="p">);</span><span class="w"> </span><span class="n">setUtil</span><span class="p">.</span><span class="na">sIsMember</span><span class="p">(</span><span class="s">"k"</span><span class="p">,</span><span class="s">"a"</span><span class="p">);</span>
+<span class="n">setUtil</span><span class="p">.</span><span class="na">sInter</span><span class="o">/</span><span class="n">sUnion</span><span class="o">/</span><span class="n">sDiff</span><span class="p">(</span><span class="s">"k1"</span><span class="p">,</span><span class="s">"k2"</span><span class="p">);</span>
+<span class="n">setUtil</span><span class="p">.</span><span class="na">sInterStore</span><span class="o">/</span><span class="n">sUnionStore</span><span class="o">/</span><span class="n">sDiffStore</span><span class="p">(</span><span class="s">"dst"</span><span class="p">,</span><span class="s">"k1"</span><span class="p">,</span><span class="s">"k2"</span><span class="p">);</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：集合运算耗时超阈值告警；大集合运算优先 Store 版本落地。</li>
+<li><strong>禁用场景</strong>：⚠️ 超大集合直接 <code>sMembers</code> 全量返回。</li>
+</ul>
+<h3 id="6zsetrediszsetutil">模块6：ZSet（RedisZSetUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">zSetUtil</span><span class="p">.</span><span class="na">zAdd</span><span class="p">(</span><span class="s">"rank"</span><span class="p">,</span><span class="s">"tom"</span><span class="p">,</span><span class="mi">99</span><span class="p">);</span><span class="w"> </span><span class="n">zSetUtil</span><span class="p">.</span><span class="na">zIncrBy</span><span class="p">(</span><span class="s">"rank"</span><span class="p">,</span><span class="s">"tom"</span><span class="p">,</span><span class="mi">1</span><span class="p">);</span>
+<span class="n">zSetUtil</span><span class="p">.</span><span class="na">zRevRange</span><span class="p">(</span><span class="s">"rank"</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">9</span><span class="p">);</span><span class="w">                 </span><span class="c1">// Top10 排行榜</span>
+<span class="n">zSetUtil</span><span class="p">.</span><span class="na">zRevRangeWithScores</span><span class="p">(</span><span class="s">"rank"</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">9</span><span class="p">);</span>
+<span class="n">zSetUtil</span><span class="p">.</span><span class="na">zRangeByScore</span><span class="p">(</span><span class="s">"rank"</span><span class="p">,</span><span class="mi">60</span><span class="p">,</span><span class="mi">100</span><span class="p">);</span>
+<span class="n">zSetUtil</span><span class="p">.</span><span class="na">zRank</span><span class="o">/</span><span class="n">zRevRank</span><span class="o">/</span><span class="n">zScore</span><span class="o">/</span><span class="n">zCard</span><span class="p">(...);</span>
+<span class="n">zSetUtil</span><span class="p">.</span><span class="na">zRem</span><span class="o">/</span><span class="n">zRemRangeByRank</span><span class="o">/</span><span class="n">zRemRangeByScore</span><span class="p">(...);</span>
+</code></pre></div>
+
+<ul>
+<li><strong>典型场景</strong>：排行榜、延迟队列（score 存执行时间戳）。</li>
+</ul>
+<h3 id="7redisadvancedutil">模块7：高级结构（RedisAdvancedUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// Bitmap 签到</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">setBit</span><span class="p">(</span><span class="s">"sign:1001"</span><span class="p">,</span><span class="w"> </span><span class="n">dayOfYear</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">);</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">bitCount</span><span class="p">(</span><span class="s">"sign:1001"</span><span class="p">);</span>
+<span class="c1">// HyperLogLog UV</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">pfAdd</span><span class="p">(</span><span class="s">"uv:20260718"</span><span class="p">,</span><span class="s">"u1"</span><span class="p">,</span><span class="s">"u2"</span><span class="p">);</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">pfCount</span><span class="p">(</span><span class="s">"uv:20260718"</span><span class="p">);</span>
+<span class="c1">// Geo 附近的人</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">geoAdd</span><span class="p">(</span><span class="s">"pos"</span><span class="p">,</span><span class="w"> </span><span class="mf">116.4</span><span class="p">,</span><span class="w"> </span><span class="mf">39.9</span><span class="p">,</span><span class="w"> </span><span class="s">"beijing"</span><span class="p">);</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">geoRadius</span><span class="p">(</span><span class="s">"pos"</span><span class="p">,</span><span class="w"> </span><span class="mf">116.4</span><span class="p">,</span><span class="w"> </span><span class="mf">39.9</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">);</span><span class="w">   </span><span class="c1">// 5km 内</span>
+<span class="c1">// Stream 消息队列</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">xAdd</span><span class="p">(</span><span class="s">"stream"</span><span class="p">,</span><span class="w"> </span><span class="n">content</span><span class="p">);</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">xReadGroup</span><span class="p">(</span><span class="s">"stream"</span><span class="p">,</span><span class="s">"group"</span><span class="p">,</span><span class="s">"c1"</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">);</span>
+<span class="n">advancedUtil</span><span class="p">.</span><span class="na">xAck</span><span class="p">(</span><span class="s">"stream"</span><span class="p">,</span><span class="s">"group"</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">);</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：HLL 有 ~0.81% 误差；Geo 半径过大有性能开销。</li>
+</ul>
+<h3 id="8redistransactionutil">模块8：事务（RedisTransactionUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// MULTI/EXEC</span>
+<span class="n">txUtil</span><span class="p">.</span><span class="na">executeInTransaction</span><span class="p">(</span><span class="n">ops</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">ops</span><span class="p">.</span><span class="na">opsForValue</span><span class="p">().</span><span class="na">set</span><span class="p">(</span><span class="s">"a"</span><span class="p">,</span><span class="s">"1"</span><span class="p">);</span>
+<span class="w">    </span><span class="n">ops</span><span class="p">.</span><span class="na">opsForValue</span><span class="p">().</span><span class="na">set</span><span class="p">(</span><span class="s">"b"</span><span class="p">,</span><span class="s">"2"</span><span class="p">);</span>
+<span class="p">});</span>
+<span class="c1">// WATCH 乐观锁（CAS）</span>
+<span class="n">txUtil</span><span class="p">.</span><span class="na">executeWithOptimisticLock</span><span class="p">(</span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="s">"stock"</span><span class="p">),</span><span class="w"> </span><span class="n">ops</span><span class="w"> </span><span class="o">-&gt;</span>
+<span class="w">    </span><span class="n">ops</span><span class="p">.</span><span class="na">opsForValue</span><span class="p">().</span><span class="na">decrement</span><span class="p">(</span><span class="s">"stock"</span><span class="p">));</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：单体事务无回滚，运行期错误不回滚；WATCH 被改动则 EXEC 放弃，需业务重试。</li>
+</ul>
+<h3 id="9lua-redisscriptutil">模块9：Lua 脚本（RedisScriptUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">scriptUtil</span><span class="p">.</span><span class="na">eval</span><span class="p">(</span><span class="s">"return 1+1"</span><span class="p">,</span><span class="w"> </span><span class="n">Long</span><span class="p">.</span><span class="na">class</span><span class="p">,</span><span class="w"> </span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">());</span>
+<span class="c1">// 解锁（判断+删除原子）</span>
+<span class="n">scriptUtil</span><span class="p">.</span><span class="na">eval</span><span class="p">(</span><span class="n">RedisScriptUtil</span><span class="p">.</span><span class="na">UNLOCK_LUA</span><span class="p">,</span><span class="w"> </span><span class="n">Long</span><span class="p">.</span><span class="na">class</span><span class="p">,</span><span class="w"> </span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="n">lockKey</span><span class="p">),</span><span class="w"> </span><span class="n">uuid</span><span class="p">);</span>
+<span class="n">String</span><span class="w"> </span><span class="n">sha</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scriptUtil</span><span class="p">.</span><span class="na">scriptLoad</span><span class="p">(</span><span class="s">"return 1"</span><span class="p">).</span><span class="na">getData</span><span class="p">();</span>
+<span class="n">scriptUtil</span><span class="p">.</span><span class="na">evalSha</span><span class="p">(</span><span class="n">sha</span><span class="p">,</span><span class="w"> </span><span class="n">ReturnType</span><span class="p">.</span><span class="na">INTEGER</span><span class="p">,</span><span class="w"> </span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">(),</span><span class="w"> </span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">());</span>
+<span class="n">scriptUtil</span><span class="p">.</span><span class="na">scriptFlush</span><span class="p">();</span>
+</code></pre></div>
+
+<ul>
+<li><strong>生产注意</strong>：脚本执行受服务端 <code>lua-time-limit</code> 约束，工具额外做耗时告警；勿写死循环/重 IO。</li>
+</ul>
+<h3 id="10redisopsutil">模块10：只读运维（RedisOpsUtil）</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">opsUtil</span><span class="p">.</span><span class="na">infoMemory</span><span class="p">();</span><span class="w">        </span><span class="c1">// INFO memory</span>
+<span class="n">opsUtil</span><span class="p">.</span><span class="na">infoPersistence</span><span class="p">();</span><span class="w">   </span><span class="c1">// RDB/AOF 状态</span>
+<span class="n">opsUtil</span><span class="p">.</span><span class="na">slowlogGet</span><span class="p">(</span><span class="mi">10</span><span class="p">);</span><span class="w"> </span><span class="n">opsUtil</span><span class="p">.</span><span class="na">slowlogLen</span><span class="p">();</span>
+<span class="n">opsUtil</span><span class="p">.</span><span class="na">clientList</span><span class="p">();</span>
+<span class="n">opsUtil</span><span class="p">.</span><span class="na">memoryPurge</span><span class="p">();</span><span class="w">       </span><span class="c1">// 碎片回收（仅 jemalloc）</span>
+</code></pre></div>
+
+<ul>
+<li><strong>禁用场景</strong>：❌ 未提供 <code>save</code>/<code>flushall</code>/<code>flushdb</code>/<code>bgsave</code>/<code>bgrewriteaof</code>/<code>client kill</code> 等高危写运维入口。</li>
+</ul>
+<h2 id="_4">四、生产安全规范汇总</h2>
+<ol>
+<li><strong>删除</strong>：优先 <code>unlink</code> 异步删除，<code>del</code> 仅小 key。</li>
+<li><strong>遍历</strong>：只用 <code>scan</code>，禁用 <code>keys *</code>、<code>monitor</code>。</li>
+<li><strong>大集合</strong>：<code>hGetAll</code>/<code>smembers</code> 有阈值告警，优先 <code>hMGet</code> 与分页/scan。</li>
+<li><strong>参数校验</strong>：key 空、过期负数、分页越界自动拦截返回 <code>A001/C001</code>。</li>
+<li><strong>异常统一</strong>：连接失败/超时/命令错分别返回 <code>B001/B002/B003</code>，不抛异常打断业务。</li>
+<li><strong>危险命令</strong>：运维模块仅只读，写运维指令一律不暴露。</li>
+<li><strong>纯单体</strong>：不含集群槽位、哈希标签、哨兵切换逻辑。</li>
+</ol>
+<h2 id="_5">五、运行与测试</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 启动单体 Redis（使用本机 redis:7 镜像）</span>
+docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+
+<span class="c1"># 运行全部单元测试（需 Redis 已启动）</span>
+mvn<span class="w"> </span><span class="nb">test</span>
+
+<span class="c1"># 启动应用</span>
+mvn<span class="w"> </span>spring-boot:run
+</code></pre></div>
+
+<h2 id="_6">六、实现要点与已知坑（踩坑记录）</h2>
+<p>以下为开发/测试过程中已定位并修复的关键问题，后续改动相关代码时务必留意。</p>
+<h3 id="1-string-stringredistemplate">1. String 模块使用 <code>StringRedisTemplate</code>（原始字符串序列化）</h3>
+<p><code>RedisStringUtil</code> 的 <code>set</code>/<code>get</code>/<code>append</code>/<code>strLen</code>/<code>getRange</code>/<code>setRange</code>/<code>mGet</code> 等全部走 <strong><code>StringRedisTemplate</code></strong>（字符串序列化），而不是主 <code>RedisTemplate</code>（JSON 序列化）。</p>
+<ul>
+<li>若用主 <code>RedisTemplate</code>（JSON）写入 <code>"abc"</code>，实际落库为带引号的 <code>"abc"</code>（5 字节）；再用 <code>StringRedisUtil.append("def")</code> 会变成 8 字节，且 <code>strLen</code>/<code>getRange</code> 作用在 JSON 串上，结果不符合预期。</li>
+<li><strong>结论</strong>：同一个 key 的字符串读写，要么全用 <code>RedisStringUtil</code>，要么全用 JSON 模板，<strong>不可混用</strong>，否则出现引号/长度偏差。</li>
+</ul>
+<h3 id="2">2. 事务读写需保持同一序列化模板</h3>
+<p><code>RedisTransactionUtil</code> 基于主 <code>RedisTemplate</code>（JSON）执行 <code>ops.opsForValue().set(...)</code>，写入值是带类型包装的 JSON（如 <code>"1"</code>）。校验结果时也必须用同一 JSON 模板读取（<code>redisTemplate.opsForValue().get(k)</code>），不能用 <code>StringRedisUtil.get</code>（会读到原始 JSON 串，断言失败）。</p>
+<h3 id="3-lettuce">3. 原生命令须取真实 Lettuce 连接</h3>
+<p><code>spring-data-redis 2.7</code> 的 <code>RedisServerCommands</code> 未暴露 <code>memoryUsage</code> / <code>slowlogLen</code> / <code>slowlogGet</code> / <code>memoryPurge</code>（这些在 3.x 才加入），因此走了 Lettuce 原生命令。</p>
+<ul>
+<li><code>redisTemplate.execute(...)</code> 回调里拿到的连接是 <strong>Spring 事务代理对象</strong>（如 <code>$Proxy119</code>），无法直接强转为 <code>LettuceConnection</code>。</li>
+<li><code>LettuceConnection.getNativeConnection()</code> 返回的是 <code>RedisAsyncCommandsImpl</code>，需再经 <code>getStatefulConnection()</code> 才能拿到 <code>StatefulRedisConnection</code>。</li>
+<li>已在 <code>AbstractRedisSupport</code> 统一封装 <code>nativeLettuceCommand(Function&lt;RedisCommands&lt;byte[],byte[]&gt;, T&gt;)</code> helper，slowlog 等原生命令统一走它，避免各模块重复踩坑。</li>
+</ul>
+<h3 id="4-memory-usage-lua-lettuce">4. <code>MEMORY USAGE</code> 改用 Lua 脚本绕过 Lettuce 缺陷</h3>
+<ul>
+<li>Lettuce <code>6.1.10.RELEASE</code> 的 sync/async <code>memoryUsage(key)</code> 存在缺陷：对存在的 key 也返回 <code>null</code>（同为整数回复的 <code>exists</code> 却正常，确认是解码路径 bug），手动 <code>dispatch</code> + <code>IntegerOutput</code> 仍取不到值。</li>
+<li>改用 Lua 脚本实现：<code>return redis.call('MEMORY', 'USAGE', KEYS[1])</code>，由 Spring 脚本执行器正确解码整数返回值。见 <code>RedisKeyUtil.MEMORY_USAGE_SCRIPT</code>。</li>
+</ul>
+<h3 id="5-jdk">5. 测试 JDK 版本一致性</h3>
+<ul>
+<li>项目用 <strong>JDK 8</strong> 编译运行。若 IntelliJ 用 JDK 17 作为 Project SDK 编译过测试类（class 版本 61），而运行 JVM 是 JDK 8（版本 52），Surefire 会报 <code>UnsupportedClassVersionError: class file version 61.0</code>。</li>
+<li>排查命令：<code>mvn clean test</code>（clean 强制当前 JDK 全量重编，避开 IDE 残留 class）；或在 IDE 中把 Project SDK / 各测试运行配置的 JDK 统一设为 JDK 8。</li>
+<li>当前测试套件：<code>mvn clean test</code> → <strong>49 个用例全部通过</strong>。</li>
+</ul>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

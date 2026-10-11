@@ -1,0 +1,1764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis 高并发缓存架构实战手册 · 小番茄程序猿</title>
+<meta name="description" content="Redis 高并发缓存架构实战手册 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Redis 高并发缓存架构实战手册</h1>
+  </div>
+  <article class="prose">
+<h1 id="redis">Redis 高并发缓存架构实战手册</h1>
+<blockquote>
+<p>实战总结：基于本项目的真实压测数据（场景 2/5/7/8-1/8.21/9.18/11）整理，涉及缓存穿透/击穿/雪崩、延迟任务、概率算法、持久化、集群、编码选型等核心主题。</p>
+</blockquote>
+<hr />
+<h2 id="1">1 缓存三大经典问题与解决方案</h2>
+<h3 id="11">1.1 缓存穿透</h3>
+<p><strong>现象</strong>：查询 Redis、数据库均不存在的数据，大量请求直达数据库，压垮 DB。</p>
+<p><strong>解决方案</strong>：</p>
+<ol>
+<li><strong>空值缓存</strong>：无效 Key 缓存空值，TTL 控制 1~5 分钟（短期兜底，避免永久占用内存）；</li>
+<li><strong>布隆过滤器前置拦截（生产首选）</strong>；</li>
+<li><strong>接口参数校验、网关限流防刷</strong>，拦截恶意请求。</li>
+</ol>
+<h4 id="111">1.1.1 布隆过滤器生产完整规范</h4>
+<p><strong>1. 核心作用</strong></p>
+<p>拦截数据库、Redis 均不存在的非法/无效 Key，大幅缓解缓存穿透，保护数据库压力。</p>
+<p><strong>2. 存储位置（关键）</strong></p>
+<p>生产两种架构按需选择：</p>
+<ul>
+<li><strong>本地布隆过滤器（Guava）</strong>：位图存放 JVM 本地内存，无网络开销、查询极快；只存储有效 Key 哈希位图，不保存明文 Key，内存占用极低。</li>
+<li><strong>分布式布隆过滤器（Redisson BloomFilter）</strong>：位图存储在 Redis，适合多实例集群、需要全局统一有效 Key 集合场景，存在少量网络开销。</li>
+</ul>
+<p><strong>Cluster / 多实例部署要点</strong>：</p>
+<ul>
+<li><strong>Redis Cluster 场景</strong>：若采用 Redis 存储位图，需确保 RedisBloom 模块在<strong>每个节点已一致部署</strong>，并考虑槽分片（单个大 Key 位图会落到单槽）。生产上常把布隆<strong>按时间/业务维度分片</strong>（如 <code>bf:sku:2026</code>），避免单槽/单 Key 过大，也便于按周期滚动重建。</li>
+<li><strong>Guava 本地布隆</strong>：适合单实例/对延迟敏感场景，但<strong>多实例部署时各进程位图会短暂不一致</strong>——需配合定期全量同步、或通过消息总线（Kafka/MQ）广播新增元素，以降低不一致窗口。</li>
+<li><strong>初始化容量</strong>：明确按<strong>历史峰值 × 冗余（2~4×）</strong>预估，并确定预估周期（如 1 年、业务高峰）。对填充率设置监控与告警（阈值参考 60%/75%/90%），超出即触发重建/扩容，避免超载后误判率急剧上升。</li>
+</ul>
+<p><strong>3. 核心特性</strong></p>
+<ul>
+<li>无假阴性：判定不存在 → 一定不存在，可以直接拦截。<strong>前提</strong>：标准布隆在未删除元素、实现正确且无位翻转/损坏时保证无假阴性；若使用计数布隆或错误删除/实现缺陷，可能出现例外（计数器溢出等异常结果）；</li>
+<li>存在假阳性：判定存在 → 有可能不存在，仍需要放行查询 Redis/DB 兜底；</li>
+<li>原生不支持精准删除：多个 Key 共用 bit 标记，删除单个 Key 会污染其他数据。</li>
+</ul>
+<p><strong>4. 生产痛点应对</strong></p>
+<ul>
+<li>新增业务数据：同步调用 <code>add()</code> 写入布隆过滤器；</li>
+<li>删除业务数据：无法即时删除，采用<strong>定时全量重建</strong>方案；</li>
+<li>一致性：定时重建保证过滤器集合与 DB 有效数据对齐；</li>
+<li>误判率：合理预估容量与哈希函数个数，常规业务控制误判率 0.01%～0.1%。</li>
+</ul>
+<p><strong>容量预估标准公式（生产必算）</strong>：</p>
+<ul>
+<li>位数组大小 m（<strong>bit 单位</strong>）：<code>m = -(n × ln p) / (ln 2)²</code>（n=预估最大元素数，p=目标误判率）；</li>
+<li>哈希函数个数 k：<code>k = (m/n) × ln 2 ≈ 0.7 × (m/n)</code>；</li>
+<li>例：n=1 亿、p=0.01% → m≈958MB、k≈7；<strong>实际内存 ≈ m/8 字节</strong>（bit→byte）；</li>
+<li><strong>容量必须按历史峰值 × 冗余（建议 2~4 倍）预估</strong>，并配套监控与自动告警（填充率阈值 60%/75%/90%），避免超载；超出容量后误判率急剧上升，且无扩容手段（需重建）。</li>
+</ul>
+<p><strong>5. 架构取舍</strong></p>
+<ul>
+<li>追求极致性能、单体应用：优先本地 Guava 布隆；</li>
+<li>分布式多实例要求全局统一视图：选用 Redis 分布式布隆；</li>
+<li>❌ 禁止使用 Redis Set 存储全部有效 Key 替代布隆，海量 Key 会造成严重内存开销与查询衰减。</li>
+</ul>
+<p><strong>6. 布隆过滤器优缺点总结</strong></p>
+<p>✅ <strong>优点</strong></p>
+<ol>
+<li>内存占用极低，仅保存 bit 位图，亿级数据仅需百 MB 级别；</li>
+<li>查询 O(1)，本地布隆无网络 IO，性能优异；</li>
+<li>可以可靠拦截不存在的非法请求，是防穿透主流方案；</li>
+<li>不存在假阴性，拦截逻辑安全，不会误杀正常请求；</li>
+<li>海量数据下性能稳定，适合 ID 类离散 Key 场景。</li>
+</ol>
+<p>❌ <strong>缺点 &amp; 生产约束</strong></p>
+<ol>
+<li>存在假阳性误判，无法彻底消除，必须保留 DB 兜底查询；</li>
+<li>不支持就地删除元素；</li>
+<li>数据存在滞后，DB 删除数据无法同步剔除；</li>
+<li>创建前必须预估最大容量，数据超出阈值后误判率急剧上升；</li>
+<li>本地布隆多实例部署时，各进程过滤器数据存在短暂不一致。</li>
+</ol>
+<h4 id="112">1.1.2 布隆过滤器无法删除元素的生产解决方案</h4>
+<p>标准布隆过滤器基于 bit 位图实现，不支持单个元素删除。DB 物理删除数据后，过滤器无法同步剔除，会导致该无效 key 持续放行查询，缓存穿透防护失效。生产可选方案：</p>
+<ol>
+<li><strong>优先业务逻辑删除</strong>：业务不执行 DELETE，使用 <code>is_deleted</code> 逻辑标记，有效主键集合稳定，无需从布隆移除数据，架构最简单。</li>
+<li><strong>定时全量重建（主流方案）</strong>：定时任务拉取数据库全部有效主键，构建全新布隆过滤器，原子替换旧实例；允许存在一段不一致窗口，适合删除频率较低业务。</li>
+<li><strong>计数布隆过滤器 CountingBloomFilter</strong>：使用多位计数器替代单 bit，支持 add/delete 实时操作。<strong>注意</strong>：需要为每个位维护计数器，计数器位宽（如 4-bit/8-bit）决定最大计数，存在<strong>溢出风险</strong>；内存占用随位宽线性上升。若删除非常频繁且数据量大，应评估计数器位宽与溢出处理策略，或考虑 CuckooFilter。</li>
+<li><strong>布隆 + 墓碑 ZSet</strong>：额外维护一个存放已删除 ID 的墓碑集合；布隆判定存在后，再校验是否在墓碑列表中，拦截已删除数据。<strong>代价</strong>：读路径需二次查询墓碑（增加一次读开销），且墓碑集合（ZSet/List/Set）会随时间膨胀——<strong>必须定期压缩与清理</strong>（TTL 或批量清理），并对墓碑成长设置监控与清理策略。</li>
+</ol>
+<blockquote>
+<p>🔴 <strong>重要红线</strong>：布隆过滤器存在假阳性，任何方案下都不能省略 Redis、数据库兜底查询。</p>
+</blockquote>
+<h3 id="12-keyspace-notificationsredis">1.2 Keyspace Notifications（Redis 键空间通知）</h3>
+<p><strong>1. 核心概念</strong></p>
+<p>Redis 原生基于 Pub/Sub 实现的键事件通知。监听 Key 创建、更新、删除、过期等生命周期事件，主动推送消息给订阅端，无需业务轮询探测 Key 状态。</p>
+<blockquote>
+<p>⚠️ 默认关闭：<code>notify-keyspace-events ""</code>，开启会消耗主线程 CPU，非必要不启用。</p>
+</blockquote>
+<p><strong>2. 基础配置</strong></p>
+<p>仅监听过期事件（最常用最小配置）：</p>
+<div class="codehilite"><pre><span></span><code># 开启 E(键事件) + x(过期)，订阅 __keyevent@&lt;db&gt;__:expired
+notify-keyspace-events Ex
+</code></pre></div>
+
+<p>标识说明：</p>
+<ul>
+<li><code>E</code>：键事件通知（keyevent，事件视角）——channel 名为 <code>__keyevent@&lt;db&gt;__:&lt;event&gt;</code></li>
+<li><code>K</code>：键空间通知（keyspace，Key 视角）——channel 名为 <code>__keyspace@&lt;db&gt;__:&lt;key&gt;</code></li>
+<li><code>x</code>：过期事件（expired）</li>
+</ul>
+<blockquote>
+<p>说明：若需要接收某 key 的过期事件，用 <code>Ex</code> 并订阅 <code>__keyevent@0__:expired</code>（<code>0</code> 为 db 号）。若想要 <strong>keyspace（按 key 名）视角</strong>（接收 <code>__keyspace@...__:&lt;key&gt;</code>），需加 <code>K</code> 标志（如 <code>Kx</code> 或 <code>KEx</code>），但会带来更高主线程开销，需评估。</p>
+<p>⚠️ 生产准则：按需开启，不要无脑全开所有事件。常用最小配置为 <code>notify-keyspace-events Ex</code>。</p>
+</blockquote>
+<p><strong>3. 适用场景（仅适合弱可靠异步辅助场景）</strong></p>
+<ol>
+<li><strong>缓存过期异步预热</strong>：监听 Key 过期事件，异步回源重建缓存，降低热点 Key 大面积过期击穿风险；仅作为优化手段，不能完全杜绝缓存击穿，仍需要互斥锁、本地缓存兜底。</li>
+<li><strong>Key 运维审计与内存监控</strong>：采集 Key 新增、删除、过期指标，统计过期速率、冷热 Key 分布、大 Key 变更，用于内存水位分析、故障排查。</li>
+<li><strong>临时资源联动清理</strong>：会话 Key、验证码、临时令牌过期后，异步清理下游碎片数据，实现资源自动回收。</li>
+<li><strong>分布式锁释放感知（纯优化）</strong>：监听锁 Key 删除/过期事件，减少业务空轮询；<strong>严禁依靠该机制实现可靠锁等待逻辑</strong>。</li>
+</ol>
+<p><strong>4. ❌ 禁止使用场景（生产红线）</strong></p>
+<ol>
+<li><strong>精准定时任务</strong>：过期事件推送时机不等于 TTL 到期时刻，受惰性删除、定时抽样删除影响，延迟不可控。</li>
+<li><strong>可靠业务消息、流程驱动</strong>：底层 Pub/Sub 无持久化、无堆积、无 ACK、无重试，客户端断线期间事件直接丢失。</li>
+<li><strong>海量 Key 高并发过期实例</strong>：持续大量事件分发抢占主线程 CPU，抬高 P99 延迟，引发实例抖动。</li>
+<li><strong>Redis Cluster 全局监听</strong>：事件仅在 Key 所属槽节点产生，无法单客户端统一订阅全集群事件，架构复杂。<strong>若要全量监听</strong>，需在每个主节点上部署订阅端，或用独立 Proxy/Sidecar 把各节点事件<strong>汇聚到消息总线</strong>（Kafka 等），或在应用层通过客户端连到每个主节点分别订阅。</li>
+</ol>
+<p><strong>5. 核心缺陷</strong></p>
+<ul>
+<li>消息不保证送达，存在丢失；</li>
+<li>事件触发延迟不可预测；</li>
+<li>高负载场景损耗 Redis 主线程；</li>
+<li>只适合弱一致、可容忍消息丢失的辅助业务。</li>
+</ul>
+<p><strong>6. 落地规范</strong></p>
+<ol>
+<li>使用最小权限事件配置，尽量只开启 <code>Ex</code>；</li>
+<li>订阅回调内部逻辑投递独立线程池异步执行，禁止阻塞订阅线程；</li>
+<li>核心 Redis 实例尽量不开启，可使用独立 Redis 实例承载事件监听；</li>
+<li>业务代码必须容忍事件丢失、延迟，不能强依赖事件。</li>
+</ol>
+<p><strong>7. 架构定位区分</strong></p>
+<ul>
+<li>布隆过滤器：请求入口前置拦截，解决缓存穿透；</li>
+<li>Keyspace 通知：Key 生命周期后置回调，用于异步预热、运维审计、资源清理；</li>
+</ul>
+<blockquote>
+<p>二者互补，不可相互替代。</p>
+</blockquote>
+<h3 id="13">1.3 缓存击穿</h3>
+<p><strong>现象</strong>：热点 Key 过期瞬间，大量并发请求同时穿透到数据库。</p>
+<p><strong>方案</strong>：</p>
+<ol>
+<li>互斥锁（分布式锁）：同一时刻只放行一个请求回源；</li>
+<li>热点 Key 永不过期（逻辑过期方案）；</li>
+<li>本地缓存叠加分布式缓存，削峰流量；</li>
+<li>提前主动刷新热点缓存。</li>
+</ol>
+<p><strong>互斥锁安全实践</strong>：</p>
+<ul>
+<li><strong>推荐原子方案</strong>：<code>SET key value NX PX ttl</code> + <strong>随机唯一 value</strong> + <strong>Lua 原子解锁</strong>（判断 value 匹配再 DEL，防误删他人锁），并实现幂等/超时回退（锁失效后仍要回源，避免雪崩）。</li>
+<li><strong>慎用 RedLock</strong>：需理解其安全边界（依赖时钟/网络条件），不盲目采用；锁持有期间业务超时需有回退策略。</li>
+<li><strong>结合本地单 flight / 请求合并</strong>：高 QPS 下用应用内 singleflight 把并发回源合并为 1 个，其他请求等待或复用旧值（逻辑过期），减少对分布式锁的依赖、降低延迟。</li>
+</ul>
+<h3 id="14">1.4 缓存雪崩</h3>
+<p><strong>现象</strong>：大量 Key 集中同时过期，大量请求压垮数据库。</p>
+<p><strong>方案</strong>：</p>
+<ol>
+<li>TTL 增加随机偏移量，打散过期时间；</li>
+<li>分层缓存、多级缓存；</li>
+<li>Redis 高可用部署（主从/哨兵/Cluster），防止实例宕机雪崩；</li>
+<li>接口限流、熔断、降级；</li>
+<li>定时主动批量刷新缓存，避免集中失效；</li>
+<li><strong>主动预热</strong>：对已知热点数据错峰预热（冷/温/热分层缓存），避免瞬时集中回源；</li>
+<li><strong>降级策略</strong>：Redis 故障时返回<strong>缓存降级视图</strong>（本地二级缓存/静态兜底页面），保护下游 DB。</li>
+</ol>
+<h3 id="15">1.5 缓存一致性策略</h3>
+<p><strong>核心策略：Cache-Aside（旁路缓存，应用主动维护）</strong>：</p>
+<ul>
+<li><strong>读</strong>：先查缓存，未命中回源 DB 并写缓存；</li>
+<li><strong>写</strong>：先更新 DB，随后删除缓存（或先写 DB 再删缓存），避免并发脏读；</li>
+<li>必要时使用<strong>延时双删</strong>或<strong>消息队列</strong>保证最终一致（详见第 9 章）。</li>
+</ul>
+<p><strong>write-through / write-back 区别与适用</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">策略</th>
+<th style="text-align: center;">强一致</th>
+<th style="text-align: center;">写延迟</th>
+<th style="text-align: left;">风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>write-through</strong>（写穿透）</td>
+<td style="text-align: center;">高</td>
+<td style="text-align: center;">高（每次同步写 DB）</td>
+<td style="text-align: left;">低</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>write-back</strong>（写回）</td>
+<td style="text-align: center;">低</td>
+<td style="text-align: center;">低（先写缓存，异步落 DB）</td>
+<td style="text-align: left;">高（缓存丢则数据丢）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>write-through</strong>：适合强一致但写频率不高的场景；</li>
+<li><strong>write-back</strong>：写延迟低但风险高，仅在可容忍缓存丢失、有补偿机制的场景使用。</li>
+</ul>
+<p><strong>双删与延时双删要点</strong>：首次删缓存 → 更新 DB → <strong>延时（几百 ms）再删一次</strong>（抵消"回源写回旧值"的竞态窗口），并保证删除顺序与补偿重试。</p>
+<blockquote>
+<p><strong>推荐实践</strong>：对强一致数据<strong>不缓存</strong>或采用<strong>短 TTL + 严格写入策略</strong>，宁可多打 DB 也不容忍脏读。</p>
+</blockquote>
+<h3 id="16-caffeine-guava-ehcache">1.6 本地缓存选型（Caffeine / Guava / Ehcache）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: center;">Caffeine</th>
+<th style="text-align: center;">Guava</th>
+<th style="text-align: center;">Ehcache</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">并发策略</td>
+<td style="text-align: center;">最优（Window TinyLfu）</td>
+<td style="text-align: center;">良好</td>
+<td style="text-align: center;">一般</td>
+</tr>
+<tr>
+<td style="text-align: left;">淘汰算法</td>
+<td style="text-align: center;">W-TinyLfu</td>
+<td style="text-align: center;">LRU/LFU</td>
+<td style="text-align: center;">LRU/TTL</td>
+</tr>
+<tr>
+<td style="text-align: left;">性能</td>
+<td style="text-align: center;">最优</td>
+<td style="text-align: center;">好</td>
+<td style="text-align: center;">一般</td>
+</tr>
+<tr>
+<td style="text-align: left;">适用</td>
+<td style="text-align: center;">生产优先</td>
+<td style="text-align: center;">轻量场景</td>
+<td style="text-align: center;">需磁盘/持久化</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：<strong>Caffeine 优于 Guava</strong>（更优的并发策略、Window TinyLfu 淘汰算法），生产优先 Caffeine，本地缓存配合 LRU/LFU 与容量/负载监控。</p>
+<p><strong>本地缓存与分布式缓存一致性</strong>：本地缓存仅作为<strong>短期缓冲</strong>，过期/失效需考虑通知（Keyspace 通知）或消息、版本号策略，避免长时间脏读。</p>
+<h3 id="17-flight">1.7 请求合并 / 单 flight 防击穿实践</h3>
+<ul>
+<li>在应用层使用 <strong>singleflight</strong>（Go）或 <strong>request coalescing</strong>（Java）将并发回源请求<strong>合并为 1 个</strong>；</li>
+<li>其他并发请求<strong>等待同一个 in-flight 结果</strong>，或直接返回旧值（逻辑过期/本地缓存）；</li>
+<li>效果：极大降低 DB 压力，配合分布式锁兜底，是防击穿的高效补充手段。</li>
+</ul>
+<h3 id="18">1.8 分布式锁实践注意</h3>
+<ul>
+<li>用 <code>SET key value NX PX ttl</code> + <strong>随机 value</strong> + <strong>Lua 原子释放</strong>（判断 value 匹配再 DEL，防误删他人锁）；</li>
+<li>为锁加上 <strong>holder id 与 TTL</strong>，锁持有者完成后用 Lua 判断 value 再释放；</li>
+<li><strong>RedLock 在分片环境的安全取决于时钟与网络条件，不应盲目使用</strong>；</li>
+<li>锁持有期间业务超时需有回退策略（幂等/重试/降级）。</li>
+</ul>
+<hr />
+<h2 id="2-redis-zset">2 Redis 原生结构实战：ZSet 实现全局延迟任务队列</h2>
+<h3 id="21">2.1 核心原理</h3>
+<p>利用 <strong>ZSet（Sorted Set）自动按 score 有序排序</strong> 的特性：</p>
+<ul>
+<li><code>score</code>：<strong>任务执行时间戳（毫秒）</strong></li>
+<li><code>member</code>：<strong>全局唯一任务 ID</strong></li>
+</ul>
+<p>任务按照执行时间从小到大排序，到期任务排在队列最前方。
+典型场景：订单超时关单、优惠券超时回收、定时消息提醒、会话超时清理。</p>
+<h3 id="22">2.2 基础使用流程</h3>
+<h4 id="221">2.2.1 生产者：提交延迟任务</h4>
+<div class="codehilite"><pre><span></span><code>ZADD delay:task:queue 1786412300000 "order_9527"
+</code></pre></div>
+
+<p>✅ <strong>生产标准优化方案</strong>：member 只存放唯一 taskId，完整任务信息存入 Hash，减少 ZSet 负载，支持任务主动取消：</p>
+<div class="codehilite"><pre><span></span><code>HSET delay:task:info order_9527 '{"type":"close_order","orderId":"9527"}'
+ZADD delay:task:queue 1786412300000 "order_9527"
+</code></pre></div>
+
+<h4 id="222">2.2.2 消费者轮询拉取到期任务</h4>
+<blockquote>
+<p>⚠️ <strong>禁止先查询再删除</strong>，非原子操作，分布式环境引发重复消费。</p>
+</blockquote>
+<h5 id="1lua">方案 1：Lua 脚本原子批量获取 + 删除（通用推荐）</h5>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- KEYS[1] ZSet队列名，ARGV[1] 当前时间戳，ARGV[2] 单次拉取数量（建议 100~1000）</span>
+<span class="kd">local</span><span class="w"> </span><span class="nv">items</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZRANGEBYSCORE'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="s1">'LIMIT'</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+<span class="kr">if</span><span class="w"> </span><span class="o">#</span><span class="nv">items</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="kr">then</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZREM'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="nf">unpack</span><span class="p">(</span><span class="nv">items</span><span class="p">))</span>
+<span class="kr">end</span>
+<span class="kr">return</span><span class="w"> </span><span class="nv">items</span>
+</code></pre></div>
+
+<p>原子捞出到期任务并从 ZSet 移除，抢到任务的消费者独占处理。</p>
+<blockquote>
+<p>⚠️ <strong>安全性</strong>：<code>unpack(items)</code> 在 items 很大时会超出 Redis Lua 返回/命令参数限制并引发性能问题。<strong>必须对单批数量设上限（建议 100~1000）</strong>，并在需要处理更多时<strong>分块循环</strong>（先 LIMIT 拉一批 → 删除 → 再拉下一批），避免单次 <code>ZRANGEBYSCORE</code> 返回海量数据占用主线程内存/CPU。</p>
+</blockquote>
+<p><strong>Lua 原子迁移到 processing 示例（伪代码）</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- KEYS[1]=queue, KEYS[2]=processing, ARGV[1]=now, ARGV[2]=batchSize, ARGV[3]=owner</span>
+<span class="kd">local</span><span class="w"> </span><span class="nv">items</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZRANGEBYSCORE'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="s1">'LIMIT'</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+<span class="kr">for</span><span class="w"> </span><span class="nv">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">#</span><span class="nv">items</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZREM'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="nv">items</span><span class="p">[</span><span class="nv">i</span><span class="p">])</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'HSET'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="nv">items</span><span class="p">[</span><span class="nv">i</span><span class="p">],</span><span class="w"> </span><span class="nv">cjson</span><span class="p">.</span><span class="nf">encode</span><span class="p">({</span><span class="nv">claimAt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="nv">owner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span><span class="w"> </span><span class="nv">retries</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">}))</span>
+<span class="kr">end</span>
+<span class="kr">return</span><span class="w"> </span><span class="nv">items</span>
+</code></pre></div>
+
+<blockquote>
+<p>生产请对 batchSize 做上限并分块删除，避免单次 unpack 过大。</p>
+</blockquote>
+<h5 id="2zpopminredis-50">方案 2：ZPOPMIN（Redis 5.0+，适合低并发）</h5>
+<div class="codehilite"><pre><span></span><code>ZPOPMIN delay:task:queue 1
+</code></pre></div>
+
+<p>取出 score 最小任务，判断时间戳：未到期重新放回 ZSet，线程休眠。
+缺点：大量未到期任务造成频繁空轮询，CPU 消耗高。</p>
+<blockquote>
+<p>⚠️ <strong>ZPOPMIN 是破坏性弹出</strong>（取出即从 ZSet 移除），未到期任务需 ZADD 重新放回，放回时机/竞态处理较繁琐。<strong>高并发场景</strong>下大量未到期任务被弹出后放回，会引发频繁写入抖动；且弹出后再判断 score ≤ now 的"检查-放回"存在竞态。<strong>通用作法仍是用 ZRANGEBYSCORE + Lua 原子移除或迁移</strong>（只读查询 + 原子删除），只在"到期任务占绝对多数、几乎无空轮询"时才适合 ZPOPMIN。</p>
+</blockquote>
+<h4 id="223">2.2.3 标准消费流程</h4>
+<ol>
+<li>定时执行 Lua 脚本批量获取到期 taskId；</li>
+<li>通过 taskId 从 Hash 读取任务详情；</li>
+<li>异步执行业务逻辑；</li>
+<li>执行成功：删除 Hash 内任务数据；</li>
+<li>执行失败：根据重试策略重新计算延迟时间，放回队列；</li>
+<li>达到最大重试次数，转入死信队列。</li>
+</ol>
+<h3 id="23">2.3 分布式环境核心问题与解决方案</h3>
+<h4 id="231">2.3.1 惊群效应（多实例同时轮询争抢任务）</h4>
+<ul>
+<li>Lua 脚本原子抢占，天然互斥；</li>
+<li>消费者轮询间隔增加随机抖动（0.5s~1s），避免同一时刻集中请求 Redis；</li>
+<li>高并发场景可增加分布式锁控制扫描权限。</li>
+</ul>
+<h4 id="232">2.3.2 任务丢失风险（取出任务后进程宕机）</h4>
+<p>✅ <strong>可靠三层架构（生产落地标准）</strong></p>
+<ol>
+<li><code>delay:task:queue</code>：ZSet 待调度延迟任务</li>
+<li><code>delay:task:processing</code>：Hash，存放【处理中任务 + 认领信息】</li>
+<li><code>delay:task:dead</code>：List 死信队列</li>
+</ol>
+<p><strong>执行流程</strong>：</p>
+<ol>
+<li>Lua 捞出到期任务<strong>不直接删除</strong>，迁移至 processing 集合；</li>
+<li>消费者认领任务，写入 processing 记录认领时间；</li>
+<li>业务执行完成删除 processing 记录；</li>
+<li>独立守护线程定期扫描 processing，认领超时未完成任务回迁 ZSet 重试。</li>
+</ol>
+<p><strong>processing 实现细节（防丢/防重复）</strong>：</p>
+<ul>
+<li><strong>记录字段</strong>：应包含<strong>认领者 ID、认领时间戳、重试次数</strong>（<code>{owner, claimAt, retries}</code>）。</li>
+<li><strong>回迁原子性</strong>：守护线程回迁时需判断 <code>claimTime + processing_ttl &lt; now</code>，且<strong>用 Lua 脚本原子检查 processing 记录未被新认领</strong>后再 ZADD 回队列，避免"超时判定"与"重新认领"竞态。</li>
+<li><strong>幂等</strong>：业务处理必须幂等（建议幂等 key / 幂等 token），即使同一任务被回迁重试多次，也不能重复扣款/关单等副作用。</li>
+</ul>
+<h4 id="233-key">2.3.3 大 Key 风险</h4>
+<p>海量任务堆积导致单个 ZSet 过大，<code>ZRANGEBYSCORE</code> 查询变慢。
+解决：<strong>按日期分片 ZSet</strong>：</p>
+<div class="codehilite"><pre><span></span><code>delay:task:queue:20260811
+delay:task:queue:20260812
+</code></pre></div>
+
+<h4 id="234">2.3.4 任务主动取消</h4>
+<div class="codehilite"><pre><span></span><code>ZREM delay:task:queue order_9527
+HDEL delay:task:info order_9527
+</code></pre></div>
+
+<h3 id="24">2.4 优缺点总结</h3>
+<p>✅ <strong>优点</strong></p>
+<ol>
+<li>仅依赖 Redis 原生数据结构，无需额外中间件；</li>
+<li>延迟精度支持秒级/毫秒级；</li>
+<li>支持动态新增、主动撤销任务；</li>
+<li>相比数据库轮询，数据库压力极低。</li>
+</ol>
+<p>❌ <strong>缺点</strong></p>
+<ol>
+<li>需要后台线程持续轮询，存在空轮询消耗；</li>
+<li>投递模型为<strong>至少一次消费</strong>，业务必须实现幂等；</li>
+<li>Redis 未开启 AOF 持久化，宕机会丢失任务。<strong>生产建议 RDB + AOF(everysec)</strong>，并为 AOF 打开 rewrite 机制与慢写监控；需权衡恢复时间与丢失窗口（everysec 最多丢 1 秒 vs always 高写入时性能下降）。若对任务丢失极敏感，需在业务层做持久化副本（数据库/消息队列），或 DB+Redis 双写 + 补偿机制；</li>
+<li>不适合十万级以上超大吞吐延迟任务；</li>
+<li>Redis Cluster 场景下，单个 ZSet 所有数据固定在同一个槽，无法分片。</li>
+</ol>
+<h3 id="25">2.5 适用场景 &amp; 不适用场景</h3>
+<p>✅ <strong>适合</strong>：中小型延迟任务——订单超时关单、短信延迟提醒、会话超时清理、短时间延迟调度。</p>
+<p>❌ <strong>不适合</strong>：</p>
+<ol>
+<li>金融级高可靠任务；</li>
+<li>百万级海量延迟消息；</li>
+<li>要求严格毫秒级精准触发；</li>
+<li>集群大规模调度场景（优先 RocketMQ 延迟消息）。</li>
+</ol>
+<h3 id="26-keyspace-notifications">2.6 与 Keyspace Notifications 对比</h3>
+<ul>
+<li>Keyspace 通知：事件易丢失、延迟不可控，只能用作缓存预热等辅助场景，<strong>严禁实现业务定时任务</strong>；</li>
+<li>ZSet 延迟队列：主动轮询调度，可控性强，是 Redis 实现延迟任务主流方案。</li>
+</ul>
+<h3 id="27">2.7 生产落地规范</h3>
+<ol>
+<li>member 使用全局唯一任务 ID，任务载荷外置 Hash 存储；</li>
+<li>使用 Lua 脚本保证查询与迁移/删除原子性，防止重复消费；</li>
+<li>引入 processing 处理中集合，解决进程宕机任务丢失；</li>
+<li>轮询间隔设置合理，增加随机抖动防惊群；</li>
+<li>Redis 开启 AOF 持久化，降低任务丢失风险；</li>
+<li>消费逻辑强制幂等；配置重试策略与死信队列；</li>
+<li>任务量大时按时间分片 ZSet，规避大 Key；</li>
+<li>增加数据库定时巡检作为兜底补偿。</li>
+</ol>
+<hr />
+<h2 id="3-hll-bloomfilter-cuckoofilter-cms-top-k-t-digest">3 概率型近似算法组件（HLL / BloomFilter / CuckooFilter / CMS / Top-K / T-Digest）</h2>
+<blockquote>
+<p><strong>通用前提</strong>：全部属于<strong>概率近似算法</strong>，牺牲计算精度换取极致低内存占用；仅适合允许误差的业务统计、过滤场景，不可用于计费、交易等强精准场景。</p>
+<p><strong>分类</strong>：
+- 成员存在判定：BloomFilter、CuckooFilter
+- 数据流聚合统计：HLL、CMS、Top-K、T-Digest</p>
+<p><strong>⚠️ 模块依赖（重点）</strong>：除 HLL 外，Bloom/Cuckoo/CMS/Top-K/T-Digest 在 Redis 上通常通过 <strong>RedisBloom 模块</strong>提供；若不能安装模块，应在<strong>应用端</strong>（Guava/Caffeine/专门库）实现，或考虑外部服务（Kafka + Flink）替代。集群环境引入 RedisBloom 需在所有节点一致安装并注意模块版本/许可/编译。</p>
+</blockquote>
+<h3 id="31-hyperlogloghll">3.1 HyperLogLog（HLL）—— 估算基数（独立去重数量）</h3>
+<p>Redis 原生命令：<code>PFADD、PFCOUNT、PFMERGE</code></p>
+<h4 id="311">3.1.1 核心能力</h4>
+<p>估算集合内不重复元素总量（基数/UV），<strong>不存储原始数据</strong>；单个 HLL <strong>默认占用约 12KB（取决于精度参数 p，Redis 默认）</strong>，数据量增长内存几乎不变；标准误差约 2%。如需更高精度可按需调整精度参数，但会增加内存。</p>
+<h4 id="312">3.1.2 适用场景</h4>
+<p>✅ <strong>适合</strong></p>
+<ol>
+<li>页面 UV、活动 UV、渠道独立访客统计；</li>
+<li>内容每日独立播放用户去重统计；</li>
+<li>多条流量维度 UV 合并计算（PFMERGE 合并多个 HLL）。</li>
+</ol>
+<p>❌ <strong>不适合</strong></p>
+<ol>
+<li>需要精确 UV 数值；</li>
+<li>需要获取用户 ID 明细；</li>
+<li>需要删除元素（原生 HLL 不支持删除）。</li>
+</ol>
+<h4 id="313">3.1.3 架构坑点</h4>
+<ol>
+<li>不要按单个用户/单个商品创建独立 HLL Key，会造成 Key 爆炸；</li>
+<li>适合按天、活动、频道等粗粒度聚合；</li>
+<li>结果存在误差，报表展示需要标注近似值。</li>
+</ol>
+<h3 id="32-bloomfilter">3.2 BloomFilter 布隆过滤器 —— 成员存在判定</h3>
+<h4 id="321">3.2.1 核心能力</h4>
+<p>判断元素：<strong>一定不存在 / 可能存在</strong>。
+无假阴性、存在假阳性；标准版本<strong>不支持删除元素</strong>。</p>
+<h4 id="322">3.2.2 适用场景</h4>
+<p>✅ <strong>适合</strong></p>
+<ol>
+<li>缓存穿透前置拦截（核心场景）；</li>
+<li>URL 爬虫去重、黑白名单校验；</li>
+<li>商品 ID、账号白名单快速过滤。</li>
+</ol>
+<p>❌ <strong>不适合</strong></p>
+<ol>
+<li>需要频繁删除元素；</li>
+<li>业务无法容忍假阳性（必须保留下游兜底查询）；</li>
+<li>实际元素数量远超初始化容量，误判率飙升。</li>
+</ol>
+<h3 id="33-cuckoofilter">3.3 CuckooFilter 布谷鸟过滤器</h3>
+<h4 id="331">3.3.1 核心能力</h4>
+<p>同样做成员存在判定，无假阴性、存在假阳性；最大特性：<strong>原生支持元素删除</strong>；基于双哈希桶 + 驱逐置换实现。</p>
+<h4 id="332">3.3.2 适用场景</h4>
+<p>✅ <strong>适合</strong></p>
+<ol>
+<li>需要动态增删的黑名单：用户封禁/解封、商品上下架；</li>
+<li>不想使用内存开销翻倍的计数布隆过滤器场景。</li>
+</ol>
+<p>❌ <strong>不适合 / 注意</strong></p>
+<ol>
+<li>负载因子上限低于布隆过滤器，填充率过高性能暴跌；</li>
+<li>Redis 无原生支持，依赖 RedisBloom 模块，运维成本更高；</li>
+<li><strong>高负载/高填充率时可能插入失败（需要扩容或重建）</strong>——生产上需添加监控（插入失败率），并预先规划重建/扩容策略。</li>
+</ol>
+<h4 id="333-bf-vs-cuckoofilter">3.3.3 BF vs CuckooFilter 选型结论</h4>
+<ul>
+<li>只新增、极少删除 → <strong>BloomFilter</strong>（成熟、内存利用率高）；</li>
+<li>频繁增删元素 → <strong>CuckooFilter</strong>。</li>
+</ul>
+<blockquote>
+<p>很多 Redis 集群为了减少模块依赖，依然选择「标准 BF + 定时重建」方案替代布谷鸟过滤器。</p>
+</blockquote>
+<h3 id="34-count-min-sketchcms">3.4 Count-Min Sketch（CMS）最小计数草图</h3>
+<h4 id="341">3.4.1 核心能力</h4>
+<p>估算数据流中单个元素出现频次；查询计数 ≥ 真实值（存在高估冲突误差）；内存占用极低。</p>
+<h4 id="342">3.4.2 适用场景</h4>
+<p>✅ <strong>适合</strong></p>
+<ol>
+<li>海量流量下粗略统计 IP、用户、接口访问频次；</li>
+<li>风控初步识别高频爬虫、恶意访问；</li>
+<li>作为 Top-K 前置筛选器，过滤海量长尾元素。</li>
+</ol>
+<p>❌ <strong>不适合</strong></p>
+<ol>
+<li>需要精确计数（不能替代 String 计数器）；</li>
+<li>无法消除哈希冲突带来的计数高估。</li>
+</ol>
+<h3 id="35-top-kheavykeeper-top">3.5 Top-K（HeavyKeeper）—— 实时最热 TOP 元素</h3>
+<h4 id="351">3.5.1 核心能力</h4>
+<p>持续对流式数据统计，动态维护出现频率最高的 K 个元素与近似频次。RedisBloom 提供实现。</p>
+<h4 id="352">3.5.2 适用场景</h4>
+<p>✅ <strong>适合</strong></p>
+<ol>
+<li>实时热点商品、直播间 TOP 榜单；</li>
+<li>识别热点 IP、高频爬虫；</li>
+<li>自动发现 Redis 热点 Key；</li>
+<li>热搜词初步统计。</li>
+</ol>
+<p>❌ <strong>不适合</strong></p>
+<ol>
+<li>需要绝对精确、完整有序榜单；</li>
+<li>仅关心长尾数据，无热点统计需求。</li>
+</ol>
+<h4 id="353">3.5.3 典型架构链路</h4>
+<p>网关流量采集 → CMS 全量粗略计数 → Top-K 筛选热点候选；
+仅对筛选出的热点建立精确计数器，极大节省内存。</p>
+<h3 id="36-t-digest-p50p95p99">3.6 T-Digest —— 近似分布统计（分位数 P50/P95/P99）</h3>
+<h4 id="361">3.6.1 核心能力</h4>
+<p>不存储全部原始数据，聚合数值分布；快速计算中位数、P95、P99、最大最小值。</p>
+<h4 id="362">3.6.2 适用场景</h4>
+<p>✅ <strong>适合</strong></p>
+<ol>
+<li>接口响应耗时实时监控，统计 P99 延迟；</li>
+<li>订单金额、充值金额分布分析；</li>
+<li>消息消费耗时、压测延时指标聚合。</li>
+</ol>
+<p>❌ <strong>不适合</strong></p>
+<ol>
+<li>需要保存全部原始明细数据；</li>
+<li>需要精准单点数值。</li>
+</ol>
+<h3 id="37">3.7 概率算法横向对比汇总表</h3>
+<table>
+<thead>
+<tr>
+<th>算法</th>
+<th>核心用途</th>
+<th style="text-align: center;">是否支持删除</th>
+<th>误差特征</th>
+<th>Redis 原生支持</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HLL</td>
+<td>估算 UV/基数（去重总数）</td>
+<td style="text-align: center;">❌</td>
+<td>±2%</td>
+<td>✅ PF 原生命令</td>
+</tr>
+<tr>
+<td>BloomFilter</td>
+<td>判断元素是否存在</td>
+<td style="text-align: center;">❌ 标准版</td>
+<td>假阳性</td>
+<td>❌ 依赖 Redisson/RedisBloom</td>
+</tr>
+<tr>
+<td>CuckooFilter</td>
+<td>判断元素是否存在</td>
+<td style="text-align: center;">✅</td>
+<td>假阳性</td>
+<td>❌ RedisBloom 模块</td>
+</tr>
+<tr>
+<td>Count-Min Sketch</td>
+<td>估算元素访问频次</td>
+<td style="text-align: center;">✅</td>
+<td>计数高估</td>
+<td>❌ RedisBloom 模块</td>
+</tr>
+<tr>
+<td>Top-K (HeavyKeeper)</td>
+<td>找出热度最高 K 个元素</td>
+<td style="text-align: center;">✅</td>
+<td>频次近似</td>
+<td>❌ RedisBloom 模块</td>
+</tr>
+<tr>
+<td>T-Digest</td>
+<td>计算分位数 P50/P95/P99</td>
+<td style="text-align: center;">✅</td>
+<td>分布近似</td>
+<td>❌ RedisBloom 模块</td>
+</tr>
+</tbody>
+</table>
+<h3 id="38">3.8 架构师通用选型原则</h3>
+<ol>
+<li>统计独立去重数量（UV）→ <strong>HyperLogLog</strong></li>
+<li>判断元素是否存在</li>
+<li>只增少删 → <strong>BloomFilter</strong></li>
+<li>频繁增删 → <strong>CuckooFilter</strong></li>
+<li>粗略统计海量元素访问频次 → <strong>Count-Min Sketch</strong></li>
+<li>实时抓取最热 TOP 榜单 → <strong>Top-K (HeavyKeeper)</strong></li>
+<li>延时、金额等数值分位数监控（P99）→ <strong>T-Digest</strong></li>
+</ol>
+<h3 id="39">3.9 生产落地红线</h3>
+<ol>
+<li>所有概率算法输出均为近似值，禁止用于计费、资金交易等强精确业务；</li>
+<li>BloomFilter/CuckooFilter 存在假阳性，判定"存在"必须保留下游兜底查询；</li>
+<li>Redis 原生仅支持 HLL，其余组件大多依赖 RedisBloom 扩展模块；集群环境引入模块会提升运维复杂度，简单业务慎重引入；</li>
+<li>不允许安装 Redis 模块时，优先在应用本地内存实现（Guava 布隆等），不要强行依赖 Redis。</li>
+</ol>
+<h3 id="310-vs-918">3.10 概率数据结构 vs 精确存储实测对比（场景 9.18）</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th style="text-align: center;">内存占用</th>
+<th style="text-align: center;">精度</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>精确 Set（SADD）</strong></td>
+<td style="text-align: center;">随元素数线性增长（高）</td>
+<td style="text-align: center;">100%</td>
+<td>需精确去重/成员查询</td>
+</tr>
+<tr>
+<td><strong>HyperLogLog（PFADD）</strong></td>
+<td style="text-align: center;">固定 12KB/Key</td>
+<td style="text-align: center;">±2%</td>
+<td>大基数 UV 估算</td>
+</tr>
+<tr>
+<td><strong>BloomFilter</strong></td>
+<td style="text-align: center;">bit 位图（低）</td>
+<td style="text-align: center;">假阳性</td>
+<td>存在性判定（防穿透）</td>
+</tr>
+<tr>
+<td><strong>Count-Min Sketch</strong></td>
+<td style="text-align: center;">极低</td>
+<td style="text-align: center;">计数高估</td>
+<td>频次统计</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心取舍</strong>：精确 Set 数据量越大内存线性膨胀且遍历越慢；HLL 固定内存但只给近似 UV；Bloom 只回答"是否存在"。<strong>UV 估算用 HLL、防穿透用 Bloom、频次粗筛用 CMS</strong>，都是牺牲精度换内存/性能的典型权衡——禁止用于计费、交易、需要明细的场景。</p>
+<hr />
+<h2 id="4-redis">4 Redis 持久化机制</h2>
+<h3 id="41-rdb">4.1 RDB（快照持久化）</h3>
+<p><strong>原理</strong>：按照配置策略 fork 子进程，将全量内存数据持久化到二进制 <code>.rdb</code> 文件。</p>
+<p><strong>优点</strong>：</p>
+<ul>
+<li>文件紧凑，恢复速度快；</li>
+<li>fork 子进程，主线程短暂阻塞；</li>
+<li>适合冷备份。</li>
+</ul>
+<p><strong>缺点</strong>：</p>
+<ul>
+<li>两次快照之间存在数据丢失风险；</li>
+<li>fork 大内存进程会产生 STW 阻塞；</li>
+<li>不适合要求极高数据可靠性场景。</li>
+</ul>
+<h3 id="42-aof">4.2 AOF（日志持久化）</h3>
+<p><strong>原理</strong>：记录每条写命令追加到 aof 文件。</p>
+<p><strong>三种刷盘策略</strong>：</p>
+<ul>
+<li><code>always</code>：每条命令 fsync，最安全，性能最差；</li>
+<li><code>everysec</code>：每秒刷盘，默认方案，最多丢失 1 秒数据；</li>
+<li><code>no</code>：交由操作系统控制，丢失数据不可控。<strong>仅在对极致吞吐且可容忍较大丢失的场景考虑</strong>——系统崩溃时可能丢失大量数据，<strong>不推荐在业务数据关键的生产环境使用</strong>。</li>
+</ul>
+<p><strong>AOF 重写</strong>：压缩日志，消除冗余命令，减少文件体积；生产应开启 rewrite 机制并对 rewrite 耗时/频率设置慢写监控。</p>
+<p><strong>优点</strong>：数据丢失粒度小；
+<strong>缺点</strong>：文件体积更大，重启恢复慢。</p>
+<h3 id="43">4.3 生产推荐组合</h3>
+<p><code>RDB + AOF everysec</code>，兼顾备份与数据安全。</p>
+<p><strong>实测量化（场景 2，50 万大 Hash 批量写入 + 256MB 内存限制）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">持久化模式</th>
+<th style="text-align: center;">子进程存活</th>
+<th style="text-align: center;">COW 大小</th>
+<th style="text-align: center;">内存压力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">RDB</td>
+<td style="text-align: center;">~2s</td>
+<td style="text-align: center;"><strong>~245MB</strong></td>
+<td style="text-align: center;">高</td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF percentage=100</td>
+<td style="text-align: center;">~2s</td>
+<td style="text-align: center;"><strong>~66MB</strong>（最小）</td>
+<td style="text-align: center;">最低</td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF percentage=500</td>
+<td style="text-align: center;">~3s</td>
+<td style="text-align: center;">~264MB</td>
+<td style="text-align: center;">最高</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键结论</strong>：</p>
+<ol>
+<li><strong>COW 大小 = 父进程在子进程存活期间写入触发的 copy-on-write 字节数</strong>，与写入速率和 fork 持续时间强相关；</li>
+<li><strong>OOM 估算公式</strong>：所需物理内存 ≈ <code>used_memory_rss + last_cow_size + 10~20%</code> 裕度，保守按 <code>used_memory_rss × 1.5~2</code>；</li>
+<li><strong>根除 COW 风险</strong>：主节点关闭持久化 + 副本做持久化/备份 + 副本错峰 BGSAVE；</li>
+<li>生产必须关闭 THP（见 10.1），否则 fork 大内存进程 COW 成倍放大。</li>
+</ol>
+<hr />
+<h2 id="5-redis-cluster">5 主从复制、哨兵、Redis Cluster 集群</h2>
+<h3 id="51">5.1 主从复制</h3>
+<p><strong>作用</strong>：主库负责写操作并同步到从库，从库主要用于读扩展与备份（写入仍由主库承担）。</p>
+<p><strong>复制流程</strong>：全量同步（RDB 传输 / PSYNC fallback）→ 增量复制（复制积压缓冲区 + 流式复制）。</p>
+<p><strong>需关注</strong>：复制延迟、复制积压大小、partial resync 成功率与 replication offset，避免因从库滞后读到陈旧数据或主从切换时数据丢失。</p>
+<p><strong>风险点</strong>：复制风暴、主从延迟、从库只读默认配置。</p>
+<blockquote>
+<p>⚠️ 注意 <strong>replication backlog</strong>（大小影响 partial resync 能力）与 <code>repl-diskless-sync</code>、<code>repl-backlog-ttl</code> 等配置；监控 <strong>replication offset</strong> 与复制延迟（<code>master_repl_offset</code>、<code>slave_repl_offset</code> 差值）。</p>
+</blockquote>
+<h3 id="52-sentinel">5.2 哨兵（Sentinel）</h3>
+<p>Sentinel 为 Redis 提供<strong>监控、通知与自动故障转移</strong>。生产务必配置足够 sentinel 节点（<strong>常为奇数</strong>），并调整 <code>quorum</code>、<code>down-after-milliseconds</code>、<code>failover-timeout</code>、<code>parallel-syncs</code> 等参数（影响容灾行为与自动切主）。</p>
+<p><strong>运维巡检命令</strong>：</p>
+<div class="codehilite"><pre><span></span><code>SENTINEL masters
+SENTINEL sentinels &lt;master-name&gt;
+SENTINEL get-master-addr-by-name &lt;master-name&gt;
+</code></pre></div>
+
+<p><strong>局限</strong>：哨兵<strong>无法横向扩展写能力</strong>，仅用于高可用与自动切主；需合理设置 quorum 并监控 sentinel 可用性，选主策略与运维流程配合以避免脑裂。适合中小规模架构。</p>
+<h3 id="53-redis-cluster">5.3 Redis Cluster（分片集群）</h3>
+<p><strong>核心机制</strong>：</p>
+<ul>
+<li>16384 个槽位，数据分片存放，通过 <strong>gossip 协议</strong>维护节点状态；</li>
+<li>客户端遇 <strong>MOVED/ASK</strong> 重定向后自动重试；</li>
+<li>跨槽多 key 操作会触发 <strong>CROSSSLOT 错误</strong>（必须用 <code>{hashtag}</code> 强制同槽，或让客户端拆分到多节点）；</li>
+<li>键空间通知无法全局订阅；</li>
+<li><strong>槽迁移/重分片需谨慎</strong>（<code>CLUSTER SETSLOT</code>、<code>MIGRATE</code>、reshard 工具），迁移期间注意请求重定向成本与短时不一致。</li>
+</ul>
+<p><strong>Cluster 水平扩展说明</strong>：集群只在 key 均匀分布到多个主节点时才体现写吞吐扩展优势。进行 re-shard/slot migration 时使用 <code>CLUSTER SETSLOT + MIGRATE</code> 或 <code>redis-cli --cluster reshard</code> 工具。</p>
+<p><strong>运维命令速查</strong>：</p>
+<div class="codehilite"><pre><span></span><code>CLUSTER INFO
+CLUSTER NODES
+CLUSTER SLOTS
+CLUSTER REPLICATE &lt;node-id&gt;
+CLUSTER FAILOVER
+CLUSTER SETSLOT &lt;slot&gt; &lt;IMPORTING|MIGRATING|NODE&gt;
+</code></pre></div>
+
+<p><strong>CROSSSLOT 实测关键结论（场景 7，3 主 3 从）</strong>：</p>
+<ul>
+<li>现代 Cluster 客户端（如 <strong>Lettuce/Redisson Cluster</strong>）会<strong>按 slot 自动分组并拆分命令</strong>以避免 CROSSSLOT 错误（SETEX ~170k/s、HGET ~390k/s）；</li>
+<li><strong>若绕过智能客户端，直接向单节点发送跨槽 multi-key 命令</strong>，会触发 CROSSSLOT 错误或性能极低（0.4 cmd/s）；</li>
+<li>因此跨槽问题是"绕过智能客户端 / 直连单通道"才触发，<strong>用官方集群客户端即可自动规避</strong>；</li>
+<li>多 key 运算（MSET/MGET/ZUNIONSTORE）跨槽需用 <code>{hashtag}</code> 强制同槽，或客户端自动拆分；</li>
+<li><strong>注意</strong>：实验数值依赖具体客户端实现与测试场景，结论应结合测试环境说明。</li>
+</ul>
+<hr />
+<h2 id="6-redis">6 Redis 集合底层编码详解</h2>
+<h3 id="60-string-int-embstr-raw">6.0 String 底层编码：int / embstr / raw</h3>
+<p>Redis String 存在三种底层实现，由 value 自动决定：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>int</strong></td>
+<td>value 是 64 位有符号整数</td>
+<td>直接存 8 字节 <code>long</code>，内联在 RedisObject 的 value 字段，零分配</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>embstr</strong></td>
+<td>字符串且长度 ≤ 44 字节</td>
+<td>RedisObject + sds 头 + 数据 <strong>1 次 malloc 连续分配</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>raw</strong></td>
+<td>字符串长度 &gt; 44 字节</td>
+<td>RedisObject 和 sds <strong>2 次 malloc 独立分配</strong>，内存分离</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注意：Redis 7.x 中 <code>OBJ_ENCODING_EMBSTR_SIZE_LIMIT = 44</code> 字节（旧版 ziplist 场景是 39）。embstr 是一种对短字符串的<strong>紧凑单次 malloc 布局</strong>（适合短字符串）；当对 embstr 做扩展写入（如 APPEND）时，Redis 会根据需要转换为 raw（可能 realloc）以支持变长操作。</p>
+</blockquote>
+<p><strong>实测数据（场景 11，c=16, batch=100）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: center;">int</th>
+<th style="text-align: center;">embstr</th>
+<th style="text-align: center;">raw</th>
+<th style="text-align: left;">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">INCR</td>
+<td style="text-align: center;"><strong>532,654</strong></td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: left;">int 零分配，P99 最低</td>
+</tr>
+<tr>
+<td style="text-align: left;">SET</td>
+<td style="text-align: center;">415K</td>
+<td style="text-align: center;"><strong>448,159</strong></td>
+<td style="text-align: center;">357,566</td>
+<td style="text-align: left;">embstr vs raw <strong>+25.3%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: center;">429K</td>
+<td style="text-align: center;"><strong>457,400</strong></td>
+<td style="text-align: center;">400,466</td>
+<td style="text-align: left;">embstr vs raw <strong>+14.2%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">SET 1KB</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">218,997</td>
+<td style="text-align: left;">比 200B <strong>-38.8%</strong>（memcpy 线性增长）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>APPEND</strong></td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">409K（max <strong>287ms</strong>）</td>
+<td style="text-align: center;"><strong>410K</strong>（max <strong>39ms</strong>）</td>
+<td style="text-align: left;"><strong>raw 预分配摊销 O(1)</strong>，max 延迟差 7.3 倍</td>
+</tr>
+</tbody>
+</table>
+<p><strong>生产选型（按 value 用途）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">推荐编码</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>计数器/自增/频控</td>
+<td style="text-align: center;"><strong>int</strong></td>
+<td>零 malloc，532K ops/s 最快</td>
+</tr>
+<tr>
+<td>短文本/短状态/Token</td>
+<td style="text-align: center;"><strong>embstr</strong></td>
+<td>单次分配 cache 友好，SET/GET 明显优于 raw</td>
+</tr>
+<tr>
+<td>JSON/长文本/日志</td>
+<td style="text-align: center;"><strong>raw</strong></td>
+<td>唯一选择，注意 memcpy 与 slowlog</td>
+</tr>
+<tr>
+<td><strong>增量拼接构建大字符串</strong></td>
+<td style="text-align: center;"><strong>raw 预分配</strong></td>
+<td>先 <code>SET</code> 初始 raw 预分配，再反复 <code>APPEND</code> → 摊销 O(1)</td>
+</tr>
+<tr>
+<td>对短值反复 APPEND</td>
+<td style="text-align: center;">❌ 避开</td>
+<td>int/embstr 每次重分配，max 延迟 287ms</td>
+</tr>
+</tbody>
+</table>
+<h3 id="61-hash-listpack-vs-hashtableredis-70">6.1 Hash 底层编码：listpack VS hashtable（Redis 7.0+）</h3>
+<p>Redis Hash 存在两种底层实现：<strong>listpack（紧凑编码）、hashtable（dict 哈希表）</strong>。</p>
+<p>配置阈值（示例值）：</p>
+<div class="codehilite"><pre><span></span><code>hash-max-listpack-entries 128
+hash-max-listpack-value 64
+</code></pre></div>
+
+<p>规则：字段数量 ≤ 阈值 <strong>并且</strong> 所有 field、value 长度 ≤ 阈值字节时使用 listpack；任一条件不满足自动转为 hashtable；转换<strong>单向不可逆</strong>。</p>
+<blockquote>
+<p>⚠️ <strong>默认阈值依 Redis 版本/发行包而异</strong>。生产环境请用以下命令以<strong>当前实例实际配置为准</strong>：
+<code>CONFIG GET hash-max-listpack-entries
+CONFIG GET hash-max-listpack-value</code>
+典型 Redis 7+ 默认较小（如 128，非 512），务必以 <code>CONFIG GET</code> 验证并监控编码转换频率。若生产想多用 listpack 可上调，但上限不宜超 2000（listpack 是 O(N) memmove）。</p>
+</blockquote>
+<h4 id="611-listpack">6.1.1 listpack</h4>
+<p>连续内存紧凑存储，交替存放 field-value，无指针元数据，内存占用低。</p>
+<p><strong>读写特性</strong>：查找、更新、删除需要线性遍历 O(N)；修改可能触发内存拷贝。</p>
+<ul>
+<li>✅ 适用：字段少、值短小、大量小 Hash、内存敏感、经常一次性读取全部字段；</li>
+<li>❌ 不适用：字段增多后单点读写性能持续下降。</li>
+</ul>
+<h4 id="612-hashtabledict">6.1.2 hashtable（dict）</h4>
+<p>标准哈希表，平均读写 O(1)；需要存储哈希桶、指针，内存开销更高。</p>
+<p>✅ <strong>hashtable 性能优于 listpack 典型场景</strong>：</p>
+<ol>
+<li>Hash 内部 field 数量较多（数百个）；</li>
+<li>业务以随机单点读写为主（HGET/HSET/HINCRBY），很少读取全部字段；</li>
+<li>field/value 存在较长字符串，超出阈值；</li>
+<li>高并发 QPS，需要稳定可控的延迟；</li>
+<li>频繁零散更新、删除字段。</li>
+</ol>
+<p><strong>实测验证（场景 11，c=16, batch=50）</strong>：</p>
+<ul>
+<li>小 Hash（50 field）listpack 碾压 hashtable，HSET 快 20+ 倍；</li>
+<li>但<strong>临界反超</strong>：公平对比（127f listpack vs 128f hashtable）下 hashtable 反超 <strong>+21%</strong>（HGET）、+22%（末尾 field）——listpack 是 O(N) 顺序扫描，N 接近阈值时扫描成本反超 dict 的 O(1)；</li>
+<li>因此"刻意限容保 listpack"不是银弹：field 逼近 128 时 hashtable 反而更稳。</li>
+</ul>
+<blockquote>
+<p>🔴 <strong>hashtable 的红线：严禁对大 Hash 做 HGETALL</strong>。500 field 的 hashtable 做 HGETALL 是 O(N) 全量读取，实测阻塞主线程 4.4 秒、16 条 slowlog（场景 5）。同理，Set 的 hashtable 做 SMEMBERS 慢 30 倍+（14K vs 476K ops/s，场景 11）。<strong>大 hashtable 必须用 HGET/HMGET 按需取，或 HSCAN 分页。</strong></p>
+</blockquote>
+<p><strong>HSCAN 使用注意</strong>：<code>count</code> 只是 hint（不保证精确返回条数），返回可能重复且<strong>不保证顺序</strong>——需做去重 + 游标结束检测；<strong>避免在 Lua 脚本中做长循环 HSCAN</strong>（阻塞主线程）。若需全量消费，建议后台异步分批导出，或从业务层分页读取并降峰。</p>
+<h4 id="613">6.1.3 生产规范</h4>
+<ol>
+<li>小规模短字段对象优先利用 listpack 节省内存；</li>
+<li>多字段、高并发随机读写对象，hashtable 性能更稳定；</li>
+<li>避免 Hash 长期处于阈值附近频繁触发编码转换；</li>
+<li>升级为 hashtable 后，即便字段减少，也不会退回 listpack。</li>
+</ol>
+<h3 id="62-11c16">6.2 四类型内部编码选型实测结论（场景 11，c=16）</h3>
+<blockquote>
+<p>所有内部编码均<strong>由数据自动决定，无法显式指定</strong>；只能靠 value/member 的类型、数量、长度"凑"出目标编码，且转换<strong>单向不可逆</strong>。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">类型</th>
+<th style="text-align: left;">编码</th>
+<th style="text-align: left;">实测关键结论</th>
+<th style="text-align: left;">选型建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>String</strong></td>
+<td style="text-align: left;">int / embstr / raw</td>
+<td style="text-align: left;">INCR(int) 532K 最快；embstr 比 raw SET +25%、GET +14%；raw 的 <code>sdsMakeRoomFor</code> 预分配使 APPEND 摊销 O(1)（max 39ms vs embstr 287ms）</td>
+<td style="text-align: left;">计数→int；短文本→embstr；长文/可变拼接→raw</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>Hash</strong></td>
+<td style="text-align: left;">listpack / hashtable</td>
+<td style="text-align: left;">小 Hash listpack 碾压；128f 临界 hashtable 反超 +21%；<strong>严禁大 hashtable HGETALL</strong>（500f 阻塞 4.4s）</td>
+<td style="text-align: left;">field≤64 用 listpack；≥128 直接用 hashtable（O(1)），禁 HGETALL</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>ZSet</strong></td>
+<td style="text-align: left;">listpack / skiplist</td>
+<td style="text-align: left;"><strong>ZADD 上 skiplist 反而 +11%</strong>（排序定位优势）；ZSCORE/ZRANGE 接近；128 member 未触发 skiplist（需 &gt;128）</td>
+<td style="text-align: left;">大排行榜/高并发 ZADD 用 skiplist；小排行榜 listpack</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>Set</strong></td>
+<td style="text-align: left;">intset / listpack / hashtable</td>
+<td style="text-align: left;"><strong>intset 全面碾压</strong>（512 整数 +22% vs hashtable 513 整数）；<strong>SMEMBERS hashtable 慢 30 倍+</strong>（14K vs 476K）</td>
+<td style="text-align: left;">纯整数用 intset（别存成字符串）；禁大 hashtable 全量读（SMEMBERS/SRANDMEMBER）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>四类型通用红线</strong>：</p>
+<ol>
+<li><strong>编码不可强求</strong>：小数据自动落入紧凑编码，无需干预；</li>
+<li><strong>真正要防的是大结构的"全量读取"</strong>（HGETALL/SMEMBERS/SRANDMEMBER/大 value 拼接）——数量级差距，改用 HSCAN/SSCAN 分页或分片；</li>
+<li>紧凑编码（listpack/intset/embstr）在临界点会因 O(N) 扫描反噬，但大 hashtable/skiplist 的 O(1)/O(logN) 更稳——"刻意保小"不是银弹；</li>
+<li><strong>128/512 阈值边界不可靠</strong>：实测 128 短 member 未触发转换（需 129+），生产建议留足余量（≤127 保 listpack、≤511 保 intset）。</li>
+</ol>
+<h3 id="63-zset-listpack-vs-skiplist">6.3 ZSet 底层编码：listpack VS skiplist</h3>
+<p>Redis ZSet 存在两种底层实现，由 <strong>member 数量</strong> 和 <strong>member 字符串大小</strong> 决定：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>member 数 ≤ <code>zset-max-listpack-entries</code>（默认 128）<strong>且</strong> 每 member ≤ <code>zset-max-listpack-value</code>（默认 64B）</td>
+<td>所有 member+score 存于一个<strong>连续内存块</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>member 数 &gt; 128 或 member &gt; 64B</td>
+<td>跳表 + dict，每 member 独立节点，O(logN)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>与 Hash 不同，ZSet 的<strong>插入/查找天然需要排序定位</strong>，这是 skiplist 的优势所在。</p>
+</blockquote>
+<p><strong>实测数据（场景 11，c=16, batch=50）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: center;">listpack (50m)</th>
+<th style="text-align: center;">skiplist (500m长名)</th>
+<th style="text-align: left;">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">ZADD</td>
+<td style="text-align: center;">126,073</td>
+<td style="text-align: center;"><strong>139,528</strong></td>
+<td style="text-align: left;"><strong>skiplist +11%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">ZSCORE</td>
+<td style="text-align: center;">300,565</td>
+<td style="text-align: center;">299,066</td>
+<td style="text-align: left;">接近</td>
+</tr>
+<tr>
+<td style="text-align: left;">ZRANGE</td>
+<td style="text-align: center;">188,806</td>
+<td style="text-align: center;">188,115</td>
+<td style="text-align: left;">接近</td>
+</tr>
+<tr>
+<td style="text-align: left;">ZINCRBY</td>
+<td style="text-align: center;">112,057</td>
+<td style="text-align: center;"><strong>116,243</strong></td>
+<td style="text-align: left;">skiplist +4%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 ZADD 上 skiplist 反而更快（+11%）</strong>：ZADD 需按 score 定位插入点，skiplist 的 O(log 500)≈9 次跳表跳跃 &lt; listpack 的 O(50) 线性扫描。<strong>ZADD 的排序定位是 skiplist 的强项</strong>。</p>
+<p><strong>生产选型</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">推荐编码</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>小排行榜（member ≤64）</td>
+<td style="text-align: center;">listpack</td>
+<td>紧凑 cache 友好</td>
+</tr>
+<tr>
+<td><strong>大排行榜（member ≥128）</strong></td>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>O(logN) 稳定，ZADD 更快 +11%</td>
+</tr>
+<tr>
+<td>高并发 ZADD 写入</td>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>排序定位优势</td>
+</tr>
+<tr>
+<td>全服大排行榜（百万用户）</td>
+<td style="text-align: center;">skiplist</td>
+<td>唯一选择</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ 128 短 member 实测未触发 skiplist（仍是 listpack），转换需 &gt;128。生产建议 member 数明显 &lt;128 才可靠保持 listpack；接近 128 时 ZADD 反而 skiplist 更快，不要刻意限容。</p>
+<p>💡 <code>zset-max-listpack-entries</code> 与 <code>zset-max-listpack-value</code> 可在配置中调整；生产应监控成员数分布，<strong>接近阈值时考虑预先分片或迁移</strong>以避免频繁编码转换。</p>
+</blockquote>
+<h3 id="64-set-intset-listpack-hashtable">6.4 Set 底层编码：intset / listpack / hashtable</h3>
+<p>Redis Set 存在三种底层实现，由 <strong>member 类型</strong>、<strong>数量</strong> 和 <strong>字符串大小</strong> 决定：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>intset</strong></td>
+<td>全整数 且 数量 ≤ <code>set-max-intset-entries</code>（默认 512）</td>
+<td>有序紧凑整数数组，无 dictEntry，内存最省</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>字符串 且 ≤ <code>set-max-listpack-entries</code>（默认 128）且 ≤ <code>set-max-listpack-value</code>（默认 64B）</td>
+<td>连续内存块</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>整数 &gt; 512，或字符串 &gt; 128 / &gt;64B</td>
+<td>dict 哈希表</td>
+</tr>
+</tbody>
+</table>
+<p><strong>转换链（均单向不可逆）</strong>：<code>intset →(加字符串)→ listpack →(&gt;128/&gt;64B)→ hashtable</code>；<code>intset →(整数&gt;512)→ hashtable</code>。</p>
+<p><strong>实测数据（场景 11，c=16, batch=50）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: center;">intset (50整数)</th>
+<th style="text-align: center;">listpack (50字符串)</th>
+<th style="text-align: center;">hashtable (500长)</th>
+<th style="text-align: center;">int vs ht</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">SADD</td>
+<td style="text-align: center;">364,821</td>
+<td style="text-align: center;">346,772</td>
+<td style="text-align: center;">311,825</td>
+<td style="text-align: center;">+17%</td>
+</tr>
+<tr>
+<td style="text-align: left;">SISMEMBER</td>
+<td style="text-align: center;">379,007</td>
+<td style="text-align: center;">345,711</td>
+<td style="text-align: center;">329,709</td>
+<td style="text-align: center;">+15%</td>
+</tr>
+<tr>
+<td style="text-align: left;">SREM</td>
+<td style="text-align: center;">448,859</td>
+<td style="text-align: center;">449,792</td>
+<td style="text-align: center;">307,076</td>
+<td style="text-align: center;">+46%</td>
+</tr>
+<tr>
+<td style="text-align: left;">SRANDMEMBER</td>
+<td style="text-align: center;">522,726</td>
+<td style="text-align: center;">530,864</td>
+<td style="text-align: center;">258,756</td>
+<td style="text-align: center;">+102%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SMEMBERS</strong></td>
+<td style="text-align: center;">476,344</td>
+<td style="text-align: center;">481,726</td>
+<td style="text-align: center;"><strong>14,719</strong></td>
+<td style="text-align: center;"><strong>+3136%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>公平对比</strong>：intset 512整数 <strong>+22.1%</strong> 碾压 hashtable 513整数（395,056 vs 323,631）。</p>
+<p><strong>生产选型</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">推荐编码</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯整数集合（≤512）</td>
+<td style="text-align: center;"><strong>intset</strong></td>
+<td>二分查找，全面碾压</td>
+</tr>
+<tr>
+<td>短字符串集合（≤127）</td>
+<td style="text-align: center;">listpack</td>
+<td>紧凑高效，接近 intset</td>
+</tr>
+<tr>
+<td>大集合 / 长字符串</td>
+<td style="text-align: center;">hashtable</td>
+<td>唯一选择</td>
+</tr>
+<tr>
+<td><strong>高频 SMEMBERS 全量读</strong></td>
+<td style="text-align: center;"><strong>避开 hashtable</strong></td>
+<td>慢 30 倍+（14K vs 476K）</td>
+</tr>
+<tr>
+<td>高频 SRANDMEMBER</td>
+<td style="text-align: center;">intset/listpack</td>
+<td>比 hashtable 快 1 倍</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>🔴 <strong>核心红线</strong>：<strong>整数别存成字符串</strong>（否则失去 intset 优势）；<strong>避免大 hashtable 全量读取</strong>（SMEMBERS/SRANDMEMBER）——用 SSCAN 分页或分片。整数集合 513 个即触发 hashtable（跨越 512 阈值），整数保留 ≤512 才可靠保 intset。</p>
+<p>💡 用 <code>OBJECT ENCODING &lt;key&gt;</code> 检查真实编码；<code>OBJECT FREQ</code> / <code>MEMORY USAGE</code> 可用于容量与 hotspot 诊断。</p>
+</blockquote>
+<hr />
+<h2 id="7-key-key">7 热点 Key &amp; 大 Key 治理</h2>
+<h3 id="71-key">7.1 热点 Key</h3>
+<p><strong>问题</strong>：大量请求集中访问同一个 Key，分片 CPU 打满、流量倾斜。</p>
+<p><strong>解决方案</strong>：</p>
+<ol>
+<li>本地缓存多级拦截；</li>
+<li>Key 分片（hotkey_01、hotkey_02……）；</li>
+<li>读写分离，从库分担读流量；</li>
+<li>请求入口限流。</li>
+</ol>
+<blockquote>
+<p>⚠️ <strong>从库读一致性</strong>：从库读能扩展读吞吐，但存在<strong>复制延迟风险</strong>。对强一致性场景不宜依赖从库读；若必须从从库读，应有延迟容忍策略，或采用 <strong>read-after-write 路由</strong>（写后一段时间内读写都路由到主库，直到确认写生效）。另外推荐 <strong>request coalescing（singleflight）</strong>和本地缓存作为优先手段。</p>
+</blockquote>
+<p><strong>实测量化（场景 8-1，16 并发 × 100 batch 全部 INCR 同一 key）</strong>：</p>
+<ul>
+<li><strong>热点 Key 是 Cluster 单点瓶颈</strong>：<code>slot = CRC16(key) % 16384</code> 固定映射，高频 INCR 全部路由到同一 master，水平扩展不分散同 key 负载；</li>
+<li><strong>单点写入放大复制压力</strong>：replication backlog 被覆盖 → psync 失效 → 触发全量同步 → BGSAVE/COW 爆发；</li>
+<li>五种模式实测：SINGLE_KEY 直连 ~307K cmd/s；<strong>LOCAL_BUFFERED 本地 Atomic 自增 + 定期 INCRBY 刷写达 ~35,000,000/s</strong>；COMPUTED 本地计算 + 批量写回 ~95,000,000/s（Redis 每秒仅 1 次写）；</li>
+<li><strong>结论</strong>：需要强一致/实时去重 → 用 Lua/WAIT/单点原子（牺牲吞吐）；否则优先"计算在应用层，汇总写回 Redis"（LOCAL_BUFFERED/COMPUTED），本地吞吐千万级/s，且不受网络 RTT 影响（RTT&gt;2ms 应切本地方案）。</li>
+</ul>
+<h3 id="72-key">7.2 大 Key</h3>
+<p><strong>危害</strong>：集群迁移卡顿、网络带宽打满、DEL 阻塞主线程、RDB/AOF 文件膨胀。</p>
+<p><strong>治理方案</strong>：</p>
+<ol>
+<li>拆分大型集合；</li>
+<li>采用渐进式分批删除，禁止直接 DEL 超大集合；</li>
+<li>控制单个容器内元素数量；</li>
+<li>定时巡检扫描识别大 Key。</li>
+</ol>
+<hr />
+<h2 id="8-redis">8 Redis 性能优化方向</h2>
+<h3 id="81-pipeline">8.1 Pipeline</h3>
+<p>批量打包多条命令，减少网络往返次数。
+<strong>限制</strong>：单次不要组装上万条命令，防止缓冲区溢出；<strong>不具备事务保障</strong>。</p>
+<h3 id="82-lua">8.2 事务与 Lua 脚本</h3>
+<ul>
+<li><strong>MULTI/EXEC</strong>：将命令排队并在 EXEC 时批量执行，<strong>不支持回滚</strong>；但它<strong>不提供 MVCC 或可重复读语义</strong>，在并发写场景下需用 <strong>WATCH</strong> 做乐观锁；</li>
+<li><strong>WATCH + MULTI/EXEC</strong>：这才是<strong>乐观锁</strong>。WATCH 监控 key，事务执行前校验 key 是否被改动，若被改则 EXEC 返回 nil 需重试；</li>
+<li><strong>Lua 脚本</strong>：服务端原子执行（天然串行，无锁冲突），减少网络交互；脚本应<strong>短小</strong>避免长时间阻塞主线程；Cluster 模式要求脚本内所有 Key 落在同一个槽（否则 CROSSSLOT）；</li>
+<li>实测（场景 8.21）：能用原生命令绝不用 EVAL；需要原子性时用"小 EVAL + batch≤100"的 NESTED 模式；<strong>严禁单个大 EVAL 内 for 大循环</strong>（MERGED 模式 P99 随 batch 超线性恶化 13→28→55ms，造成全局阻塞）。</li>
+</ul>
+<h3 id="83">8.3 连接池优化</h3>
+<p>合理配置连接池最大、最小连接数；避免频繁创建销毁连接，监控连接泄漏。</p>
+<p><strong>连接池大小估算</strong>：</p>
+<ul>
+<li>单实例并发上限 ≈ <code>maxclients - 保留连接数（OS/监控/运维）</code>；</li>
+<li>每个微服务实例连接池上限 ≈ <code>floor((maxclients - reserved) / instance_count / safetyFactor)</code>（safetyFactor 建议 1.5~2）；</li>
+<li><strong>maxclients 调优</strong>：给 OS 与监控工具保留连接（如 reserved=50~100），避免业务池占满 maxclients 后监控/运维连不上。</li>
+</ul>
+<p><strong>策略</strong>：优先 <strong>DIRECT + Semaphore</strong>（裸直连吞吐 + 连接数硬上限，见场景 6/11.5）；监控 <code>connected_clients</code>、<code>rejected_connections</code>（delta）与连接池 <code>poolActive/poolIdle/poolWaiters</code>。</p>
+<hr />
+<h2 id="9">9 缓存设计通用规范</h2>
+<ol>
+<li>统一 Key 命名规范，增加业务前缀隔离；</li>
+<li>所有缓存设置 TTL，杜绝永不过期 Key 持续占用内存；</li>
+<li>禁止缓存手机号、身份证等敏感明文；</li>
+<li>缓存与 DB 更新标准策略：先更新数据库，再删除缓存；</li>
+<li>高并发更新场景，使用版本号、分布式锁保障数据一致性；</li>
+<li>配置降级、熔断策略，Redis 故障时保护下游数据库。</li>
+</ol>
+<h3 id="91-db">9.1 缓存一致性完整方案（"先更新 DB 再删缓存"的落地与兜底）</h3>
+<p><strong>核心策略：Cache-Aside 旁路缓存</strong>——读：先查缓存，未命中回源 DB 并写回缓存；写：先更新 DB，再删除缓存（延迟到下次读时重建）。删除缓存而非更新缓存，可避免并发写覆盖导致的数据错乱。</p>
+<p><strong>为什么"先更新 DB 再删缓存"仍会脏读</strong>：</p>
+<ul>
+<li>线程 A 更新 DB → 线程 B 读旧缓存 → 线程 A 删缓存 → 期间 B 读到旧数据；</li>
+<li>或线程 A 更新 DB，线程 C 在 A 删缓存前回源写回旧值 → 缓存永久脏。</li>
+</ul>
+<p><strong>兜底强化方案（按可靠性递进）</strong>：</p>
+<ol>
+<li><strong>延迟双删</strong>：更新 DB 后删除缓存，<strong>间隔几百 ms 再删一次</strong>（抵消"回源写回旧值"的竞态窗口）。删除失败需重试。</li>
+<li><strong>删除失败重试机制</strong>：删除缓存失败不能吞掉，投递到 MQ/本地重试表异步补偿重删。</li>
+<li><strong>binlog 增量订阅（生产强推）</strong>：应用旁挂 Canal/Debezium 订阅 DB binlog，捕获更新事件后<strong>由订阅方删除/重建缓存</strong>，业务代码零侵入、与业务事务解耦、天然补偿"先更新 DB 后删缓存"的失败窗口。</li>
+<li><strong>TTL 兜底</strong>：所有缓存设置 TTL，即使缓存写脏，最长 TTL 后也会过期自愈，是最后防线。</li>
+<li><strong>版本号/时间戳校验</strong>：缓存值携带版本，读时校验版本落后则视为 miss 回源，避免旧值覆盖新值。</li>
+</ol>
+<blockquote>
+<p>读多写少场景优先 Cache-Aside；写频繁场景考虑"只更新 DB + binlog 订阅刷新缓存"，或降低缓存力度。高一致业务宁可多打 DB 也不容忍脏读。</p>
+</blockquote>
+<p><strong>最佳实践依场景而定</strong>：强一致场景建议<strong>写入 DB 并同步发布事件</strong>（在同一事务/事务日志后），由订阅方异步更新/删除缓存（binlog + Canal/Debezium）。无论哪种方案，<strong>业务需设计幂等回源与重试补偿</strong>。</p>
+<h3 id="92">9.2 安全与合规</h3>
+<p><strong>不要缓存明文敏感数据</strong>：</p>
+<ul>
+<li><strong>禁止缓存</strong>身份证号、银行卡号、密码、Token 明文、手机号等 PII（个人敏感信息）明文；</li>
+<li>若必须缓存，需<strong>加密或脱敏</strong>（如哈希/掩码），并严格 TTL 与访问控制；</li>
+<li>对敏感 Key 设置<strong>更严格的访问权限与审计</strong>，避免被误读/泄露。</li>
+</ul>
+<hr />
+<h2 id="10">10 线上运维调优要点</h2>
+<h3 id="101-transparent-huge-pagethp">10.1 Transparent Huge Page（THP 透明大页）优化</h3>
+<p><strong>1. 概念说明</strong></p>
+<p>Linux 内核机制，自动将 4KB 内存小页合并为 2MB 大页，优化顺序访问程序；对 Redis 存在严重负面影响。</p>
+<p><strong>2. 对 Redis 的致命影响</strong></p>
+<p>Redis <code>fork()</code> 创建子进程执行 RDB、AOF 重写依赖写时复制（COW）。开启 THP 后，只要修改大页内任意一小块数据，内核需要复制整个 2MB 页面；引发内存暴涨、主线程延迟毛刺、主从同步超时、持久化缓慢。</p>
+<p><strong>3. 三种模式</strong></p>
+<ul>
+<li><code>always</code>：永久启用；</li>
+<li><code>madvise</code>：程序主动申请才启用；</li>
+<li><code>never</code>：完全关闭（生产标准）。</li>
+</ul>
+<p><strong>4. 运维操作</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 查看状态</span>
+cat<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled
+<span class="c1"># 临时关闭（立即生效，重启失效）</span>
+<span class="nb">echo</span><span class="w"> </span>never<span class="w"> </span>&gt;<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled
+<span class="nb">echo</span><span class="w"> </span>never<span class="w"> </span>&gt;<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/defrag
+</code></pre></div>
+
+<p><strong>永久关闭（持久化）</strong>——否则重启后失效：</p>
+<ul>
+<li><strong>方式 A：systemd service</strong>（推荐）：创建 <code>/etc/systemd/system/disable-thp.service</code>，在 <code>ExecStart</code> 中执行 <code>echo never &gt; .../enabled &amp;&amp; echo never &gt; .../defrag</code>，<code>WantedBy=multi-user.target</code>。</li>
+<li><strong>方式 B：GRUB</strong>：在 <code>/etc/default/grub</code> 的 <code>GRUB_CMDLINE_LINUX</code> 加 <code>transparent_hugepage=never</code>，执行 <code>update-grub</code> 并重启。</li>
+</ul>
+<blockquote>
+<p>⚠️ 规范：生产 Redis 服务器<strong>永久关闭 THP</strong>，并把该设置<strong>固化进运维/初始化脚本与配置管理</strong>（Ansible/Puppet/基础设施模板），防止新节点遗漏；修改完成后重启 Redis 进程。</p>
+</blockquote>
+<p><strong>5. 核心结论</strong></p>
+<p>Redis 官方强制规范：<strong>所有生产实例必须禁用透明大页 THP</strong>。</p>
+<h3 id="102">10.2 通用运维调优清单</h3>
+<ol>
+<li>合理配置 tcp-backlog、client timeout；</li>
+<li>从节点可<strong>选择</strong>关闭持久化以降低主机 IO 压力，但<strong>仅在有独立备份策略、至少一台副本保留持久化或能接受副本丢失的前提下</strong>才允许；推荐<strong>副本错峰执行 BGSAVE/AOF rewrite</strong>（不同时间窗口）；</li>
+<li>合理调整 hz 参数，控制过期任务执行频率；</li>
+<li>核心监控指标：内存、CPU、网络、缓存命中率、慢查询、P99 延迟；</li>
+<li>持续采集慢查询日志，定位阻塞主线程的命令；</li>
+<li>线上禁止使用 KEYS 命令，遍历集合使用 SCAN。</li>
+</ol>
+<h3 id="103">10.3 缓存层监控与告警指标</h3>
+<p><strong>Cache 层核心指标</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">说明</th>
+<th style="text-align: left;">告警建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">hit ratio（命中率）</td>
+<td style="text-align: left;">近 1min/5min/1h</td>
+<td style="text-align: left;">低于阈值（如 80%）→ 告警</td>
+</tr>
+<tr>
+<td style="text-align: left;">qps / miss qps</td>
+<td style="text-align: left;">缓存请求/未命中速率</td>
+<td style="text-align: left;">miss 突增 → 排查穿透</td>
+</tr>
+<tr>
+<td style="text-align: left;">avg latency</td>
+<td style="text-align: left;">平均延迟</td>
+<td style="text-align: left;">超 SLO → 告警</td>
+</tr>
+<tr>
+<td style="text-align: left;">空值命中率</td>
+<td style="text-align: left;">空值缓存占比</td>
+<td style="text-align: left;">过高 → 空值污染</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>布隆误判率</strong></td>
+<td style="text-align: left;">布隆命中后 DB 未命中次数估算</td>
+<td style="text-align: left;">超阈值 → 检查容量/重建</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>布隆填充率</strong></td>
+<td style="text-align: left;">bit 填充程度</td>
+<td style="text-align: left;">&gt; 70% → 告警扩容/重建</td>
+</tr>
+<tr>
+<td style="text-align: left;">HLL key 数量</td>
+<td style="text-align: left;">HLL 实例数</td>
+<td style="text-align: left;">Key 爆炸预警</td>
+</tr>
+<tr>
+<td style="text-align: left;">ZSet 长度 / processing 超时率</td>
+<td style="text-align: left;">延迟任务队列健康度</td>
+<td style="text-align: left;">processing 回迁率 &gt; X → 告警</td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF rewrite 频率 / RDB bgsave 时间</td>
+<td style="text-align: left;">持久化健康</td>
+<td style="text-align: left;">bgsave 慢 / COW 大 → 告警</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>告警示例：hit ratio 低于阈值、processing 回迁率 &gt; X、布隆填充率 &gt; 70%、COW 大小异常增长。</p>
+</blockquote>
+<p><strong>INFO 关键指标（可直接采集）</strong>：</p>
+<ul>
+<li>内存：<code>used_memory</code>、<code>used_memory_rss</code>、<code>mem_fragmentation_ratio</code>；</li>
+<li>网络：<code>instantaneous_input_kbps</code>、<code>instantaneous_output_kbps</code>；</li>
+<li>吞吐：<code>instantaneous_ops_per_sec</code>、<code>keyspace_hits</code> / <code>keyspace_misses</code>；</li>
+<li>复制：<code>sync_full</code>、<code>sync_partial_ok</code>、<code>master_repl_offset</code>、<code>slave_repl_offset</code>、<code>repl_backlog_active</code>、<code>repl_backlog_first_byte_offset</code>；</li>
+<li>持久化：<code>aof_rewrite_in_progress</code>、<code>rdb_bgsave_in_progress</code>、<code>last_fork_usec</code>；</li>
+<li>阻塞：<code>blocked_clients</code>、<code>blocked_time</code>；</li>
+<li>慢查询：<code>slowlog</code> 长度与条目。</li>
+</ul>
+<p><strong>验证/核验命令</strong>：</p>
+<div class="codehilite"><pre><span></span><code># 查看 listpack/hash 配置
+CONFIG GET hash-max-listpack-entries
+CONFIG GET hash-max-listpack-value
+# 检查 key 编码
+OBJECT ENCODING &lt;key&gt;
+OBJECT IDLETIME &lt;key&gt;
+# 检查复制/延迟
+INFO replication
+redis-cli --stat
+# 检查 Cluster 状态
+CLUSTER INFO
+CLUSTER NODES
+</code></pre></div>
+
+<hr />
+<h2 id="11-1-10">11 全场景压测实证结论集锦（场景 1-10 核心结论汇总）</h2>
+<blockquote>
+<p>本章汇总 <code>docs/</code> 下场景 1-10 各压测文档的核心实证结论，与前面各章的架构理论相互印证。</p>
+<p>⚠️ <strong>环境依赖声明</strong>：所有压测数据基于特定硬件/网络/配置及客户端实现（本环境 Redis 7 单体/集群、Lettuce 等），<strong>实际生产需按本环境复现并回归测试</strong>。<strong>关键指标应以相对差异（倍数/百分比）而非绝对值为参考</strong>——绝对吞吐/延迟受硬件、网络、客户端库版本、Redis 配置强烈影响，具体数值仅供参考。</p>
+</blockquote>
+<h3 id="111-pipeline-1">11.1 Pipeline 压测优化（场景 1）</h3>
+<p><strong>核心问题</strong>：多 Worker Pipeline 持续写入，逐步排查并修复 7 个问题。</p>
+<p><strong>实测数据（SETEX 基线，batch=500, c=8, keySpace=5000 万）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: center;">修复前</th>
+<th style="text-align: center;">修复后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: center;">435k（假数据/覆盖写）</td>
+<td style="text-align: center;"><strong>~287k</strong>（真实新写入成本）</td>
+</tr>
+<tr>
+<td style="text-align: left;">P99</td>
+<td style="text-align: center;">20ms</td>
+<td style="text-align: center;">5ms</td>
+</tr>
+</tbody>
+</table>
+<p><strong>7 大问题与结论</strong>：</p>
+<ol>
+<li><strong>Redis CPU 100%</strong>：硬件天花板，单机新 key 写入吞吐约 200-300k cmd/s，要突破需水平扩展。</li>
+<li><strong>Pipeline 并发过载反噬</strong>：conc 8→16 吞吐反降 <strong>-37%</strong>（746k→468k）、延迟 5→20.7ms。修复：<code>Semaphore</code> 反压限制同时 flush 数，<strong>务必 try/finally 防令牌泄漏</strong>。修复后吞吐 468k→375k、延迟 20.7→11ms（牺牲吞吐换稳定）。</li>
+<li><strong>SecureRandom 并发争用</strong>：高并发下成为瓶颈，改 <code>ThreadLocalRandom</code>（注意：加密场景仍需 SecureRandom）。</li>
+<li><strong>key 空间太小退化为覆盖写</strong>：keySpace 不足 → 覆盖写掩盖真实写入成本，需足够大 key 空间。</li>
+<li><strong>AOF 刷盘影响</strong>：仅开 AOF 时触发。</li>
+<li><strong>Pipeline 超时配置</strong>：配 1s 超时需真正生效。</li>
+<li><strong>优雅关闭</strong>：两阶段关闭（优雅等待 + 超时强断），防令牌泄露。</li>
+</ol>
+<p><strong>混合命令退化（c=8）</strong>：SET 基线 332,825 → 2 种（SETEX+HSET）257,856（-22.5%）→ 3 种（+ZADD）240,706（-27.7%）。<strong>退化由"昂贵命令占比"（ZADD 跳表 O(logN)）决定，非种类数</strong>。</p>
+<p><strong>ZSet 分片专项（c=64）</strong>：Raw ZADD 单 key 168,851 vs 16 分片 177,727（仅 +8.3%）。<strong>结论：ZSet 分片在高吞吐写入下无效</strong>（0.16s 突破 listpack 阈值转 skiplist，路由开销成纯负担）。</p>
+<p><strong>生产最优</strong>：Raw ZADD 实时写 + 异步定时 ZREMRANGEBYRANK 裁剪。</p>
+<h3 id="112-ttl-key-3">11.2 短期 TTL 海量过期 key（场景 3）</h3>
+<p><strong>核心问题</strong>：大量秒级 TTL key 同时到期，active-expire 采样式扫描抢占主线程，P99 抖动。</p>
+<p><strong>三种武器实测对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">① 基线（固定TTL）</th>
+<th style="text-align: left;">② Redis 层（hz=50,effort=2,lazyfree）</th>
+<th style="text-align: left;">③ 应用层（TTL+rand）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>P99</strong></td>
+<td style="text-align: left;"><strong>51~159ms</strong></td>
+<td style="text-align: left;"><strong>5.6~17ms</strong></td>
+<td style="text-align: left;">6.7~34ms</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>max</strong></td>
+<td style="text-align: left;"><strong>82~262ms</strong></td>
+<td style="text-align: left;"><strong>8~41ms</strong></td>
+<td style="text-align: left;">12~123ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">37k~236k/s</td>
+<td style="text-align: left;"><strong>384k~471k/s</strong></td>
+<td style="text-align: left;">187k~432k/s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：</p>
+<ol>
+<li><strong>P99 尖刺根因</strong>：active-expire 在主线程采样式扫描 + 同步释放内存。</li>
+<li><code>hz</code> 控制扫描频率（密度），<code>effort</code> 控制单次扫描深度（阻塞），<code>lazyfree-lazy-expire</code> 只异步化内存回收，<strong>不消除扫描开销</strong>。</li>
+<li><strong>决策树</strong>：能改配置 → 开 lazyfree + 短 TTL 用 hz=50/effort=2；能改应用 → TTL 随机打散（P99: 159→34ms）；都不能 → 横向拆分或接受 P99&gt;50ms。</li>
+<li><strong>实测最优组合</strong>：<code>hz=50 + effort=2 + lazyfree=yes</code>，P99 从 159ms→16.96ms（↓9.3 倍），吞吐翻倍。</li>
+<li>长 TTL 周期批量写入 → 质数/互质 TTL 打破 LCM 汇集。</li>
+</ol>
+<h3 id="113-4">11.3 分布式信号量（场景 4）</h3>
+<p><strong>核心问题</strong>：单服务最优 8 pipeline 槽位，但 12 个微服务同时写 = 96 个管道，超出 Redis 承受能力。用 Redis 全局信号量让 Writer 竞争有限槽位。</p>
+<p><strong>实测结论</strong>：</p>
+<ol>
+<li><strong>8 个全局槽位是性价比最优值</strong>（cmd/s≈320k, P99≈4.6ms, retries=0）。</li>
+<li><strong>实现要点</strong>：① 只在成功占有槽位时释放（不能无条件 DECR）；② 用 token+TTL 防泄漏；③ 用 Lua 保证原子性；④ 避免 tight spin-wait，用随机退避。</li>
+<li><strong>retries=0 不等于无竞争</strong>，吞吐才是真正的健康指标。</li>
+<li>风险评估三轴：吞吐（cmd/s）/ 延迟（P99）/ 公平性（retries/starvation）。</li>
+</ol>
+<h3 id="114-hgetall-vs-hscan-5">11.4 HGETALL vs HSCAN（场景 5）</h3>
+<p><strong>核心问题</strong>：大 Hash（数千 field）HGETALL 是 O(N) 阻塞操作，写请求 P99 恶化。</p>
+<p><strong>实测结论</strong>：</p>
+<ol>
+<li><strong>HGETALL 在大 Hash 上 O(N) 阻塞主线程</strong>，写请求排队、P99 从 &lt;1ms 恶化到 &gt;50ms。</li>
+<li><strong>HSCAN 增量不阻塞</strong>，但返回不保证快照一致，<code>count</code> 只是 hint。</li>
+<li><strong>三级阈值策略（RedisHashUtil）</strong>：<code>HLEN &lt; 500</code> 直接 HGETALL；<code>500~5000</code> warn 走 HSCAN；<code>≥5000</code> 拒绝。<strong>HSCAN count=200 为经验最优值</strong>。</li>
+<li><strong>数据建模优先</strong>：单 key field 数 ≤ 1000（保守 500），从源头避免大 Hash。</li>
+<li><strong>禁止在 Lua 中做大循环或 HGETALL/SMEMBERS 大 key 操作</strong>；Redis 7+ 可用 EVAL_RO 发只读副本。</li>
+</ol>
+<h3 id="115-maxclients-6">11.5 maxclients 边界探测（场景 6）</h3>
+<p><strong>核心问题</strong>：多微服务多线程 Pipeline，连接数线性增长撞向 <code>maxclients</code>，新连接被拒。</p>
+<p><strong>实测数据（SETEX Pipeline, batch=20）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">吞吐</th>
+<th style="text-align: left;">连接数</th>
+<th style="text-align: left;">吞吐/连接</th>
+<th style="text-align: left;">Redis 压力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">DIRECT 裸</td>
+<td style="text-align: left;">~140k</td>
+<td style="text-align: left;">=并发数（无上限）</td>
+<td style="text-align: left;">388</td>
+<td style="text-align: left;">❌ 高</td>
+</tr>
+<tr>
+<td style="text-align: left;">POOL</td>
+<td style="text-align: left;">~58k</td>
+<td style="text-align: left;">≤poolMax</td>
+<td style="text-align: left;">4,143</td>
+<td style="text-align: left;">✅ 低</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>DIRECT+Semaphore</strong></td>
+<td style="text-align: left;"><strong>~155k</strong></td>
+<td style="text-align: left;">≤semaphoreMax（实测 5-10）</td>
+<td style="text-align: left;"><strong>15,500</strong></td>
+<td style="text-align: left;">✅ 极低</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：</p>
+<ol>
+<li><strong>DIRECT 模式 = 连接无上限</strong>，高并发必撞 maxclients，连接被拒无优雅降级。</li>
+<li><strong>POOL = 连接池硬上限</strong>，天然熔断器，但吞吐被池机制限制。</li>
+<li><strong>DIRECT+Semaphore = 裸 DIRECT 吞吐 + POOL 安全性</strong>，只用 10 条连接打满 ~155k cmd/s，最优方案。</li>
+<li>poolMaxTotal 配置公式：<code>floor((maxclients - reserved) / instance_count / safetyFactor)</code>。</li>
+<li>监控 <code>rejected_connections</code> 的 δ（增长速率），delta&gt;0 说明正在拒绝 → 紧急告警。</li>
+</ol>
+<h3 id="116-pipeline-rtt-wait-815-821">11.6 Pipeline RTT 敏感度与 WAIT（场景 8.15-8.21）</h3>
+<p><strong>核心问题</strong>：网络延迟对五种写入模式的冲击量化，以及同步/异步 WAIT 对吞吐的影响。</p>
+<p><strong>RTT 敏感度结论（场景 8.15）</strong>：</p>
+<ol>
+<li><code>SINGLE_KEY</code> / <code>DISTRIBUTED</code> / <code>SHARDED</code> 吞吐 ∝ 1/RTT（RTT 从 1ms→10ms 吞吐掉 ~90%）。</li>
+<li><code>LOCAL_BUFFERED</code> / <code>COMPUTED</code> 本地主循环，吞吐几乎与 RTT 无关。</li>
+<li><strong>量化判据</strong>：RTT ≥ 5ms 且写压占主路径 → 优先本地缓冲/COMPUTED；RTT &lt; 1ms 且需强一致 → 同步 WAIT 可接受。</li>
+</ol>
+<p><strong>同步 vs 异步 WAIT（场景 8.17/8.18）</strong>：</p>
+<ul>
+<li><strong>同步 WAIT</strong>：每批 flush 后等待副本确认，吞吐大幅退化（batch=100 时 -47%）。</li>
+<li><strong>异步 WAIT（Fire-and-Forget）</strong>：只登记 pendingWaits，周期 drain，<strong>根除 WAIT 吞吐退化</strong>。</li>
+<li>核心公式：<code>throughput ≈ (concurrency × batchSize) / (batchLatency + WAIT_RTT/N)</code>，N→∞ → 无 WAIT 基线。</li>
+<li>监控：WAIT 成功率 &lt; 99% 告警，持续 &lt; 95% 自动降级。</li>
+</ul>
+<p><strong>EVAL 嵌套执行（场景 8.21，3×3 实测）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">batchSize</th>
+<th style="text-align: left;">模式</th>
+<th style="text-align: center;">ops/s</th>
+<th style="text-align: center;">sideP99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: left;">NESTED</td>
+<td style="text-align: center;">191,044</td>
+<td style="text-align: center;">18.99ms</td>
+</tr>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: left;"><strong>MERGED</strong></td>
+<td style="text-align: center;">4,660</td>
+<td style="text-align: center;">12.75ms</td>
+</tr>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: left;">RAW</td>
+<td style="text-align: center;">455,483</td>
+<td style="text-align: center;">14.95ms</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td style="text-align: left;">MERGED</td>
+<td style="text-align: center;">600</td>
+<td style="text-align: center;"><strong>55.37ms</strong> ※</td>
+</tr>
+</tbody>
+</table>
+<p>※ 单个大 EVAL 独占主线程 1000 次循环的伤害 &gt; 1000 个小 EVAL 排队。</p>
+<p><strong>结论</strong>：RAW 原生命令最优（吞吐 455-588K）；NESTED EVAL 可行（batch≤100 最稳，~200K）；<strong>MERGED EVAL 危险</strong>（P99 随 batch 超线性增长，batch&gt;100 反超 NESTED）。生产优先级：能不用 EVAL 就不用 → 原子性用 NESTED 且 batch≤100 → 避免 MERGED 大循环。</p>
+<h3 id="117-9">11.7 集合运算高并发（场景 9）</h3>
+<p><strong>核心问题</strong>：Set 并/交/差是 CPU 密集型，大集合高并发下阻塞主线程。</p>
+<p><strong>实测数据（环境相关）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">集合大小 N</th>
+<th style="text-align: center;">吞吐</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: center;">30,499</td>
+<td style="text-align: left;"></td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>1,000</strong> ⭐</td>
+<td style="text-align: center;"><strong>38,031</strong></td>
+<td style="text-align: left;">甜蜜点</td>
+</tr>
+<tr>
+<td style="text-align: center;">5,000</td>
+<td style="text-align: center;">18,050</td>
+<td style="text-align: left;">拐点（-52%）</td>
+</tr>
+<tr>
+<td style="text-align: center;">10,000</td>
+<td style="text-align: center;">5,184</td>
+<td style="text-align: left;">主线程 CPU 饱和</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：</p>
+<ol>
+<li><strong>SINTER 以最小输入集合为遍历基准</strong>（O(S×(k-1))），SUNION 为 O(sum Ni)，SDIFF 遍历第一个集合并排除。</li>
+<li><strong>参数顺序影响成本</strong>——把小集合放前面。</li>
+<li><strong>SMOVE 是单命令原子方案</strong>；Pipeline 减少 RTT 但不保证多命令原子性。</li>
+<li>SSCAN 遍历必须去重 + max rounds/超时；非快照隔离。</li>
+<li><strong>手动取模跨分片 SINTER 不报错但静默错误</strong>（缺失 key 视为空集）——必须 hashtag 或校验。</li>
+<li>单 Redis 拆小 key 不减少 SINTER 遍历总量。</li>
+<li><strong>大集合用 STORE 变体预计算</strong>（SINTERSTORE 写一次换多次读），仅一次性用 SINTER。</li>
+</ol>
+<h3 id="118-vs-10">11.8 哨兵 vs 集群（场景 10）</h3>
+<p><strong>核心问题</strong>：为写入阶段做架构选型，对比稳态吞吐与故障韧性。</p>
+<p><strong>稳态写吞吐（单 worker 单 slot）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: center;">哨兵</th>
+<th style="text-align: center;">集群</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">cmdPerSec</td>
+<td style="text-align: center;">~369,300</td>
+<td style="text-align: center;">~354,900</td>
+</tr>
+<tr>
+<td style="text-align: left;">p99</td>
+<td style="text-align: center;">15.970ms</td>
+<td style="text-align: center;">18.233ms</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>集群与哨兵吞吐几乎相同（集群略低 ~4%）。因 key 落在同一固定 slot（单主分片），本质仍是单节点在写。<strong>单热 key/单 worker 分布写时，集群和哨兵都受单节点限制，无吞吐优势。</strong></p>
+</blockquote>
+<p><strong>故障韧性（kill master）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">阶段</th>
+<th style="text-align: center;">观察窗口</th>
+<th style="text-align: center;">重试</th>
+<th style="text-align: center;">哨兵 failRate</th>
+<th style="text-align: center;">集群 failRate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">修复前</td>
+<td style="text-align: center;">15s</td>
+<td style="text-align: center;">无</td>
+<td style="text-align: center;">0.105%</td>
+<td style="text-align: center;">0.099%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>修复后</strong></td>
+<td style="text-align: center;"><strong>35s</strong></td>
+<td style="text-align: center;"><strong>指数退避重试</strong></td>
+<td style="text-align: center;"><strong>0.000%</strong></td>
+<td style="text-align: center;"><strong>0.000%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：</p>
+<ol>
+<li><strong>稳态写入上集群对单 worker/单热 key 无吞吐优势</strong>（≈相同），写路径都是单主分片单线程。</li>
+<li><strong>集群的吞吐优势只在"多 key 均匀分布到多主分片"时体现</strong>。</li>
+<li><strong>故障韧性</strong>：应用层重试 + 足够观察窗口（35s），哨兵和集群 kill master 都做到 failRate=0（零丢失）。</li>
+<li><strong>选型建议</strong>：数据量小/简单高可用 → 哨兵；数据量大/需水平扩展/多 key 高吞吐 → 集群（前提 key 能均匀分布）。</li>
+<li><strong>脑裂防护</strong>：<code>min-replicas-to-write=1</code> 即可（与 replica 总数无关）。</li>
+<li><strong>RPO 兜底</strong>：数据库水位线对账是唯一数学上能保证最终一致性的手段。</li>
+</ol>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

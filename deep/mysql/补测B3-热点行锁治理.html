@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B3：热点行锁治理（Redis 缓存前置 / 分段锁） · 小番茄程序猿</title>
+<meta name="description" content="补测B3：热点行锁治理（Redis 缓存前置 / 分段锁） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</h1>
+  </div>
+  <article class="prose">
+<h1 id="b3redis">补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>真实并发最大瓶颈是<strong>热点行锁争用</strong>：单行库存/账户（如 <code>t_hot_single WHERE id=1</code>）被大量并发 UPDATE，<strong>同一行锁串行化</strong>，吞吐骤降。MySQL 行锁粒度是行，热点行永远是瓶颈。治理思路：<strong>分散锁争用</strong>（分段锁）或<strong>彻底绕开 MySQL 行锁</strong>（Redis 内存原子操作）。</p>
+<h2 id="_2">二、三种方案对比</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>原理</th>
+<th>锁争用</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>baseline 裸UPDATE</strong></td>
+<td>并发 UPDATE 同一行 <code>WHERE stock&gt;0</code></td>
+<td>严重（单行串行）</td>
+<td>低并发</td>
+</tr>
+<tr>
+<td><strong>segment 分段锁</strong></td>
+<td>热点库存拆 N 分桶行，并发随机打散到不同行</td>
+<td>降低（N 倍分散）</td>
+<td>中高并发</td>
+</tr>
+<tr>
+<td><strong>redis Redis前置</strong></td>
+<td>库存预热到 Redis，<code>DECR</code> 原子扣减，MySQL 仅兜底</td>
+<td>无（内存原子）</td>
+<td>高并发</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化热点库存（单行=分桶=Redis 一致）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hot/init?total=1000000&amp;buckets=32"</span>
+
+<span class="c1"># 2. 三方案吞吐对比（baseline / segment / redis）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hot/bench?concurrency=50&amp;total=2000"</span>
+
+<span class="c1"># 3. 单独测某方案吞吐</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hot/bench-mode?mode=redis&amp;concurrency=50&amp;total=2000"</span>
+
+<span class="c1"># 4. 热点库存状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/hot/status"</span>
+</code></pre></div>
+
+<h2 id="502000">四、实测结果（并发50，总量2000）</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>QPS</th>
+<th>相对 baseline</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>baseline（单行裸UPDATE）</td>
+<td><strong>282</strong></td>
+<td>1x</td>
+</tr>
+<tr>
+<td>segment（分段锁32桶）</td>
+<td><strong>335</strong></td>
+<td>~1.2x</td>
+</tr>
+<tr>
+<td><strong>redis（Redis前置DECR）</strong></td>
+<td><strong>4938</strong></td>
+<td><strong>~17.5x</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：热点行锁是 MySQL 写瓶颈。baseline 单行裸 UPDATE 锁争用吞吐最低；分段锁分散行锁提升约 1.2 倍；<strong>Redis 前置内存原子 DECR 彻底绕开 MySQL 行锁，吞吐提升约 17.5 倍</strong>。</p>
+<h2 id="_4">五、工程要点</h2>
+<ol>
+<li><strong>热点识别</strong>：先定位热点行（订单/秒杀/账户 TopN），再针对治理。</li>
+<li><strong>分段锁（分桶）</strong>：库存拆 N 桶，随机/取模路由到桶，<code>WHERE bucket_no=? AND stock&gt;0</code> 扣减；需按桶统计和剩余库存汇总。</li>
+<li><strong>Redis 前置</strong>：库存预热到 Redis，<code>DECR</code> 原子扣减返回余量，&lt;0 则超卖拒绝；异步回写 MySQL 兜底；注意 Redis 宕机时降级回 DB。</li>
+<li><strong>一致性</strong>：Redis 与 DB 最终一致，需回写任务或延迟双删；强一致场景谨慎。</li>
+<li><strong>兜底</strong>：Redis 前置需保留 DB 兜底路径（Redis 故障降级），防单点。</li>
+</ol>
+<h2 id="_5">六、面试简述</h2>
+<blockquote>
+<p><strong>热点行锁治理</strong>：热点单行被并发 UPDATE 行锁串行化是最大写瓶颈。实测（并发50）：单行裸 UPDATE 282 QPS，分段锁（拆32桶）335，Redis 前置 DECR <strong>4938（提升 17.5 倍）</strong>。分段锁把热点拆多行分散锁争用；Redis 前置用内存原子 DECR 彻底绕开 MySQL 行锁，最高效但需 DB 兜底和最终一致性处理。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

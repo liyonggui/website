@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B4：SQL 注入与安全治理 · 小番茄程序猿</title>
+<meta name="description" content="补测B4：SQL 注入与安全治理 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B4：SQL 注入与安全治理</h1>
+  </div>
+  <article class="prose">
+<h1 id="b4sql">补测B4：SQL 注入与安全治理</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>高并发系统安全必修。<strong>SQL 注入</strong>是最高危的漏洞之一：字符串拼接 SQL，恶意入参可绕过 WHERE 泄露全表、绕过认证、删库。治理核心：<strong>参数化根治 + 纵深防御</strong>（字段最小化、脱敏、最小权限、WAF）。</p>
+<h2 id="_2">二、注入原理与防护</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 危险拼接：WHERE username = 'input'</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_user</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'user'</span><span class="w"> </span><span class="k">OR</span><span class="w"> </span><span class="s1">'1'</span><span class="o">=</span><span class="s1">'1'</span><span class="w">   </span><span class="c1">-- ' OR '1'='1 使条件恒真，全表泄露</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_user</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'user'</span><span class="c1">-- '          -- '-- 注释掉后续，绕过认证</span>
+
+<span class="c1">-- 安全参数化：? 占位，注入字符被当作普通字符串</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_user</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">?</span><span class="w">   </span><span class="c1">-- ' OR '1'='1 查不到任何行，攻击失效</span>
+</code></pre></div>
+
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化安全演示用户</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/init?rows=100"</span>
+
+<span class="c1"># 2. 注入漏洞演示（拼接SQL，注入 ' OR '1'='1 泄露全表）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/vuln?input='%20OR%20'1'='1"</span>
+
+<span class="c1"># 3. 参数化防护（同一注入载荷，攻击失效）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/param?input='%20OR%20'1'='1"</span>
+
+<span class="c1"># 4. 敏感字段脱敏（手机号/身份证打码）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/masking"</span>
+
+<span class="c1"># 5. SELECT * 泄漏与字段最小化</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/select-star"</span>
+
+<span class="c1"># 6. 安全治理建议</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/sql-safe/governance"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>输入</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>注入漏洞（拼接SQL）</td>
+<td><code>' OR '1'='1</code></td>
+<td><strong>泄露 100 行</strong>（WHERE 恒真，全表返回）</td>
+</tr>
+<tr>
+<td>参数化防护（PreparedStatement）</td>
+<td>同一载荷</td>
+<td><strong>返回 0 行</strong>（注入被当作普通字符串，攻击失效）</td>
+</tr>
+<tr>
+<td>敏感脱敏</td>
+<td>—</td>
+<td>手机号 <code>138****0000</code>、身份证 <code>110***********0000</code></td>
+</tr>
+<tr>
+<td>SELECT *</td>
+<td>—</td>
+<td>泄露 password/id_card 等敏感列；应只查必要字段</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心对比</strong>：同一注入载荷 <code>' OR '1'='1</code>，拼接 SQL 泄露全表 100 行，参数化后返回 0 行 → <strong>PreparedStatement 参数化根治注入</strong>。</p>
+<h2 id="_5">五、安全治理方案</h2>
+<ol>
+<li><strong>根治</strong>：全部用 PreparedStatement 参数化，禁止字符串拼接 SQL。</li>
+<li><strong>字段最小化</strong>：SELECT 显式列，不用 <code>SELECT *</code>，避免敏感列泄露。</li>
+<li><strong>敏感脱敏</strong>：手机号/身份证/密码查询时脱敏，密码只存 hash。</li>
+<li><strong>最小权限</strong>：应用账号按需授权（SELECT/INSERT/UPDATE），不滥用 root。</li>
+<li><strong>输入校验</strong>：长度/白名单校验，限制注入载荷边界。</li>
+<li><strong>WAF/过滤</strong>：网关层过滤 SQL 注入特征关键字。</li>
+<li><strong>审计</strong>：开启 general_log/审计，追踪可疑 SQL。</li>
+</ol>
+<h2 id="_6">六、面试简述</h2>
+<blockquote>
+<p><strong>SQL 注入治理</strong>：字符串拼接 SQL 使恶意入参（如 <code>' OR '1'='1</code>、<code>'--</code>）绕过 WHERE 泄露全表或绕过认证。实测同一载荷拼接 SQL 泄露 100 行、参数化后 0 行。根治用 PreparedStatement 参数化，纵深防御：字段最小化（不用 SELECT *）、敏感脱敏、最小权限、WAF 过滤、输入校验。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

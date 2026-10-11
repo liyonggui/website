@@ -1,0 +1,2298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable） · 小番茄程序猿</title>
+<meta name="description" content="场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</h1>
+  </div>
+  <article class="prose">
+<h1 id="11redis-string-intembstrraw-hash-listpackhashtable-zset-listpackskiplist-set-intsetlistpackhashtable">场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</h1>
+<blockquote>
+<p>已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需启动 <code>redis</code> + <code>lettuce-bench</code></p>
+</blockquote>
+<h2 id="1">1. 测试动机</h2>
+<p>Redis 的 String 类型有三种内部编码，由 value 自动决定：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>int</strong></td>
+<td>value 是 64 位有符号整数</td>
+<td>直接存 8 字节 <code>long</code>（内联在 RedisObject 的 value 字段）</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>embstr</strong></td>
+<td>字符串且长度 ≤ 44 字节（<code>OBJ_ENCODING_EMBSTR_SIZE_LIMIT</code>）</td>
+<td>RedisObject + sds 字符串头 + 数据 <strong>1 次 malloc 连续分配</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>raw</strong></td>
+<td>字符串长度 &gt; 44 字节</td>
+<td>RedisObject 和 sds <strong>2 次 malloc 独立分配</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注意：Redis 7.x 中 <code>OBJ_ENCODING_EMBSTR_SIZE_LIMIT = 44</code> 字节（旧版 ziplist 场景是 39）。</p>
+</blockquote>
+<p>核心问题：<strong>什么场景下用哪种编码更优？根因是什么？</strong> 用压测实测验证。</p>
+<h2 id="2">2. 三种编码的具体业务场景</h2>
+<blockquote>
+<p>编码由 Redis 自动选择（开发者无需手动指定），但<strong>理解每种编码适合什么业务</strong>能帮你决定"把什么类型的数据存进 Redis String"，从而天然利用最优编码。核心决策维度：<strong>数值运算 / 短文本 / 长文本 / 可变拼接</strong>。</p>
+</blockquote>
+<h3 id="21-int">2.1 int 编码（数值场景）</h3>
+<p><strong>适用业务</strong>：一切需要"数值运算"的计数器、统计量。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>商品/视频/文章 <strong>浏览数、点赞数</strong></td>
+<td><code>INCR hot:video:10086</code></td>
+<td>高频自增，零分配</td>
+</tr>
+<tr>
+<td><strong>库存扣减</strong></td>
+<td><code>DECRBY goods:stock:sku9527 1</code></td>
+<td>原子扣减</td>
+</tr>
+<tr>
+<td>用户/接口 <strong>频控计数</strong></td>
+<td><code>INCR rate:user:10086</code> + <code>EXPIRE</code></td>
+<td>自增后取模判断</td>
+</tr>
+<tr>
+<td>排行榜 <strong>分数累计</strong></td>
+<td><code>INCRBY rank:score:player 100</code></td>
+<td>增量累加</td>
+</tr>
+<tr>
+<td>分布式 <strong>发号器/ID</strong></td>
+<td><code>INCR global:order_seq</code></td>
+<td>全局唯一序列</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 int 最适合</strong>：value 直接是 RedisObject 里的 <code>long</code>，INCR/INCRBY 只是做整数加法，<strong>零 malloc、零 memcpy</strong>（实测 532K ops/s，P99 最低）。这是 Redis 最高效的 String 操作。</p>
+<p><strong>注意事项</strong>：
+- value 必须是纯数字字符串才能走 int（如 <code>SET k 0</code> 是 int，<code>SET k "abc"</code> 不是）
+- 超出 64 位有符号范围（±9.2×10¹⁸）会自动转 raw
+- 若数字从不参与运算、只当普通字符串存，int 编码的"运算优势"就没用上（但仍是最省内存）</p>
+<h3 id="22-embstr">2.2 embstr 编码（短文本场景）</h3>
+<p><strong>适用业务</strong>：一次性写入、长度 ≤44B 的短字符串（Redis 自动选 embstr，无需干预）。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">value 典型长度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>短状态值 / <strong>标志位</strong></td>
+<td><code>SET order:status:123 "PAID"</code></td>
+<td style="text-align: center;">~4-10B</td>
+</tr>
+<tr>
+<td><strong>Token / SessionID</strong></td>
+<td><code>SET token:abc123 "session-value"</code></td>
+<td style="text-align: center;">~20-40B</td>
+</tr>
+<tr>
+<td>短配置 / 开关</td>
+<td><code>SET feature:new-ui "enabled"</code></td>
+<td style="text-align: center;">~10B</td>
+</tr>
+<tr>
+<td>手机号 / 用户名短标识</td>
+<td><code>SET phone:138xxxx "uid:9527"</code></td>
+<td style="text-align: center;">~10-15B</td>
+</tr>
+<tr>
+<td>短 JSON / 短摘要</td>
+<td><code>SET cache:short "{...}"</code></td>
+<td style="text-align: center;">≤44B</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 embstr 适合</strong>：RedisObject + sds + 数据 <strong>1 次 malloc 连续分配</strong>，内存紧凑、cache 友好。实测 SET 比 raw 快 25%、GET 快 14%。</p>
+<p><strong>注意事项</strong>：
+- <strong>embstr 是只读/不可变的</strong>：一旦用 <code>APPEND</code>/<code>SETRANGE</code> 修改，会先转成 raw 再操作（触发重分配）
+- <strong>避免对短 key 反复 APPEND</strong>：每次修改都 embstr→raw 重分配，max 延迟高达 287ms（实测）
+- 超过 44B 自动转 raw，这是硬性边界</p>
+<h3 id="23-raw">2.3 raw 编码（长文本 / 可变拼接场景）</h3>
+<p><strong>适用业务</strong>：长度 &gt;44B 的字符串，以及<strong>需要增量拼接</strong>的可变字符串。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>JSON / 序列化对象</strong></td>
+<td><code>SET user:9527 '{"name":"...","age":...}'</code></td>
+<td>结构化数据，通常 &gt;44B</td>
+</tr>
+<tr>
+<td><strong>日志 / 大文本缓存</strong></td>
+<td><code>SET log:2024:... "long content"</code></td>
+<td>长内容</td>
+</tr>
+<tr>
+<td>图片 base64 / 文件内容片段</td>
+<td><code>SET img:hash "data:image..."</code></td>
+<td>大字符串</td>
+</tr>
+<tr>
+<td>HTML / 模板片段缓存</td>
+<td><code>SET page:home "&lt;div&gt;...&lt;/div&gt;"</code></td>
+<td>长 HTML</td>
+</tr>
+<tr>
+<td><strong>累积/拼接构建大字符串</strong></td>
+<td>先 <code>SET k 初始大值</code> 再反复 <code>APPEND k 小块</code></td>
+<td>sds 预分配摊销 O(1)</td>
+</tr>
+<tr>
+<td>大 value 一次性读写</td>
+<td><code>SET k 长文本</code> / <code>GET k</code></td>
+<td>数据搬运主导成本</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 raw 适合</strong>：
+- 大 value 只能 raw（&gt;44B 无法用 embstr），<strong>是唯一选择</strong>
+- <strong>增量拼接时 raw 最优</strong>：<code>sdsMakeRoomFor</code> 预分配 2 倍容量，后续 APPEND 容量足够即 O(1)（实测 max 延迟 39ms，远低于 embstr 的 287ms）</p>
+<p><strong>注意事项</strong>：
+- 大 value 的 memcpy 成本线性增长：SET 1KB 比 200B 慢 39%（实测）
+- <strong>不要对 int/embstr 起点反复 APPEND</strong>：会反复全量重分配，延迟长尾放大
+- 超大 value（几百 KB 以上）会阻塞主线程并放大 slowlog，应压缩或拆分</p>
+<h3 id="24">2.4 三种编码选型速查表</h3>
+<table>
+<thead>
+<tr>
+<th>你要存的数据</th>
+<th style="text-align: center;">编码</th>
+<th>一句话原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数值，且要做运算（自增/减）</td>
+<td style="text-align: center;"><strong>int</strong></td>
+<td>零分配，最快路径</td>
+</tr>
+<tr>
+<td>短文本（≤44B）一次性写入</td>
+<td style="text-align: center;"><strong>embstr</strong></td>
+<td>单次分配，cache 友好</td>
+</tr>
+<tr>
+<td>长文本（&gt;44B）</td>
+<td style="text-align: center;"><strong>raw</strong></td>
+<td>只能 raw，注意 memcpy</td>
+</tr>
+<tr>
+<td>增量拼接构建大字符串</td>
+<td style="text-align: center;"><strong>raw 预分配</strong></td>
+<td>sds 预分配，摊销 O(1)</td>
+</tr>
+<tr>
+<td>短文本反复修改拼接</td>
+<td style="text-align: center;">❌ 避开</td>
+<td>embstr/int 反复重分配，延迟爆炸</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心决策原则</strong>：
+1. <strong>能用整数存计数就用整数</strong>（Redis 自动选 int）
+2. <strong>短文本不用管</strong>（Redis 自动选 embstr）
+3. <strong>要增量构建大字符串</strong>：先 SET 初始 raw 预分配，再 APPEND
+4. <strong>避免对 int/embstr 反复修改</strong>（会反复重分配）</p>
+<h2 id="3">3. 压测架构</h2>
+<div class="codehilite"><pre><span></span><code>POST /str-encoding/run → StringEncodingBenchService.runSweep()
+  1. preloadAllEncodings(): FLUSHDB + Pipeline 预加载 4×100K key
+       intKeys → SET 整数          → int 编码
+       embstrKeys → SET 40B 字符串  → embstr 编码
+       rawKeys → SET 200B 字符串    → raw 编码
+       modKeys → SET 整数          → 后续 APPEND 触发 int→raw
+  2. 8 轮对比（每轮 5s 预热 + 10s 采样，c=16, batch=100）
+       SET_INT / SET_EMBSTR / SET_RAW
+       GET_INT / GET_EMBSTR / GET_RAW
+       INCR / MODIFY(APPEND)
+  3. 采集 ops/s、avg/p50/p90/p99/max、slowlogΔ、编码验证（OBJECT ENCODING）
+</code></pre></div>
+
+<p><strong>端点</strong>：<code>GET /str-encoding/status</code>、<code>POST /str-encoding/run</code>、<code>POST /str-encoding/stop</code></p>
+<p><strong>配置</strong>（<code>application.yml</code>）：concurrency=16, batch-size=100, key-space=100000, warmup=5s, sample=10s</p>
+<p><strong>编码验证输出</strong>：</p>
+<div class="codehilite"><pre><span></span><code>[编码验证] int=int, embstr=embstr, raw=raw
+[编码验证] mod(int)=int（APPEND 后应变 raw）
+</code></pre></div>
+
+<h2 id="4">4. 实测数据</h2>
+<p><strong>测试条件</strong>：concurrency=16, batch=100, keySpace=100000, warmup=5s + sample=10s，Redis 7 单体无持久化。</p>
+<h3 id="41-set-get-incr">4.1 基础编码对比（SET / GET / INCR）</h3>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th>操作</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p50</th>
+<th style="text-align: right;">p90</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: right;">max</th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SET_INT</td>
+<td>SET 整数</td>
+<td style="text-align: center;">int</td>
+<td style="text-align: right;">415,544</td>
+<td style="text-align: right;">3.861ms</td>
+<td style="text-align: right;">3.502ms</td>
+<td style="text-align: right;">5.067ms</td>
+<td style="text-align: right;">11.939ms</td>
+<td style="text-align: right;">32.39ms</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td><strong>SET_EMBSTR</strong></td>
+<td>SET 40B</td>
+<td style="text-align: center;">embstr</td>
+<td style="text-align: right;"><strong>448,159</strong></td>
+<td style="text-align: right;">3.583ms</td>
+<td style="text-align: right;">3.303ms</td>
+<td style="text-align: right;">4.719ms</td>
+<td style="text-align: right;">9.149ms</td>
+<td style="text-align: right;">33.72ms</td>
+<td style="text-align: center;">5</td>
+</tr>
+<tr>
+<td>SET_RAW</td>
+<td>SET 200B</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;">357,566</td>
+<td style="text-align: right;">4.487ms</td>
+<td style="text-align: right;">4.126ms</td>
+<td style="text-align: right;">5.759ms</td>
+<td style="text-align: right;">12.014ms</td>
+<td style="text-align: right;">32.91ms</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td>GET_INT</td>
+<td>GET 整数</td>
+<td style="text-align: center;">int</td>
+<td style="text-align: right;">429,694</td>
+<td style="text-align: right;">3.734ms</td>
+<td style="text-align: right;">3.341ms</td>
+<td style="text-align: right;">5.262ms</td>
+<td style="text-align: right;">11.260ms</td>
+<td style="text-align: right;">31.12ms</td>
+<td style="text-align: center;">6</td>
+</tr>
+<tr>
+<td><strong>GET_EMBSTR</strong></td>
+<td>GET 40B</td>
+<td style="text-align: center;">embstr</td>
+<td style="text-align: right;"><strong>457,400</strong></td>
+<td style="text-align: right;">3.522ms</td>
+<td style="text-align: right;">3.170ms</td>
+<td style="text-align: right;">4.803ms</td>
+<td style="text-align: right;">10.928ms</td>
+<td style="text-align: right;">48.00ms</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td>GET_RAW</td>
+<td>GET 200B</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;">400,466</td>
+<td style="text-align: right;">4.010ms</td>
+<td style="text-align: right;">3.732ms</td>
+<td style="text-align: right;">5.247ms</td>
+<td style="text-align: right;">10.011ms</td>
+<td style="text-align: right;">27.48ms</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr>
+<td><strong>INCR</strong></td>
+<td>int 数学运算</td>
+<td style="text-align: center;">int</td>
+<td style="text-align: right;"><strong>532,654</strong></td>
+<td style="text-align: right;"><strong>3.016ms</strong></td>
+<td style="text-align: right;">2.794ms</td>
+<td style="text-align: right;">3.876ms</td>
+<td style="text-align: right;"><strong>7.851ms</strong></td>
+<td style="text-align: right;">29.02ms</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td>MODIFY</td>
+<td>APPEND int→raw</td>
+<td style="text-align: center;">int→raw</td>
+<td style="text-align: right;">457,505</td>
+<td style="text-align: right;">3.509ms</td>
+<td style="text-align: right;">3.264ms</td>
+<td style="text-align: right;">4.491ms</td>
+<td style="text-align: right;">8.489ms</td>
+<td style="text-align: right;">39.11ms</td>
+<td style="text-align: center;">5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键对比（基础）</strong>：
+- <strong>SET</strong>：embstr vs raw 提升 <strong>+25.3%</strong>（448,159 vs 357,566）
+- <strong>GET</strong>：embstr vs raw 提升 <strong>+14.2%</strong>（457,400 vs 400,466）
+- <strong>INCR 最快</strong>：532K ops/s，P99 最低（7.851ms）
+- <strong>MODIFY 后 encodingAfter = raw</strong>（APPEND 触发 int→raw 重分配）</p>
+<h3 id="42-raw-value-append">4.2 raw 最优场景（大 value + APPEND 增量构建）</h3>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th>操作</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: right;">max</th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SET_RAW</td>
+<td>SET 200B</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;">357,566</td>
+<td style="text-align: right;">4.487ms</td>
+<td style="text-align: right;">12.014ms</td>
+<td style="text-align: right;">32.91ms</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td><strong>SET_RAW_1K</strong></td>
+<td>SET 1KB</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;"><strong>218,997</strong></td>
+<td style="text-align: right;">7.324ms</td>
+<td style="text-align: right;">15.500ms</td>
+<td style="text-align: right;">45.42ms</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td>GET_RAW</td>
+<td>GET 200B</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;">400,466</td>
+<td style="text-align: right;">4.010ms</td>
+<td style="text-align: right;">10.011ms</td>
+<td style="text-align: right;">27.48ms</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr>
+<td><strong>GET_RAW_1K</strong></td>
+<td>GET 1KB</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;"><strong>289,606</strong></td>
+<td style="text-align: right;">5.555ms</td>
+<td style="text-align: right;">13.201ms</td>
+<td style="text-align: right;">49.32ms</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td><strong>APPEND_RAW</strong></td>
+<td>APPEND 预分配</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;"><strong>410,066</strong></td>
+<td style="text-align: right;"><strong>3.919ms</strong></td>
+<td style="text-align: right;">11.221ms</td>
+<td style="text-align: right;"><strong>39.31ms</strong></td>
+<td style="text-align: center;">9</td>
+</tr>
+<tr>
+<td>APPEND_EMBSTR</td>
+<td>APPEND 重分配</td>
+<td style="text-align: center;">embstr→raw</td>
+<td style="text-align: right;">409,705</td>
+<td style="text-align: right;">3.929ms</td>
+<td style="text-align: right;">9.710ms</td>
+<td style="text-align: right;"><strong>286.79ms</strong></td>
+<td style="text-align: center;">4</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键对比（raw 专项）</strong>：
+- <strong>SET raw 200B→1KB 衰减 -38.8%</strong>（357K→219K）
+- <strong>GET raw 200B→1KB 衰减 -27.7%</strong>（400K→290K）
+- <strong>APPEND_RAW max 延迟 39ms vs APPEND_EMBSTR 287ms</strong>（差 7.3 倍）——raw 预分配摊销 O(1)，embstr 不可变每次重分配
+- APPEND_EMBSTR 后 encodingAfter = raw（embstr 追加即转 raw）</p>
+<h2 id="5-raw">5. raw 最优场景专项验证（加大数据）</h2>
+<h3 id="50-raw">5.0 为什么要单独测 raw</h3>
+<p>前 8 轮显示 raw 的 SET/GET 都是最慢的。但 raw 有 embstr 无法比拟的优势场景——<strong>可变的增量字符串构建</strong>：
+- <strong>embstr 不可变</strong>：追加内容（APPEND）必须新建 sds + 全量拷贝 → 每次 O(N)
+- <strong>raw 可变</strong>：sds 有预分配机制（<code>sdsMakeRoomFor</code>），容量足够时追加 O(1)</p>
+<p>为验证此假设，新增 4 轮：SET_RAW_1K / GET_RAW_1K（大 value 规模衰减）+ APPEND_RAW / APPEND_EMBSTR（增量构建对比）。</p>
+<h3 id="51-raw-value-setget">5.1 raw 大 value 规模衰减（SET/GET）</h3>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: center;">value</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: center;">衰减</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SET_RAW</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: center;">200B</td>
+<td style="text-align: right;">357,566</td>
+<td style="text-align: right;">4.487ms</td>
+<td style="text-align: right;">12.014ms</td>
+<td style="text-align: center;">基线</td>
+</tr>
+<tr>
+<td><strong>SET_RAW_1K</strong></td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: center;">1KB</td>
+<td style="text-align: right;"><strong>218,997</strong></td>
+<td style="text-align: right;">7.324ms</td>
+<td style="text-align: right;">15.500ms</td>
+<td style="text-align: center;"><strong>-38.8%</strong></td>
+</tr>
+<tr>
+<td>GET_RAW</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: center;">200B</td>
+<td style="text-align: right;">400,466</td>
+<td style="text-align: right;">4.010ms</td>
+<td style="text-align: right;">10.011ms</td>
+<td style="text-align: center;">基线</td>
+</tr>
+<tr>
+<td><strong>GET_RAW_1K</strong></td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: center;">1KB</td>
+<td style="text-align: right;"><strong>289,606</strong></td>
+<td style="text-align: right;">5.555ms</td>
+<td style="text-align: right;">13.201ms</td>
+<td style="text-align: center;"><strong>-27.7%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>根因</strong>：memcpy 数据量线性增长。1KB 的 memcpy 是 200B 的 5 倍，主线程拷贝时间占比升高，吞吐随 value 增大近似线性下降。SET 衰减（-38.8%）比 GET（-27.7%）更明显，因为写入路径多了"分配 + 写入"两步拷贝。</p>
+<h3 id="52-append-raw-vs-embstr">5.2 APPEND 增量构建：raw 预分配 vs embstr 重分配（关键验证）</h3>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: right;"><strong>max</strong></th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>APPEND_RAW</strong></td>
+<td style="text-align: center;">raw 预分配</td>
+<td style="text-align: right;"><strong>410,066</strong></td>
+<td style="text-align: right;"><strong>3.919ms</strong></td>
+<td style="text-align: right;">11.221ms</td>
+<td style="text-align: right;"><strong>39.306ms</strong></td>
+<td style="text-align: center;">9</td>
+</tr>
+<tr>
+<td>APPEND_EMBSTR</td>
+<td style="text-align: center;">embstr→raw</td>
+<td style="text-align: right;">409,705</td>
+<td style="text-align: right;">3.929ms</td>
+<td style="text-align: right;">9.710ms</td>
+<td style="text-align: right;"><strong>286.786ms</strong></td>
+<td style="text-align: center;">4</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>APPEND_EMBSTR 的 <code>encodingAfter=raw</code>（embstr 追加后强制转 raw）。</p>
+</blockquote>
+<p><strong>关键发现：raw 才是 APPEND 构建大字符串的"最优"编码</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">APPEND_RAW（预分配）</th>
+<th style="text-align: left;">APPEND_EMBSTR（重分配）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">平均吞吐</td>
+<td style="text-align: left;">410K</td>
+<td style="text-align: left;">409K（相近）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>max 延迟</strong></td>
+<td style="text-align: left;"><strong>39ms</strong></td>
+<td style="text-align: left;"><strong>287ms（7.3 倍）</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">追加机制</td>
+<td style="text-align: left;">sds 容量充足，O(1)</td>
+<td style="text-align: left;">新建 sds + 全量拷贝旧值 O(N)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>根因</strong>：raw 的 <code>sdsMakeRoomFor</code> 会预分配 2 倍容量，后续 APPEND 只要容量够就是 O(1) 追加。embstr 是<strong>不可变</strong>的，每次 APPEND 都必须新建 sds、拷贝旧值全部内容 → 延迟长尾放大（max 287ms）。</p>
+<h3 id="53-raw">5.3 raw 最优场景结论</h3>
+<div class="codehilite"><pre><span></span><code>raw 编码什么时候最优？
+  ✅ APPEND 增量构建大字符串（&gt;44B，必须 raw，且 sds 预分配摊销 O(1)）
+  ✅ 大 value 一次性 SET（&gt;44B 无法用 embstr，raw 是唯一选择）
+  ❌ 频繁随机写的小 value（embstr 1 次分配更优）
+  ❌ 反复对同一 key 做小字符串 APPEND（若从 int/embstr 开始，会反复重分配）
+</code></pre></div>
+
+<p><strong>生产建议</strong>：
+1. <strong>要增量构建大字符串</strong>：先 SET 一个初始 raw（预分配），再反复 APPEND → 摊销 O(1)，避免每次重分配
+2. <strong>不要对 int/embstr 反复 APPEND</strong>：每次跨阈值（int→raw / embstr→raw）都全量重分配，max 延迟爆炸（287ms）
+3. <strong>大 value 不可避免 raw</strong>：注意 SET 1KB 相比 200B 吞吐下降 ~39%，超大 value 应压缩或拆分</p>
+<h2 id="6">6. 根因分析（原始基础对比）</h2>
+<h3 id="61-incrint-560k-opss">6.1 为什么 INCR（int 编码）最快——560K ops/s</h3>
+<p>int 编码下 value 直接是 RedisObject 内部的 <code>long</code> 字段：
+- <strong>INCR 只做整数加法</strong>，零内存分配、零 sds 字符串操作
+- 不需要 malloc、不需要 memcpy，Redis 主线程只算一个加法
+- 这是 Redis String 的<strong>最快操作路径</strong></p>
+<h3 id="62-embstr-rawset-253">6.2 为什么 embstr 优于 raw（SET +25.3%）</h3>
+<p><strong>内存分配次数是根因</strong>：</p>
+<div class="codehilite"><pre><span></span><code>embstr:  [RedisObject + sds头 + 数据]  ← 1 次 malloc，连续内存
+raw:     [RedisObject]  +  [sds头 + 数据]  ← 2 次 malloc，内存分离
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">embstr</th>
+<th style="text-align: left;">raw</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">malloc 次数</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">2</td>
+</tr>
+<tr>
+<td style="text-align: left;">内存连续性</td>
+<td style="text-align: left;">连续</td>
+<td style="text-align: left;">分离</td>
+</tr>
+<tr>
+<td style="text-align: left;">写入 SET</td>
+<td style="text-align: left;">少 1 次分配</td>
+<td style="text-align: left;">多 1 次分配 + memcpy</td>
+</tr>
+<tr>
+<td style="text-align: left;">读取 GET</td>
+<td style="text-align: left;">cache 友好</td>
+<td style="text-align: left;">cache miss 更高</td>
+</tr>
+</tbody>
+</table>
+<h3 id="63-get-142-set253">6.3 为什么 GET 差异（+14.2%）小于 SET（+25.3%）</h3>
+<ul>
+<li><strong>SET</strong> 差异大：写入路径要多做 1 次 malloc + 数据拷贝，分配器开销直接显现</li>
+<li><strong>GET</strong> 差异小：读取都是 O(1) 查 dict + 返回 sds 指针，embstr 的连续内存 cache 命中率更高，raw 的分离内存反复读写时 cache miss 更多，但单次读取开销本身就不大</li>
+</ul>
+<h3 id="64-modifyintraw-int-raw">6.4 为什么 MODIFY（int→raw）介于 int 和 raw 之间</h3>
+<p>APPEND 把 int 编码的 key 追加字符串 → <strong>必须从 int 重分配为 raw</strong>：
+- 新建 sds、拷贝旧值 + 新值（O(长度)）
+- 比纯 int 的 INCR 慢（要重分配），但比纯 raw 的 SET 快（200B 级拷贝开销有限）</p>
+<h3 id="65-slowlog">6.5 slowlog 趋势</h3>
+<ul>
+<li>SET/GET 的 slowlogΔ 随 value 增大而略增（raw 比 embstr 多 1 条）</li>
+<li>反映大 value 的 memcpy 在主线程耗时更长，更易触发 slowlog</li>
+</ul>
+<h2 id="7">7. 生产选型建议</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">推荐编码</th>
+<th>实测依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>计数器/自增（INCR/INCRBY/DECR）</td>
+<td style="text-align: center;"><strong>int</strong></td>
+<td>532K ops/s，P99 最低（7.85ms），零分配</td>
+</tr>
+<tr>
+<td>短文本/短状态值（≤44B）</td>
+<td style="text-align: center;"><strong>embstr</strong></td>
+<td>SET 提升 25%，GET 提升 14%，单次分配</td>
+</tr>
+<tr>
+<td>JSON/序列化对象/长文本</td>
+<td style="text-align: center;"><strong>raw</strong></td>
+<td>无法避免；SET 1KB 比 200B 慢 39%，注意 memcpy 与 slowlog</td>
+</tr>
+<tr>
+<td><strong>增量构建大字符串</strong>（拼接日志/累积值）</td>
+<td style="text-align: center;"><strong>raw 预分配</strong></td>
+<td>先 SET 初始 raw 再 APPEND，摊销 O(1)，max 39ms</td>
+</tr>
+<tr>
+<td>对短值反复 APPEND</td>
+<td style="text-align: center;">❌ 避免</td>
+<td>int/embstr 每次重分配，max 延迟 287ms（embstr）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键原则</strong>：
+1. <strong>能用整数就不用字符串</strong>：注意 <code>SET k 0</code> 与 <code>SET k "0"</code> 在 RESP 协议层是同一个值，都会走 int；真正的分界是值能否被 <code>string2ll</code> 解析为 64 位整数（带空格、小数点、超出 ±9.2e18 都会退化为 embstr/raw）。计数场景优先直接用 INCR/DECR。
+2. <strong>短字符串天然是 embstr</strong>：Redis 自动优化 ≤44B，无需干预
+3. <strong>增量构建大字符串用 raw 预分配</strong>：先 <code>SET key 初始大值</code>（分配足量容量），再反复 <code>APPEND</code> → sds 预分配摊销 O(1)，避免从 int/embstr 反复重分配（embstr 的 max 延迟达 287ms）
+4. <strong>大 value 用 raw 不可避免</strong>：SET 1KB 吞吐仅为 200B 的 61%，超大 value 应压缩或拆分，注意主线程 memcpy 与 slowlog</p>
+<h2 id="8">8. 压测代码文件</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>redis-lettuce-bench/.../service/StringEncodingBenchService.java</code></td>
+<td>12 轮编码对比压测服务（含 raw 最优场景）</td>
+</tr>
+<tr>
+<td><code>redis-lettuce-bench/.../controller/StringEncodingBenchController.java</code></td>
+<td>REST 端点 <code>/str-encoding/*</code></td>
+</tr>
+<tr>
+<td><code>application.yml</code> → <code>app.str-encoding-bench</code></td>
+<td>压测参数配置</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 启动（仅 Redis 单体 + 压测服务）</span>
+docker-compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>redis<span class="w"> </span>lettuce-bench
+
+<span class="c1"># 触发 12 轮扫测（SET/GET×3编码 + INCR + MODIFY + raw大value/APPEND专项）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8082/str-encoding/run
+
+<span class="c1"># 查看状态</span>
+curl<span class="w"> </span>http://localhost:8082/str-encoding/status
+</code></pre></div>
+
+<hr />
+<h1 id="hash-listpack-vs-hashtable">第二部分：Hash 编码（listpack vs hashtable）性能压测</h1>
+<blockquote>
+<p>已实测 ✅ 2026-08-04 | Redis 7 单体，compose 按需启动 <code>redis</code> + <code>lettuce-bench</code></p>
+</blockquote>
+<h2 id="9-hash">9. Hash 两种编码原理</h2>
+<p>Redis Hash 的内部编码由 <strong>field 数量</strong> 和 <strong>field value 大小</strong> 决定：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>field 数 ≤ <code>hash-max-listpack-entries</code>（默认 128）<strong>且</strong> 每 field value ≤ <code>hash-max-listpack-value</code>（默认 64B）</td>
+<td>所有 field 存于一个<strong>连续内存块</strong>，cache 友好</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>field 数 &gt; 128 或 value &gt; 64B</td>
+<td>退化为 dict，每 field 独立 dictEntry + sds，<strong>内存分散</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>编码<strong>不可回退</strong>：一旦 field/value 超阈值从 listpack 转 hashtable，即使删到阈值以下也不会转回。</p>
+</blockquote>
+<h2 id="91-hash">9.1 Hash 两种编码的具体业务场景</h2>
+<blockquote>
+<p>Hash 适合存"<strong>同一对象的多个属性</strong>"。编码由 Redis 自动选择（field 数 ≤128 且 value ≤64B → listpack，否则 hashtable）。核心决策维度：<strong>field 数量 / value 大小 / 读写模式</strong>。</p>
+</blockquote>
+<h3 id="911-listpack">9.1.1 listpack 编码（小对象 / 字段少的实体）</h3>
+<p><strong>适用业务</strong>：属性少（field ≤ ~64）、value 小（≤64B）的对象存储，<strong>Redis 自动选 listpack</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">field 数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用户<strong>基础资料</strong></td>
+<td><code>HSET user:9527 name "张三" age 30 city "北京"</code></td>
+<td style="text-align: center;">~5-10</td>
+</tr>
+<tr>
+<td>商品<strong>核心属性</strong></td>
+<td><code>HSET goods:10086 title "..." price 99 stock 10</code></td>
+<td style="text-align: center;">~5-15</td>
+</tr>
+<tr>
+<td>会话/登录态</td>
+<td><code>HSET sess:abc123 uid 9527 login 2026-08-04</code></td>
+<td style="text-align: center;">~3-8</td>
+</tr>
+<tr>
+<td>订单<strong>摘要信息</strong></td>
+<td><code>HSET order:8001 uid 9527 amount 299 status "PAID"</code></td>
+<td style="text-align: center;">~5-10</td>
+</tr>
+<tr>
+<td>短配置对象</td>
+<td><code>HSET cfg:payment timeout 30 retry 3</code></td>
+<td style="text-align: center;">~3-5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 listpack 适合</strong>：field 少时，listpack 的连续内存块 cache 友好、顺序扫描 O(N) 但 N 小（~50 次全命中）。实测 50 field 时 HGET 比 hashtable 快 20+ 倍。</p>
+<p><strong>注意事项</strong>：
+- field 数<strong>建议 ≤64</strong>，留足余量避免逼近 128 阈值（接近 128 时 O(N) 扫描开始劣化）
+- value 保持 ≤64B，否则自动转 hashtable
+- 适合<strong>低频随机读</strong>（field 少，cache 全命中）</p>
+<h3 id="912-hashtable-value">9.1.2 hashtable 编码（字段多 / 大 value 的对象）</h3>
+<p><strong>适用业务</strong>：field 多（≥128）或 value 大（&gt;64B），<strong>Redis 自动转 hashtable</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">field 数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用户<strong>完整画像</strong>（多维标签）</td>
+<td><code>HSET profile:9527 tag1 ... tag2 ... ...</code></td>
+<td style="text-align: center;">100-500+</td>
+</tr>
+<tr>
+<td>商品<strong>全量属性</strong>（规格/参数）</td>
+<td><code>HSET goods:10086 spec1 ... spec2 ... ...</code></td>
+<td style="text-align: center;">200+</td>
+</tr>
+<tr>
+<td>埋点/事件<strong>维度集合</strong></td>
+<td><code>HSET event:10001 dim_a ... dim_b ... ...</code></td>
+<td style="text-align: center;">数百</td>
+</tr>
+<tr>
+<td>配置表/规则表</td>
+<td><code>HSET rules:global rule1 ... rule2 ... ...</code></td>
+<td style="text-align: center;">数百</td>
+</tr>
+<tr>
+<td>长 value 对象（大 JSON/文本字段）</td>
+<td><code>HSET obj:k field "very long value &gt;64B..."</code></td>
+<td style="text-align: center;">任意</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 hashtable 适合</strong>：field 多时，<strong>O(1) 哈希定位稳定</strong>，不随 field 数退化。实测 128 field 时 hashtable 反超 listpack +21%（HGET）、+22%（末尾 field）。</p>
+<p><strong>注意事项</strong>：
+- field 逼近/超过 128 → hashtable O(1) 反而更优，不要刻意限制在 128 内
+- <strong>绝不对大 Hash 做 HGETALL</strong>：500 field 时阻塞主线程 4.4 秒、16 条 slowlog
+- 大 Hash 查询用 HGET/HMGET 按需取，或 HSCAN 分页</p>
+<h3 id="913-hash">9.1.3 Hash 编码选型速查表</h3>
+<table>
+<thead>
+<tr>
+<th>你的对象</th>
+<th style="text-align: center;">编码</th>
+<th>一句话原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>field 少（≤64）+ value 小</td>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>cache 友好，单 field 操作快 20+ 倍</td>
+</tr>
+<tr>
+<td>field 逼近阈值（~128）</td>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>O(1) vs O(N)，实测 +21%</td>
+</tr>
+<tr>
+<td>field 多（≥128）</td>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>唯一选择，O(1) 稳定</td>
+</tr>
+<tr>
+<td>value 大（&gt;64B）</td>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>唯一选择（listpack 上限 64B）</td>
+</tr>
+<tr>
+<td>高频随机读单 field</td>
+<td style="text-align: center;">field 少 listpack / field 多 hashtable</td>
+<td>看 field 数决定</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心决策原则</strong>：
+1. <strong>小对象（≤64 field）用 listpack</strong>：字段少的实体，Redis 自动用 listpack，性能最好
+2. <strong>字段逼近 128 或更多</strong>：hashtable O(1) 更优，不用刻意保 listpack
+3. <strong>大 Hash 绝不 HGETALL</strong>：用 HGET/HMGET 按需取，或 HSCAN 分页（参考场景 5）
+4. 编码不可回退：规划好 field 数/value 大小</p>
+<h2 id="10">10. 压测架构</h2>
+<div class="codehilite"><pre><span></span><code>POST /hash-encoding/run → HashEncodingBenchService.runSweep()
+  1. preloadAllHashes(): FLUSHDB + Pipeline 预加载
+       listpackKeys → 50 field × 32B → listpack 编码
+       hashtableKeys → 1000 field × 256B → hashtable 编码
+  2. 8 轮对比（每轮 5s 预热 + 10s 采样，c=16, batch=50）
+       HSET / HGET / HGETALL / HINCRBY × (listpack vs hashtable)
+  3. 采集 ops/s、延迟分位值、slowlogΔ、编码验证（OBJECT ENCODING）
+</code></pre></div>
+
+<p><strong>端点</strong>：<code>GET /hash-encoding/status</code>、<code>POST /hash-encoding/run</code>、<code>POST /hash-encoding/stop</code></p>
+<p><strong>编码验证输出</strong>：</p>
+<div class="codehilite"><pre><span></span><code>[编码验证] listpack=listpack, hashtable=hashtable
+</code></pre></div>
+
+<h2 id="11-c16-batch50-warmup5s-sample10s">11. 实测数据（c=16, batch=50, warmup=5s + sample=10s）</h2>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th>操作</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p50</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: right;">max</th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HSET_LP</td>
+<td>HSET 单field</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;"><strong>355,735</strong></td>
+<td style="text-align: right;">2.248ms</td>
+<td style="text-align: right;">2.084ms</td>
+<td style="text-align: right;">5.331ms</td>
+<td style="text-align: right;">22.69ms</td>
+<td style="text-align: center;">1</td>
+</tr>
+<tr>
+<td>HSET_HT</td>
+<td>HSET 单field</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;">15,074</td>
+<td style="text-align: right;">53.946ms</td>
+<td style="text-align: right;">48.967ms</td>
+<td style="text-align: right;">111.654ms</td>
+<td style="text-align: right;">145.47ms</td>
+<td style="text-align: center;">8</td>
+</tr>
+<tr>
+<td>HGET_LP</td>
+<td>HGET 单field</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;"><strong>330,986</strong></td>
+<td style="text-align: right;">2.420ms</td>
+<td style="text-align: right;">2.215ms</td>
+<td style="text-align: right;">6.169ms</td>
+<td style="text-align: right;">21.26ms</td>
+<td style="text-align: center;">1</td>
+</tr>
+<tr>
+<td>HGET_HT</td>
+<td>HGET 单field</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;">21,159</td>
+<td style="text-align: right;">38.562ms</td>
+<td style="text-align: right;">36.124ms</td>
+<td style="text-align: right;">90.911ms</td>
+<td style="text-align: right;">198.30ms</td>
+<td style="text-align: center;">5</td>
+</tr>
+<tr>
+<td>HGETALL_LP</td>
+<td>HGETALL 全量50f</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;">45,853</td>
+<td style="text-align: right;">17.517ms</td>
+<td style="text-align: right;">16.572ms</td>
+<td style="text-align: right;">40.204ms</td>
+<td style="text-align: right;">83.87ms</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr>
+<td>HGETALL_HT</td>
+<td>HGETALL 全量1000f</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;"><strong>279</strong></td>
+<td style="text-align: right;">3015ms</td>
+<td style="text-align: right;">3090ms</td>
+<td style="text-align: right;">4682ms</td>
+<td style="text-align: right;">4682ms</td>
+<td style="text-align: center;"><strong>44</strong></td>
+</tr>
+<tr>
+<td>HINCRBY_LP</td>
+<td>HINCRBY 数值</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;">338,706</td>
+<td style="text-align: right;">2.363ms</td>
+<td style="text-align: right;">2.087ms</td>
+<td style="text-align: right;">7.326ms</td>
+<td style="text-align: right;">39.32ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>HINCRBY_HT</td>
+<td>HINCRBY 数值</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;">232,391</td>
+<td style="text-align: right;">3.447ms</td>
+<td style="text-align: right;">3.088ms</td>
+<td style="text-align: right;">10.850ms</td>
+<td style="text-align: right;">36.03ms</td>
+<td style="text-align: center;">6</td>
+</tr>
+</tbody>
+</table>
+<p><strong>listpack 相对 hashtable 的提升</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th style="text-align: center;">提升</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>HSET</strong></td>
+<td style="text-align: center;"><strong>+2260%</strong></td>
+<td>356K vs 15K</td>
+</tr>
+<tr>
+<td><strong>HGET</strong></td>
+<td style="text-align: center;"><strong>+1464%</strong></td>
+<td>331K vs 21K</td>
+</tr>
+<tr>
+<td><strong>HGETALL</strong></td>
+<td style="text-align: center;"><strong>+16335%</strong></td>
+<td>46K vs 279（差距最大）</td>
+</tr>
+<tr>
+<td><strong>HINCRBY</strong></td>
+<td style="text-align: center;"><strong>+46%</strong></td>
+<td>339K vs 232K</td>
+</tr>
+</tbody>
+</table>
+<h2 id="12-hash">12. Hash 编码根因分析</h2>
+<h3 id="121-listpack-hashtable">12.1 为什么 listpack 全面碾压 hashtable</h3>
+<div class="codehilite"><pre><span></span><code>listpack:  [f0,v0][f1,v1]...[f49,v49]   ← 一个连续内存块，cache 命中率高
+hashtable: dict
+           ├─ dictEntry(f0) → sds(v0)
+           ├─ dictEntry(f1) → sds(v1)   ← 每个 field 分散内存，cache miss 高
+           └─ ...
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">listpack</th>
+<th style="text-align: left;">hashtable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">内存连续性</td>
+<td style="text-align: left;">连续单块</td>
+<td style="text-align: left;">分散多块</td>
+</tr>
+<tr>
+<td style="text-align: left;">cache 命中</td>
+<td style="text-align: left;">高</td>
+<td style="text-align: left;">低</td>
+</tr>
+<tr>
+<td style="text-align: left;">单 field 操作</td>
+<td style="text-align: left;">O(N) 但 N 小（50）</td>
+<td style="text-align: left;">O(1) 哈希计算 + 内存寻址</td>
+</tr>
+<tr>
+<td style="text-align: left;">内存开销</td>
+<td style="text-align: left;">低（无 dict 开销）</td>
+<td style="text-align: left;">高（dictEntry + 指针 + sds 头）</td>
+</tr>
+<tr>
+<td style="text-align: left;">全量遍历（HGETALL）</td>
+<td style="text-align: left;">顺序读连续内存</td>
+<td style="text-align: left;">随机访问分散内存</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心</strong>：listpack 在小 hash 上（≤128 field）把"遍历"变成顺序读连续内存，<strong>cache 友好</strong>；hashtable 的 O(1) 查找优势被"分散内存的 cache miss + 哈希计算"抵消，尤其在 1000 field 场景下放大。</p>
+<h3 id="122-hgetall-16335">12.2 HGETALL 差异最大（+16335%）——灾难级</h3>
+<ul>
+<li><strong>HGETALL hashtable（1000f）</strong>：avg <strong>3015ms</strong>，slowlogΔ <strong>44</strong>，几乎阻塞 Redis 主线程</li>
+<li>根因：遍历 1000 个 dictEntry，每个都要做哈希寻址 + sds 返回，随机访问分散内存，内存寻址次数是 listpack 的 1000 倍</li>
+</ul>
+<h3 id="123-hsethget-22601464-hgetall">12.3 为什么 HSET/HGET 差异（+2260%/+1464%）小于 HGETALL</h3>
+<p>单 field 操作只碰一个 field：
+- listpack 只需顺序扫到该 field（≤50 次比较），仍 cache 友好
+- hashtable 需哈希计算 + 内存寻址，但只做 1 次，开销有限
+- 差异虽大但没到 HGETALL 的 1000 倍差距，因为 HGETALL 要处理全部 1000 个 field</p>
+<h3 id="124-hash">12.4 Hash 生产选型建议（综合公平对比结论）</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">推荐编码</th>
+<th>实测依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>小对象/小实体（field 很少，如 ≤50，value ≤ 64B）</td>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>单 field 快 20+ 倍（50f 时 HGET 247K vs 11K）</td>
+</tr>
+<tr>
+<td><strong>field 逼近阈值（~128）且高频随机读</strong></td>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>HGET +21%，末尾 field +22%（O(1) vs O(N)）</td>
+</tr>
+<tr>
+<td>大 Hash（field &gt; 128 或 value &gt; 64B）</td>
+<td style="text-align: center;">hashtable</td>
+<td>唯一选择，但避免 HGETALL</td>
+</tr>
+<tr>
+<td><strong>避免对大 Hash 做 HGETALL</strong></td>
+<td style="text-align: center;">❌</td>
+<td>500f hashtable 阻塞主线程 4.4 秒，16 条 slowlog</td>
+</tr>
+<tr>
+<td>大 Hash 的查询</td>
+<td style="text-align: center;">HGET/HMGET 按需取 / HSCAN</td>
+<td>不要全量拉取</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心原则</strong>：
+1. <strong>listpack 适合 field 少的 Hash</strong>（如 &lt;64 field）：cache 友好，碾压 hashtable
+2. <strong>hashtable 适合 field 逼近阈值（~128）或更多</strong>：O(1) 查找稳定，不随 field 数退化；实测 128f 时反超 listpack +21%
+3. <strong>大 Hash 绝不 HGETALL</strong>：用 HGET/HMGET 按需取，或 HSCAN 分页（参考场景 5）
+4. 编码不可回退：规划好 field 数/value 大小，避免运行时从 listpack 退化</p>
+<h2 id="13-hashtable-listpack">13. 实测：hashtable 何时优于 listpack（公平对比验证）</h2>
+<blockquote>
+<p><strong>关键结论：已实测验证，当 field 数逼近阈值（~128）时 hashtable 反超 listpack。</strong>
+之前 8 轮（listpack 50 field vs hashtable 500 field）listpack 全胜是因对比不公平。本次用<strong>控制变量</strong>（同 value 32B，仅 field 数差 1 触发编码差异）公平对比，测出了 hashtable 的优势边界。</p>
+</blockquote>
+<h3 id="130-127f-listpack-vs-128f-hashtable-value-32b">13.0 公平对比实测数据（127f listpack vs 128f hashtable，同 value 32B）</h3>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+<th>对比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HGET_FAIR_LP</td>
+<td style="text-align: center;">listpack (127f) 随机查</td>
+<td style="text-align: right;">171,478</td>
+<td style="text-align: right;">4.670ms</td>
+<td style="text-align: right;">18.356ms</td>
+<td>基线</td>
+</tr>
+<tr>
+<td><strong>HGET_FAIR_HT</strong></td>
+<td style="text-align: center;">hashtable (128f) 随机查</td>
+<td style="text-align: right;"><strong>207,092</strong></td>
+<td style="text-align: right;"><strong>3.872ms</strong></td>
+<td style="text-align: right;"><strong>12.935ms</strong></td>
+<td><strong>+21%</strong> ✅</td>
+</tr>
+<tr>
+<td>HGET_FAIR_END_LP</td>
+<td style="text-align: center;">listpack 末尾 field</td>
+<td style="text-align: right;">133,628</td>
+<td style="text-align: right;">6.013ms</td>
+<td style="text-align: right;">22.574ms</td>
+<td>最坏 O(N)</td>
+</tr>
+<tr>
+<td><strong>HGET_FAIR_END_HT</strong></td>
+<td style="text-align: center;">hashtable 末尾 field</td>
+<td style="text-align: right;"><strong>163,377</strong></td>
+<td style="text-align: right;"><strong>4.957ms</strong></td>
+<td style="text-align: right;"><strong>19.096ms</strong></td>
+<td><strong>+22%</strong> ✅</td>
+</tr>
+<tr>
+<td>HGETALL_FAIR_LP</td>
+<td style="text-align: center;">listpack (127f)</td>
+<td style="text-align: right;">14,489</td>
+<td style="text-align: right;">56.516ms</td>
+<td style="text-align: right;">155.873ms</td>
+<td>基线</td>
+</tr>
+<tr>
+<td><strong>HGETALL_FAIR_HT</strong></td>
+<td style="text-align: center;">hashtable (128f)</td>
+<td style="text-align: right;"><strong>15,929</strong></td>
+<td style="text-align: right;"><strong>50.518ms</strong></td>
+<td style="text-align: right;"><strong>111.090ms</strong></td>
+<td><strong>+10%</strong> ✅</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实测结论：hashtable 在 field 数逼近阈值时全面反超 listpack</strong></p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">hashtable 提升</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>随机单 field HGET</td>
+<td style="text-align: center;"><strong>+21%</strong></td>
+<td>listpack 平均扫 ~63 field，hashtable O(1)</td>
+</tr>
+<tr>
+<td>末尾 field HGET</td>
+<td style="text-align: center;"><strong>+22%</strong></td>
+<td>listpack 最坏 O(127) 全扫描</td>
+</tr>
+<tr>
+<td>HGETALL（127f）</td>
+<td style="text-align: center;"><strong>+10%</strong></td>
+<td>128 field 时 listpack 连续块 cache 优势消失</td>
+</tr>
+</tbody>
+</table>
+<h3 id="131-listpack-on">13.1 本质差异：listpack 是 O(N) 顺序扫描</h3>
+<div class="codehilite"><pre><span></span><code>listpack:   [f0,v0|f1,v1|...|fN,vN]   一个连续内存块
+            查找 field：从头线性扫描 O(N) ← 致命弱点
+
+hashtable:  dict{ hash(f)→[entry...] }
+            查找 field：哈希定位 O(1)
+</code></pre></div>
+
+<p><strong>listpack 的查找是 O(N) 顺序扫描</strong>。当 field 数少（50）时 N 小，扫描全 cache 命中快；但当 field 数逼近阈值（~128）时，平均扫描 ~63 次、最坏 127 次，O(N) 成本开始超过 hashtable 的 O(1)。</p>
+<h3 id="132-hashtable-4">13.2 hashtable 的 4 个潜在优势场景（验证结果）</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>原理</th>
+<th style="text-align: center;">验证结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A. field 数逼近阈值（~128）</strong></td>
+<td>listpack O(N) 扫描 vs hashtable O(1)</td>
+<td style="text-align: center;">✅ <strong>已验证：hashtable +21%</strong></td>
+</tr>
+<tr>
+<td><strong>C. 随机 field 高频读取</strong></td>
+<td>listpack 平均扫 N/2，hashtable 平均 1 次</td>
+<td style="text-align: center;">✅ <strong>已验证：末尾 field +22%</strong></td>
+</tr>
+<tr>
+<td><strong>B. 大 value（&gt;64B）高频插入</strong></td>
+<td>listpack 内联 memmove vs hashtable 独立 sds</td>
+<td style="text-align: center;">⏳ 未测（listpack value&gt;64B 即转 hashtable）</td>
+</tr>
+<tr>
+<td><strong>D. field 数千上万</strong></td>
+<td>listpack 线性扫描崩溃，hashtable 稳定 O(1)</td>
+<td style="text-align: center;">⏳ 未测（&gt;128f 已无 listpack）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="133-listpack">13.3 为什么之前 listpack 全胜？——对比不公平</h3>
+<p>之前 8 轮（listpack 50 field vs hashtable 500 field）listpack 全胜的原因：
+1. <strong>listpack 只有 50 field，hashtable 有 500 field</strong>——field 数差 10 倍。listpack 扫 50 次（全 cache 命中）赢过 hashtable 的 1 次（但内存分散）
+2. <strong>value 不同</strong>：listpack 32B vs hashtable 256B，数据量差 8 倍</p>
+<p>这是 <strong>listpack 小 vs hashtable 大</strong> 的不公平对比。要测 hashtable 优势必须<strong>控制变量</strong>。</p>
+<h3 id="134">13.4 公平对比设计（本次实测验证）</h3>
+<div class="codehilite"><pre><span></span><code>listpack:   127 field × 32B（listpack 编码，逼近阈值上限）
+hashtable:  128 field × 32B（多 1 field 触发 hashtable）
+目的: field 数、value 几乎相同，唯一变量是编码本身 → 公平对比
+</code></pre></div>
+
+<h3 id="135-on-vs-o1">13.5 实测结论（验证了 O(N) vs O(1) 的翻转）</h3>
+<div class="codehilite"><pre><span></span><code>listpack 赢的场景（field 少，已验证）:
+  · 小 hash（field ≤ ~64，value ≤ 64B）——cache 友好碾压
+
+hashtable 赢的场景（field 逼近阈值，已实测验证）:
+  · field ~128 的随机单 field HGET：hashtable +21%
+  · field ~128 的末尾 field HGET：hashtable +22%（listpack 最坏 O(127)）
+  · field ~128 的 HGETALL：hashtable +10%
+
+根本原因:
+  · listpack 是 O(N) 顺序扫描，field 数从 50→127 时扫描次数翻倍
+    （平均 ~63 次、最坏 127 次），O(N) 成本开始显现
+  · hashtable 是 O(1) 哈希定位，field 数增大吞吐稳定不退化
+</code></pre></div>
+
+<h3 id="136">13.6 结论</h3>
+<div class="codehilite"><pre><span></span><code>hashtable 不是"永远差"，而是在 field 少时被 listpack 碾压，
+field 逼近阈值（~128）时反超 listpack。
+
+hashtable 的真正价值（已实测 + 理论）:
+  ① field 数逼近/超过阈值（~128）：O(1) vs O(N)，实测 +21%~22%
+  ② field 极多（数千上万）：listpack 根本不存在（已转 hashtable）
+  ③ value 大：listpack 的 value 内联导致 memmove，但 value&gt;64B 已无 listpack
+
+生产启示:
+  · field 少（≤64）→ 用 listpack（小 hash 性能最好）
+  · field 逼近 128 或更多 → hashtable O(1) 反而更优
+  · 不要为了"保住 listpack"而刻意限制 field 数在 128 以内，
+    因为接近 128 时 listpack 的 O(N) 已开始劣于 hashtable
+</code></pre></div>
+
+<h2 id="14-hash">14. Hash 压测代码文件</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>redis-lettuce-bench/.../service/HashEncodingBenchService.java</code></td>
+<td>8 轮 Hash 编码对比压测服务</td>
+</tr>
+<tr>
+<td><code>redis-lettuce-bench/.../controller/HashEncodingBenchController.java</code></td>
+<td>REST 端点 <code>/hash-encoding/*</code></td>
+</tr>
+<tr>
+<td><code>application.yml</code> → <code>app.hash-encoding-bench</code></td>
+<td>压测参数配置</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 触发 8 轮扫测（HSET/HGET/HGETALL/HINCRBY × listpack/hashtable）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8082/hash-encoding/run
+
+<span class="c1"># 查看状态</span>
+curl<span class="w"> </span>http://localhost:8082/hash-encoding/status
+</code></pre></div>
+
+<hr />
+<h1 id="zset-listpack-vs-skiplist">第三部分：ZSet 编码（listpack vs skiplist）性能压测</h1>
+<blockquote>
+<p>已实测 ✅ 2026-08-04 | Redis 7 单体，compose 按需启动 <code>redis</code> + <code>lettuce-bench</code></p>
+</blockquote>
+<h2 id="15-zset">15. ZSet 两种编码原理</h2>
+<p>Redis ZSet 的内部编码由 <strong>member 数量</strong> 和 <strong>member 字符串大小</strong> 决定：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>member 数 ≤ <code>zset-max-listpack-entries</code>（默认 128）<strong>且</strong> 每 member 字符串 ≤ <code>zset-max-listpack-value</code>（默认 64B）</td>
+<td>所有 member+score 存于一个<strong>连续内存块</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>member 数 &gt; 128 或 member 字符串 &gt; 64B</td>
+<td>跳表 + dict，每 member 独立节点，O(logN)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注意：与 Hash 类似，listpack 是紧凑数组，skiplist 是跳表。但 ZSet 的<strong>插入/查找天然需要排序定位</strong>，与 Hash 的"按 field 名查找"不同。</p>
+</blockquote>
+<h2 id="151-zset">15.1 ZSet 两种编码的具体业务场景</h2>
+<blockquote>
+<p>ZSet = 有序集合（member + score），适合"带分数的有序数据"。编码由 Redis 自动决定。</p>
+</blockquote>
+<h3 id="1511-listpack-member">15.1.1 listpack 编码（小排行榜 / 少 member）</h3>
+<p><strong>适用业务</strong>：member 少（≤ ~64）、member 名短（≤64B）的排行榜/有序集合。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">member 数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>小范围 Top-N 排行榜</td>
+<td><code>ZADD lb:week:1 user1 100</code></td>
+<td style="text-align: center;">~10-50</td>
+</tr>
+<tr>
+<td>限时活动小榜单</td>
+<td><code>ZADD event:promo uid1 500</code></td>
+<td style="text-align: center;">~20-50</td>
+</tr>
+<tr>
+<td>短延迟队列（少量任务）</td>
+<td><code>ZADD delay:q task1 ts</code></td>
+<td style="text-align: center;">~10-30</td>
+</tr>
+<tr>
+<td>小规模优先队列</td>
+<td><code>ZADD pqueue:job job1 prio</code></td>
+<td style="text-align: center;">~10-50</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 listpack 适合</strong>：member 少时 listpack 紧凑数组 cache 友好，score 排序 O(N) 但 N 小。</p>
+<h3 id="1512-skiplist-member">15.1.2 skiplist 编码（大排行榜 / 长 member）</h3>
+<p><strong>适用业务</strong>：member 多（≥128）或 member 名长（&gt;64B），<strong>Redis 自动转 skiplist</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">member 数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全服<strong>大排行榜</strong>（百万用户）</td>
+<td><code>ZADD rank:global user9527 score</code></td>
+<td style="text-align: center;">百万</td>
+</tr>
+<tr>
+<td>全局<strong>延迟任务队列</strong></td>
+<td><code>ZADD delay:all task_id ts</code></td>
+<td style="text-align: center;">千万</td>
+</tr>
+<tr>
+<td>大规模<strong>实时积分榜</strong></td>
+<td><code>ZADD leaderboard user_id 战力值</code></td>
+<td style="text-align: center;">十万+</td>
+</tr>
+<tr>
+<td>长 key 有序数据</td>
+<td><code>ZADD zset:longkey longmember_xxx score</code></td>
+<td style="text-align: center;">任意</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 skiplist 适合</strong>：member 多时 O(logN) 跳表插入/查找稳定；实测 ZADD 500m 比 listpack 50m 快 11%（因 skiplist 的排序定位优势）。</p>
+<h3 id="1513-zset">15.1.3 ZSet 编码选型速查表</h3>
+<table>
+<thead>
+<tr>
+<th>你的数据</th>
+<th style="text-align: center;">编码</th>
+<th>一句话原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>member 少（≤64）+ 短名</td>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>紧凑 cache 友好</td>
+</tr>
+<tr>
+<td>member 多（≥128）</td>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>O(logN) 稳定，ZADD 更快</td>
+</tr>
+<tr>
+<td>member 名长（&gt;64B）</td>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>唯一选择</td>
+</tr>
+<tr>
+<td>高并发写入 ZADD</td>
+<td style="text-align: center;">skiplist 占优</td>
+<td>实测 +11%</td>
+</tr>
+<tr>
+<td>高频 ZSCORE/ZRANGE</td>
+<td style="text-align: center;">两者接近</td>
+<td>差异小</td>
+</tr>
+</tbody>
+</table>
+<h2 id="16-zset">16. ZSet 压测架构</h2>
+<div class="codehilite"><pre><span></span><code>POST /zset-encoding/run → ZSetEncodingBenchService.runSweep()
+  1. preloadAllZsets(): FLUSHDB + Pipeline 预加载
+       listpackKeys → 50 member × 短名 → listpack
+       skiplistKeys → 500 member × 长名(80B) → skiplist
+       fairLpKeys → 127 member × 短名 → listpack
+       fairSlKeys → 128 member × 短名 → 边界
+  2. 12 轮对比（每轮 5s 预热 + 10s 采样，c=16, batch=50）
+       ZADD / ZSCORE / ZRANGE / ZINCRBY × (listpack vs skiplist)
+       + 公平对比（127m vs 128m）
+  3. 采集 ops/s、延迟分位值、slowlogΔ、编码验证（OBJECT ENCODING）
+</code></pre></div>
+
+<p><strong>端点</strong>：<code>GET /zset-encoding/status</code>、<code>POST /zset-encoding/run</code>、<code>POST /zset-encoding/stop</code></p>
+<h2 id="17-zset-c16-batch50-warmup5s-sample10s">17. ZSet 实测数据（c=16, batch=50, warmup=5s + sample=10s）</h2>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th>操作</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ZADD_LP</td>
+<td>ZADD 单member</td>
+<td style="text-align: center;">listpack (50m)</td>
+<td style="text-align: right;">126,073</td>
+<td style="text-align: right;">6.358ms</td>
+<td style="text-align: right;">16.978ms</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td><strong>ZADD_SL</strong></td>
+<td>ZADD 单member</td>
+<td style="text-align: center;">skiplist (500m长名)</td>
+<td style="text-align: right;"><strong>139,528</strong></td>
+<td style="text-align: right;">5.747ms</td>
+<td style="text-align: right;">14.982ms</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td>ZSCORE_LP</td>
+<td>ZSCORE 单member</td>
+<td style="text-align: center;">listpack (50m)</td>
+<td style="text-align: right;">300,565</td>
+<td style="text-align: right;">2.620ms</td>
+<td style="text-align: right;">6.893ms</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr>
+<td>ZSCORE_SL</td>
+<td>ZSCORE 单member</td>
+<td style="text-align: center;">skiplist (500m长名)</td>
+<td style="text-align: right;">299,066</td>
+<td style="text-align: right;">2.756ms</td>
+<td style="text-align: right;">8.067ms</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr>
+<td>ZRANGE_LP</td>
+<td>ZRANGE Top10</td>
+<td style="text-align: center;">listpack (50m)</td>
+<td style="text-align: right;">188,806</td>
+<td style="text-align: right;">4.258ms</td>
+<td style="text-align: right;">15.401ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>ZRANGE_SL</td>
+<td>ZRANGE Top10</td>
+<td style="text-align: center;">skiplist (500m长名)</td>
+<td style="text-align: right;">188,115</td>
+<td style="text-align: right;">4.426ms</td>
+<td style="text-align: right;">12.840ms</td>
+<td style="text-align: center;">5</td>
+</tr>
+<tr>
+<td>ZINCRBY_LP</td>
+<td>ZINCRBY 数值</td>
+<td style="text-align: center;">listpack (50m)</td>
+<td style="text-align: right;">112,057</td>
+<td style="text-align: right;">6.676ms</td>
+<td style="text-align: right;">16.764ms</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr>
+<td><strong>ZINCRBY_SL</strong></td>
+<td>ZINCRBY 数值</td>
+<td style="text-align: center;">skiplist (500m长名)</td>
+<td style="text-align: right;"><strong>116,243</strong></td>
+<td style="text-align: right;">4.938ms</td>
+<td style="text-align: right;">13.833ms</td>
+<td style="text-align: center;">2</td>
+</tr>
+</tbody>
+</table>
+<p><strong>公平对比（127m listpack vs 128m skiplist，同短 member 名）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ZSCORE_FAIR_LP</td>
+<td style="text-align: center;">listpack (127m)</td>
+<td style="text-align: right;">300,605</td>
+<td style="text-align: right;">2.664ms</td>
+<td style="text-align: right;">9.798ms</td>
+</tr>
+<tr>
+<td>ZSCORE_FAIR_SL</td>
+<td style="text-align: center;">128m（编码=listpack，未触发）</td>
+<td style="text-align: right;">316,496</td>
+<td style="text-align: right;">2.529ms</td>
+<td style="text-align: right;">8.388ms</td>
+</tr>
+<tr>
+<td>ZSCORE_FAIR_END_LP</td>
+<td style="text-align: center;">listpack 末尾member</td>
+<td style="text-align: right;">283,102</td>
+<td style="text-align: right;">2.828ms</td>
+<td style="text-align: right;">8.444ms</td>
+</tr>
+<tr>
+<td>ZSCORE_FAIR_END_SL</td>
+<td style="text-align: center;">末尾member（未触发 skiplist）</td>
+<td style="text-align: right;">267,926</td>
+<td style="text-align: right;">2.990ms</td>
+<td style="text-align: right;">11.928ms</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>测试局限</strong>：<code>fair_sl</code> 的 128 个短 member 在预加载后仍显示 <code>listpack</code>，未触发 skiplist 转换。说明 Redis 7 的 <code>zset-max-listpack-entries</code> 阈值判断下，128 个短 member 恰好仍在 listpack 边界内（可能需要 &gt;128 才转换）。因此公平对比的 ZSCORE_FAIR_SL/END_SL 实际仍是 listpack，不是真正的 skiplist 对比。真正的 skiplist 数据以 ZADD_SL/ZSCORE_SL/ZINCRBY_SL（500 长 member）为准。</p>
+</blockquote>
+<h2 id="18-zset">18. ZSet 编码根因分析</h2>
+<h3 id="181-zadd-skiplist-11">18.1 为什么 ZADD 上 skiplist 反而更快（+11%）</h3>
+<p>ZADD 需要<strong>按 score 定位插入位置</strong>：</p>
+<div class="codehilite"><pre><span></span><code>listpack:   ZADD → 线性扫描找 score 插入点 O(N)，N=50
+skiplist:   ZADD → 跳表 O(logN) 定位插入点，N=500
+</code></pre></div>
+
+<p>虽然 skiplist member 数更多（500 vs 50），但 O(log 500)≈9 次跳表跳跃 &lt; listpack 的 O(50) 线性扫描。<strong>ZADD 的排序定位是 skiplist 的强项</strong>。</p>
+<h3 id="182-zscore-zrange">18.2 为什么 ZSCORE / ZRANGE 两者接近</h3>
+<ul>
+<li><strong>ZSCORE</strong>：都需按 member 名查找。listpack 线性扫描（O(N) 但 N 小），skiplist 用 dict O(1) 定位 member 再取 score。差异小。</li>
+<li><strong>ZRANGE</strong>：都从头部顺序取 Top10，两者都是顺序遍历，差异小。</li>
+</ul>
+<h3 id="183-128-member-skiplist">18.3 128 member 未触发 skiplist 的原因</h3>
+<p>Redis 7 的 <code>zset-max-listpack-entries=128</code>，但实测 128 个短 member 仍是 listpack。说明转换阈值可能需要 member 数<strong>超过</strong> 128（即 129+），或触发时机在"下次结构变更"。这与 Hash 的 128 边界行为不同（Hash 128 field 会触发 hashtable）。</p>
+<blockquote>
+<p>结论：<strong>ZSet 的 listpack→skiplist 转换阈值边界与 Hash 不完全一致</strong>，实际生产建议 member 数明显 &lt; 128 才可靠保持 listpack。</p>
+</blockquote>
+<h3 id="184-zset">18.4 ZSet 生产选型建议</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">推荐编码</th>
+<th>实测依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>小排行榜（member ≤64）</td>
+<td style="text-align: center;">listpack</td>
+<td>紧凑 cache 友好</td>
+</tr>
+<tr>
+<td>大排行榜（member ≥128 或长名）</td>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>O(logN)，ZADD 更快 +11%</td>
+</tr>
+<tr>
+<td><strong>高并发 ZADD 写入</strong></td>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>排序定位优势，+11%</td>
+</tr>
+<tr>
+<td>高频 ZSCORE/ZRANGE</td>
+<td style="text-align: center;">两者接近</td>
+<td>差异小</td>
+</tr>
+<tr>
+<td>全服大排行榜（百万用户）</td>
+<td style="text-align: center;">skiplist</td>
+<td>唯一选择</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心原则</strong>：
+1. <strong>member 多（≥128）用 skiplist</strong>：O(logN) 稳定，且 ZADD 排序定位更快
+2. <strong>小排行榜用 listpack</strong>：member 少时紧凑高效
+3. <strong>不要刻意限制 member 数保 listpack</strong>：接近 128 时 ZADD 反而 skiplist 更快
+4. 之前场景 1 结论：<strong>ZSet 分片在高吞吐写入下无效</strong>（0.16s 突破 listpack 阈值转 skiplist，路由开销成纯负担）</p>
+<h2 id="19-zset">19. ZSet 压测代码文件</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>redis-lettuce-bench/.../service/ZSetEncodingBenchService.java</code></td>
+<td>12 轮 ZSet 编码对比压测服务</td>
+</tr>
+<tr>
+<td><code>redis-lettuce-bench/.../controller/ZSetEncodingBenchController.java</code></td>
+<td>REST 端点 <code>/zset-encoding/*</code></td>
+</tr>
+<tr>
+<td><code>application.yml</code> → <code>app.zset-encoding-bench</code></td>
+<td>压测参数配置</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 触发 12 轮扫测（ZADD/ZSCORE/ZRANGE/ZINCRBY × listpack/skiplist）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8082/zset-encoding/run
+
+<span class="c1"># 查看状态</span>
+curl<span class="w"> </span>http://localhost:8082/zset-encoding/status
+</code></pre></div>
+
+<hr />
+<h1 id="set-intset-listpack-hashtable">第四部分：Set 三种编码（intset / listpack / hashtable）</h1>
+<h2 id="20-set">20. Set 三种编码原理</h2>
+<p>Redis Set 的内部编码由 <strong>member 类型</strong>、<strong>member 数量</strong> 和 <strong>member 字符串大小</strong> 决定：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>intset</strong></td>
+<td>所有 member 都是<strong>整数</strong> 且 数量 ≤ <code>set-max-intset-entries</code>（默认 512）</td>
+<td>有序紧凑整数数组，无 dictEntry，内存最省</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>member 为<strong>字符串</strong> 且 数量 ≤ <code>set-max-listpack-entries</code>（默认 128）且 每 member ≤ <code>set-max-listpack-value</code>（默认 64B）</td>
+<td>连续内存块</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>整数 member 数 &gt; 512，或字符串 member 数 &gt; 128 / member &gt; 64B</td>
+<td>dict 哈希表，每 member 独立 dictEntry</td>
+</tr>
+</tbody>
+</table>
+<p><strong>转换关系（均 Redis 内部自动触发，不可显式指定）</strong>：</p>
+<div class="codehilite"><pre><span></span><code>intset ──SADD 任意字符串 member──▶ listpack ──member&gt;128 或 &gt;64B──▶ hashtable
+intset ──整数 member 数 &gt;512───────────────▶ hashtable（跳过 listpack）
+</code></pre></div>
+
+<ul>
+<li><strong>intset → listpack</strong>：SADD 一个字符串 member 即整体转换（intset 只能存整数）</li>
+<li><strong>listpack → hashtable</strong>：字符串数量 &gt; 128 或 任一 member &gt; 64B</li>
+<li><strong>intset → hashtable</strong>：整数数量 &gt; 512（intset 内二分查找退化为哈希）</li>
+<li>三种转换均<strong>单向不可逆</strong>（删 member 不会转回）</li>
+</ul>
+<blockquote>
+<p>注意：与 Hash/ZSet 类似，<strong>Set 也无法在创建时显式指定编码</strong>，只能靠 member 类型/数量/长度"凑出"目标编码。</p>
+</blockquote>
+<h2 id="201-set">20.1 Set 三种编码的具体业务场景</h2>
+<blockquote>
+<p>Set = 无序去重集合。编码由 Redis 根据 member 自动决定。</p>
+</blockquote>
+<h3 id="2011-intset">20.1.1 intset 编码（纯整数小集合）</h3>
+<p><strong>适用业务</strong>：member 全是整数且 ≤ 512 个的集合。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">member 数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>商品已购用户 ID 集合</td>
+<td><code>SADD bought:sku9527 uid1 uid2</code></td>
+<td style="text-align: center;">≤ 512</td>
+</tr>
+<tr>
+<td>黑白名单（整数 ID）</td>
+<td><code>SADD blacklist ip_hash</code></td>
+<td style="text-align: center;">小</td>
+</tr>
+<tr>
+<td>已发放优惠券 ID 去重</td>
+<td><code>SADD coupon:granted cid1</code></td>
+<td style="text-align: center;">≤ 512</td>
+</tr>
+<tr>
+<td>粉丝/关注整数 ID 集合</td>
+<td><code>SADD fans:uid1 uid2</code></td>
+<td style="text-align: center;">小</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 intset 适合</strong>：整数紧凑有序数组，SISMEMBER 二分查找 O(logN)，SADD/SREM 也是二分定位，实测全面碾压。</p>
+<h3 id="2012-listpack">20.1.2 listpack 编码（短字符串小集合）</h3>
+<p><strong>适用业务</strong>：member 为短字符串（≤64B）且 ≤ 128 个。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">member 数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>短标签/分组集合</td>
+<td><code>SADD tags:video hot,new</code></td>
+<td style="text-align: center;">≤ 128</td>
+</tr>
+<tr>
+<td>短 token/会话去重</td>
+<td><code>SADD tokens:user abc123</code></td>
+<td style="text-align: center;">小</td>
+</tr>
+<tr>
+<td>短事件去重</td>
+<td><code>SADD events:today evt1</code></td>
+<td style="text-align: center;">≤ 128</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 listpack 适合</strong>：字符串小集合连续内存 cache 友好，与 intset 性能接近。</p>
+<h3 id="2013-hashtable">20.1.3 hashtable 编码（大集合 / 长字符串）</h3>
+<p><strong>适用业务</strong>：member 多（&gt;128）或 member 长（&gt;64B）或整数 &gt;512，<strong>Redis 自动转 hashtable</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>业务场景</th>
+<th>命令示例</th>
+<th style="text-align: center;">member 数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全站去重集合（百万级）</td>
+<td><code>SADD dedup:ip 1.2.3.4</code></td>
+<td style="text-align: center;">百万</td>
+</tr>
+<tr>
+<td>全局在线用户</td>
+<td><code>SADD online:users uid1</code></td>
+<td style="text-align: center;">十万+</td>
+</tr>
+<tr>
+<td>长字符串指纹/哈希集合</td>
+<td><code>SADD fingerprints sha256</code></td>
+<td style="text-align: center;">任意</td>
+</tr>
+<tr>
+<td>标签系统（长标签）</td>
+<td><code>SADD tags:doc long_tag_xxx</code></td>
+<td style="text-align: center;">大</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 hashtable 不适合全量读取</strong>：dict 遍历需逐个 dictEntry 分配返回对象，SMEMBERS/SRANDMEMBER 慢 30~100%（实测）。但单 member SISMEMBER 仍 O(1) 可用。</p>
+<h3 id="2014-set">20.1.4 Set 编码选型速查表</h3>
+<table>
+<thead>
+<tr>
+<th>你的数据</th>
+<th style="text-align: center;">编码</th>
+<th>一句话原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯整数 + ≤512 个</td>
+<td style="text-align: center;"><strong>intset</strong></td>
+<td>二分查找，全面碾压</td>
+</tr>
+<tr>
+<td>短字符串 + ≤128 个</td>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>紧凑 cache 友好</td>
+</tr>
+<tr>
+<td>整数 &gt;512</td>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>数量超限，自动转换</td>
+</tr>
+<tr>
+<td>字符串 &gt;128 或 &gt;64B</td>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>唯一选择</td>
+</tr>
+<tr>
+<td><strong>高频全量读取 SMEMBERS</strong></td>
+<td style="text-align: center;"><strong>避开 hashtable</strong></td>
+<td>慢 30 倍+</td>
+</tr>
+<tr>
+<td>高频单 member SISMEMBER</td>
+<td style="text-align: center;">intset &gt; listpack &gt; hashtable</td>
+<td>差异约 15%</td>
+</tr>
+</tbody>
+</table>
+<h2 id="21-set">21. Set 压测架构</h2>
+<div class="codehilite"><pre><span></span><code>POST /set-encoding/run → SetEncodingBenchService.runSweep()
+  1. preloadAllSets(): FLUSHDB + Pipeline 预加载
+       intsetKeys → 50 整数 member → intset
+       listpackKeys → 50 短字符串 member → listpack
+       hashtableKeys → 500 长字符串 member(80B) → hashtable
+       fairIntKeys → 512 整数 member → intset
+       fairIntHtKeys → 513 整数 member → hashtable（多 1 个触发）
+       fairLpKeys → 127 短字符串 member → listpack
+       fairHtKeys → 128 短字符串 member → 边界
+  2. 21 轮对比（每轮 5s 预热 + 10s 采样，c=16, batch=50）
+       SADD / SISMEMBER / SCARD / SREM / SRANDMEMBER / SMEMBERS × 三编码
+       + 公平对比（512int vs 513int；127str vs 128str）
+  3. 采集 ops/s、延迟分位值、slowlogΔ、编码验证（OBJECT ENCODING）
+</code></pre></div>
+
+<p><strong>端点</strong>：<code>GET /set-encoding/status</code>、<code>POST /set-encoding/run</code>、<code>POST /set-encoding/stop</code></p>
+<h2 id="22-set-c16-batch50-warmup5s-sample10s">22. Set 实测数据（c=16, batch=50, warmup=5s + sample=10s）</h2>
+<h3 id="221-intset-50-listpack-50-hashtable-500">22.1 基础对比（intset 50整数 / listpack 50字符串 / hashtable 500长字符串）</h3>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th>操作</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SADD_INT</td>
+<td>SADD 单member</td>
+<td style="text-align: center;">intset (50整数)</td>
+<td style="text-align: right;">364,821</td>
+<td style="text-align: right;">2.193ms</td>
+<td style="text-align: right;">11.179ms</td>
+<td style="text-align: center;">6</td>
+</tr>
+<tr>
+<td>SADD_LP</td>
+<td>SADD 单member</td>
+<td style="text-align: center;">listpack (50字符串)</td>
+<td style="text-align: right;">346,772</td>
+<td style="text-align: right;">2.308ms</td>
+<td style="text-align: right;">10.508ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SADD_HT</td>
+<td>SADD 单member</td>
+<td style="text-align: center;">hashtable (500长名)</td>
+<td style="text-align: right;">311,825</td>
+<td style="text-align: right;">2.566ms</td>
+<td style="text-align: right;">9.228ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SISMEMBER_INT</td>
+<td>SISMEMBER 单member</td>
+<td style="text-align: center;">intset</td>
+<td style="text-align: right;">379,007</td>
+<td style="text-align: right;">2.114ms</td>
+<td style="text-align: right;">9.720ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SISMEMBER_LP</td>
+<td>SISMEMBER 单member</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;">345,711</td>
+<td style="text-align: right;">2.317ms</td>
+<td style="text-align: right;">11.734ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SISMEMBER_HT</td>
+<td>SISMEMBER 单member</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;">329,709</td>
+<td style="text-align: right;">2.430ms</td>
+<td style="text-align: right;">9.663ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SCARD_INT</td>
+<td>SCARD 计数</td>
+<td style="text-align: center;">intset</td>
+<td style="text-align: right;">498,735</td>
+<td style="text-align: right;">1.606ms</td>
+<td style="text-align: right;">5.464ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SCARD_LP</td>
+<td>SCARD 计数</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;">481,060</td>
+<td style="text-align: right;">1.664ms</td>
+<td style="text-align: right;">6.058ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SCARD_HT</td>
+<td>SCARD 计数</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;">454,771</td>
+<td style="text-align: right;">1.759ms</td>
+<td style="text-align: right;">5.988ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SREM_INT</td>
+<td>SREM 删member</td>
+<td style="text-align: center;">intset</td>
+<td style="text-align: right;">448,859</td>
+<td style="text-align: right;">1.783ms</td>
+<td style="text-align: right;">5.801ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SREM_LP</td>
+<td>SREM 删member</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;">449,792</td>
+<td style="text-align: right;">1.780ms</td>
+<td style="text-align: right;">7.731ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SREM_HT</td>
+<td>SREM 删member</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;">307,076</td>
+<td style="text-align: right;">2.608ms</td>
+<td style="text-align: right;">9.476ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SRANDMEMBER_INT</td>
+<td>SRANDMEMBER 随机抽1</td>
+<td style="text-align: center;">intset</td>
+<td style="text-align: right;">522,726</td>
+<td style="text-align: right;">1.531ms</td>
+<td style="text-align: right;">6.423ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SRANDMEMBER_LP</td>
+<td>SRANDMEMBER 随机抽1</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;">530,864</td>
+<td style="text-align: right;">1.507ms</td>
+<td style="text-align: right;">6.715ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SRANDMEMBER_HT</td>
+<td>SRANDMEMBER 随机抽1</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;">258,756</td>
+<td style="text-align: right;">3.094ms</td>
+<td style="text-align: right;">12.322ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SMEMBERS_INT</td>
+<td>SMEMBERS 全量读取</td>
+<td style="text-align: center;">intset</td>
+<td style="text-align: right;">476,344</td>
+<td style="text-align: right;">1.681ms</td>
+<td style="text-align: right;">7.757ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SMEMBERS_LP</td>
+<td>SMEMBERS 全量读取</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: right;">481,726</td>
+<td style="text-align: right;">1.662ms</td>
+<td style="text-align: right;">8.091ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td>SMEMBERS_HT</td>
+<td>SMEMBERS 全量读取</td>
+<td style="text-align: center;">hashtable</td>
+<td style="text-align: right;"><strong>14,719</strong></td>
+<td style="text-align: right;"><strong>54.733ms</strong></td>
+<td style="text-align: right;">140.028ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="222">22.2 公平对比（控制变量）</h3>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SISMEMBER_FAIR_INT</td>
+<td style="text-align: center;">intset (512整数)</td>
+<td style="text-align: right;">395,056</td>
+<td style="text-align: right;">2.027ms</td>
+<td style="text-align: right;">5.943ms</td>
+</tr>
+<tr>
+<td>SISMEMBER_FAIR_INTHT</td>
+<td style="text-align: center;">hashtable (513整数)</td>
+<td style="text-align: right;">323,631</td>
+<td style="text-align: right;">2.474ms</td>
+<td style="text-align: right;">8.832ms</td>
+</tr>
+<tr>
+<td>SISMEMBER_FAIR_LP</td>
+<td style="text-align: center;">listpack (127字符串)</td>
+<td style="text-align: right;">319,836</td>
+<td style="text-align: right;">2.503ms</td>
+<td style="text-align: right;">9.414ms</td>
+</tr>
+<tr>
+<td>SISMEMBER_FAIR_HT</td>
+<td style="text-align: center;">128字符串（编码=listpack，未触发）</td>
+<td style="text-align: right;">342,050</td>
+<td style="text-align: right;">2.345ms</td>
+<td style="text-align: right;">6.454ms</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>测试局限</strong>：<code>fairht</code>（128 短字符串）预加载后仍显示 <code>listpack</code>，未触发 hashtable 转换——与 ZSet 的 128 member 未触发 skiplist 是同一现象（Redis 7 的 <code>set-max-listpack-entries=128</code> 阈值边界）。因此 SISMEMBER_FAIR_LP vs SISMEMBER_FAIR_HT 实际测的是 127 vs 128 的 listpack O(N) 差异，<strong>不是真正的 listpack vs hashtable</strong>。可靠结论是整数组：<code>intset 512 vs hashtable 513</code>，<strong>intset +22.1%</strong>。</p>
+</blockquote>
+<h2 id="23-set">23. Set 编码根因分析</h2>
+<h3 id="231-intset-sadd-17-sismember-15-scard-10">23.1 为什么 intset 全面碾压（SADD +17% / SISMEMBER +15% / SCARD +10%）</h3>
+<p>intset 是<strong>有序整数数组</strong>，所有操作都是二分定位：</p>
+<div class="codehilite"><pre><span></span><code>intset SISMEMBER:  二分查找 O(logN) 内存连续，无对象分配
+listpack SISMEMBER: 线性扫描 O(N) 但 N 小（50），逐 member 字符串比较
+hashtable SISMEMBER: dict 哈希 O(1)，但需对每个 member 做 dictEntry 哈希计算
+</code></pre></div>
+
+<p>intset 的二分查找在 N 小时既快又省，且整数直接内联无字符串哈希开销，故三项全面领先。</p>
+<h3 id="232-smembers-hashtable-30-14719-vs-476344">23.2 为什么 SMEMBERS 是最大分水岭（hashtable 慢 30 倍+，14719 vs 476344）</h3>
+<p><strong>SMEMBERS 全量读取</strong>是三种编码差异最大的操作：</p>
+<div class="codehilite"><pre><span></span><code>intset SMEMBERS:   连续数组直接读出，O(N) 拷贝
+listpack SMEMBERS: 连续内存块读出，O(N) 拷贝
+hashtable SMEMBERS: 遍历 dict 每个 dictEntry，逐个创建 SDS 返回对象
+</code></pre></div>
+
+<p>hashtable 的 dict 遍历需对每个 entry 分配独立的返回对象（dictEntry 的 key 是独立 malloc 的 SDS），20000 key × 500 member 的返回对象分配开销巨大，avg 54.7ms、p99 140ms，吞吐暴跌到 14719 ops/s。</p>
+<h3 id="233-srandmember-hashtable-258756-vs-522726">23.3 为什么 SRANDMEMBER 差异明显（hashtable 慢一半，258756 vs 522726）</h3>
+<ul>
+<li><strong>intset/listpack</strong>：SRANDMEMBER 直接在紧凑数组内按下标 O(1) 随机取，极快。</li>
+<li><strong>hashtable</strong>：需先 SCARD 计数，再在 dict 上随机遍历定位，每个 dictEntry 独立分配返回对象，且哈希表可能有空洞需跳跃，慢约一半。</li>
+</ul>
+<h3 id="234-srem-hashtable-307076-vs-intset-44885946">23.4 为什么 SREM 差异大（hashtable 307076 vs intset 448859，+46%）</h3>
+<ul>
+<li><strong>intset</strong>：二分定位删除后做数组搬移，O(N) 但内存连续、成员小（整数），搬移廉价。</li>
+<li><strong>hashtable</strong>：dict 删除需 rehash 维护 + 释放独立 SDS 对象，且 500 长 member（80B）的释放开销大。</li>
+<li>注意 SREM 会不断删空集合，但测试 key 池大（10000），单 key 被反复增删，hashtable 结构不变（member 数波动小）。</li>
+</ul>
+<h3 id="235-saddsismember-hashtable-1517">23.5 为什么 SADD/SISMEMBER hashtable 差距小（仅 15~17%）</h3>
+<p>因为 SADD/SISMEMBER 都是<strong>单 member 操作</strong>，hashtable 的 O(1) dict 哈希 vs intset 的 O(logN) 二分，在小规模下差异被网络+序列化开销摊薄，只有 15% 左右。差距最大的永远是<strong>批量全量操作</strong>（SMEMBERS/SRANDMEMBER）。</p>
+<h3 id="236-128-hashtable">23.6 128 短字符串未触发 hashtable 的原因</h3>
+<p>与 ZSet 完全一致：Redis 7 的 <code>set-max-listpack-entries=128</code>，但实测 128 个短 member 仍是 listpack。说明转换阈值需要 member 数<strong>超过</strong> 128（129+），或触发时机在下次结构变更。而<strong>整数</strong> 513 个则顺利从 intset 转 hashtable（512→513 跨越 <code>set-max-intset-entries=512</code>），说明整数阈值边界判断严格。</p>
+<blockquote>
+<p>结论：<strong>字符串 listpack 的 128 阈值是"含 128"边界，但实际转换可能在 129+ 才触发；整数 intset 的 512 阈值则精确到 513 触发。</strong> 生产建议字符串集合保持 ≤127、整数集合保持 ≤512 才可靠。</p>
+</blockquote>
+<h3 id="237-set">23.7 Set 生产选型建议</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th style="text-align: center;">推荐编码</th>
+<th>实测依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯整数集合（≤512）</td>
+<td style="text-align: center;"><strong>intset</strong></td>
+<td>二分查找，全面碾压</td>
+</tr>
+<tr>
+<td>短字符串集合（≤127）</td>
+<td style="text-align: center;">listpack</td>
+<td>紧凑高效，接近 intset</td>
+</tr>
+<tr>
+<td>大集合 / 长字符串</td>
+<td style="text-align: center;">hashtable</td>
+<td>唯一选择</td>
+</tr>
+<tr>
+<td><strong>高频 SMEMBERS 全量读</strong></td>
+<td style="text-align: center;"><strong>避开 hashtable</strong></td>
+<td>慢 30 倍+（14719 vs 476344）</td>
+</tr>
+<tr>
+<td>高频 SRANDMEMBER 随机抽</td>
+<td style="text-align: center;">intset/listpack</td>
+<td>比 hashtable 快 1 倍</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心原则</strong>：
+1. <strong>能用 intset 就绝不转字符串</strong>：纯整数集合性能最佳，整数 member 不要存成字符串
+2. <strong>避免在大 hashtable 上做全量读取</strong>（SMEMBERS/SRANDMEMBER/SPOP 大量）：改用 SSCAN 分页，或分片保证 listpack/intset
+3. <strong>不要刻意保 listpack</strong>：128 边界不可靠（实际 129+ 才转），且小集合本来性能差异就不大；真正要防的是<strong>大集合 hashtable 的全量读取</strong>，那才是数量级差距
+4. 与场景 9 结论呼应：<strong>大集合分片</strong>可同时规避 CROSSSLOT（多 key 运算）和 hashtable 全量读取慢的问题</p>
+<h2 id="24-set">24. Set 压测代码文件</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>redis-lettuce-bench/.../service/SetEncodingBenchService.java</code></td>
+<td>21 轮 Set 编码对比压测服务</td>
+</tr>
+<tr>
+<td><code>redis-lettuce-bench/.../controller/SetEncodingBenchController.java</code></td>
+<td>REST 端点 <code>/set-encoding/*</code></td>
+</tr>
+<tr>
+<td><code>application.yml</code> → <code>app.set-encoding-bench</code></td>
+<td>压测参数配置</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 触发 21 轮扫测（SADD/SISMEMBER/SCARD/SREM/SRANDMEMBER/SMEMBERS × 三编码 + 公平对比）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8082/set-encoding/run
+
+<span class="c1"># 查看状态</span>
+curl<span class="w"> </span>http://localhost:8082/set-encoding/status
+</code></pre></div>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

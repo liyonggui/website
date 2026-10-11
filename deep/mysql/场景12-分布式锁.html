@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景12：分布式锁（基于 MySQL 唯一索引 / 锁表） · 小番茄程序猿</title>
+<meta name="description" content="场景12：分布式锁（基于 MySQL 唯一索引 / 锁表） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</h1>
+  </div>
+  <article class="prose">
+<h1 id="12-mysql">场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</h1>
+<h2 id="_1">一、核心原理</h2>
+<p>在分布式/多实例场景下，单机 <code>synchronized</code>/<code>ReentrantLock</code> 无法跨进程互斥，需要<strong>分布式锁</strong>。MySQL 分布式锁的核心：</p>
+<ul>
+<li><strong>唯一索引抢锁</strong>：<code>lock_key</code> 建唯一索引，<code>INSERT</code> 成功 = 加锁成功；主键冲突（错误码 1062）= 锁已被占用。MySQL 靠唯一索引天然保证互斥。</li>
+<li><strong>owner 防误删</strong>：每把锁记录持有者 <code>owner</code>，释放时 <code>DELETE ... WHERE owner = ?</code>，防止 A 释放了 B 刚重新持有的锁。</li>
+<li><strong>expire 过期</strong>：加锁带过期时间，防止持有者宕机后锁永远不释放（死锁）。过期后可被抢占。</li>
+<li><strong>续期</strong>：长任务在过期前续期，避免临界区未完成锁先失效。</li>
+</ul>
+<h2 id="_2">二、实现方式对比</h2>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>加锁</th>
+<th>释放</th>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>唯一索引 INSERT</strong></td>
+<td>插入成功即获锁</td>
+<td>DELETE + owner 校验</td>
+<td>实现简单、天然互斥、无死锁（配合过期）</td>
+<td>需处理过期锁抢占</td>
+</tr>
+<tr>
+<td><strong>悲观锁 FOR UPDATE</strong></td>
+<td>锁表行</td>
+<td>COMMIT 自动释放</td>
+<td>语义直观、阻塞式获取</td>
+<td>连接需长事务、占用连接</td>
+</tr>
+<tr>
+<td><strong>乐观锁版本号</strong></td>
+<td>期望版本 UPDATE</td>
+<td>失败重试</td>
+<td>无锁、吞吐高</td>
+<td>冲突多时重试开销大</td>
+</tr>
+<tr>
+<td><strong>Redis SETNX</strong></td>
+<td>SET NX EX</td>
+<td>校验值后 DEL</td>
+<td>吞吐高、内存操作快</td>
+<td>需额外 Redis 组件</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>本项目聚焦 MySQL 方案（唯一索引 + 悲观锁），并展示 owner/过期/续期工程细节。</p>
+</blockquote>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 唯一索引非阻塞抢锁（INSERT 唯一索引）</span>
+<span class="c1"># 两次同 lockKey 第二次会失败（唯一索引冲突）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/try-lock?lockKey=ORDER-001&amp;owner=node-1&amp;expireSec=10"</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/try-lock?lockKey=ORDER-001&amp;owner=node-2&amp;expireSec=10"</span>
+
+<span class="c1"># 2. 阻塞式加锁（带超时重试）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/lock?lockKey=ORDER-001&amp;owner=node-1&amp;expireSec=10&amp;waitMs=3000"</span>
+
+<span class="c1"># 3. 释放锁（owner 校验：owner 不匹配不会误删）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/unlock?lockKey=ORDER-001&amp;owner=node-1"</span>
+
+<span class="c1"># 4. 续期（仅 owner 可续，防误续他人锁）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/renew?lockKey=ORDER-001&amp;owner=node-1&amp;expireSec=20"</span>
+
+<span class="c1"># 5. 悲观锁（SELECT ... FOR UPDATE 行锁互斥）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/pessimistic?lockKey=LOCK-PESS&amp;owner=owner-a&amp;waitMs=3000"</span>
+
+<span class="c1"># 6. 临界区并发验证：分布式锁互斥（串行扣减） vs 无锁（数据竞争）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/critical-section?concurrency=20&amp;perThread=50&amp;useLock=true"</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/critical-section?concurrency=20&amp;perThread=50&amp;useLock=false"</span>
+
+<span class="c1"># 7. 无锁 vs 分布式锁 吞吐对比</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/bench?concurrency=50&amp;total=20000"</span>
+
+<span class="c1"># 8. 当前锁表状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/status"</span>
+</code></pre></div>
+
+<h2 id="_4">四、关键现象</h2>
+<h3 id="1">1. 唯一索引互斥</h3>
+<p><code>try-lock</code> 两次同一 <code>lockKey</code>，第二次返回 <code>acquired=false</code>：</p>
+<blockquote>
+<p>INSERT 唯一索引成功 = 加锁成功；主键冲突（1062）= 锁已被占用。MySQL 唯一索引天然保证同一时刻只有一把锁。</p>
+</blockquote>
+<h3 id="2-owner">2. owner 防误删</h3>
+<p>先 <code>node-1</code> 加锁，再用 <code>node-2</code> 尝试 unlock：因 <code>WHERE owner='node-2'</code> 不匹配，<strong>不会误删</strong> node-1 的锁。</p>
+<h3 id="3">3. 过期抢占</h3>
+<p>持有者宕机导致锁过期后，新持有者通过 <code>tryTakeExpired</code>（<code>DELETE ... WHERE expire_time &lt; NOW()</code> 后重 INSERT）抢占过期锁，避免死锁。</p>
+<h3 id="4">4. 临界区并发</h3>
+<ul>
+<li><code>useLock=true</code>：20 线程 × 50 次 = 1000 次扣减，<code>finalBalance = initBalance - 1000</code>，<strong>0 丢失更新</strong>。</li>
+<li><code>useLock=false</code>：无锁裸扣减（读-改-写非原子），出现<strong>丢失更新</strong>，<code>lostUpdates ≠ 0</code>。</li>
+</ul>
+<h3 id="5">5. 吞吐权衡</h3>
+<p>分布式锁为保互斥串行化临界区，<code>qps</code> 显著低于无锁读。这是"一致性换吞吐"的本质——只有必须互斥的操作才需加锁。</p>
+<h2 id="_5">五、工程注意点</h2>
+<ol>
+<li><strong>过期时间要合理</strong>：太短→任务未完锁失效；太长→宕机后锁占太久。</li>
+<li><strong>owner 必须唯一且校验</strong>：用 进程ID/实例ID + UUID，防止误删他人锁。</li>
+<li><strong>锁粒度要小</strong>：粒度越小并发越高；尽量用业务 key（如 <code>ORDER-{id}</code>）而非全局一把锁。</li>
+<li><strong>依赖数据库可用性</strong>：数据库抖动会导致抢锁/释放失败，适合一致性要求高、并发可控的场景；超高吞吐可改用 Redis。</li>
+<li><strong>连接占用</strong>：悲观锁 FOR UPDATE 需持有连接至事务结束，注意连接池水位。</li>
+<li><strong>与本地缓存锁/DB 事务锁区别</strong>：MySQL 分布式锁跨实例生效，而 DB 行锁仅在单个数据库实例内有效。</li>
+</ol>
+<h2 id="_6">六、结论</h2>
+<p>MySQL 分布式锁借助<strong>唯一索引冲突</strong>实现跨节点互斥，实现简单、可靠，配合 <strong>owner 校验 + 过期时间 + 续期</strong> 可覆盖宕机、误释放等工程问题。适合对一致性要求高、并发量中等的场景；对极致吞吐可用 Redis 分布式锁。核心取舍：<strong>用串行化的吞吐代价换取跨实例的数据一致性</strong>。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

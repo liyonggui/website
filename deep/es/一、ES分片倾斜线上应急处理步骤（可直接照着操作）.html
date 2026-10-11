@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>一、ES分片倾斜线上应急处理步骤（可直接照着操作） · 小番茄程序猿</title>
+<meta name="description" content="一、ES分片倾斜线上应急处理步骤（可直接照着操作） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>一、ES分片倾斜线上应急处理步骤（可直接照着操作）</h1>
+  </div>
+  <article class="prose">
+<h1 id="es">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</h1>
+<h2 id="_1">前置原则</h2>
+<p>先定位、再评估影响、先应急降压、再根治修复，禁止高峰期大力度迁移分片、大批量 reindex。</p>
+<h3 id="1">步骤1：快速确认是否发生分片倾斜</h3>
+<div class="codehilite"><pre><span></span><code><span class="err"># 查看各分片文档数量排序</span>
+<span class="err">GET _cat/shards/你的索引名?v&amp;s=docs:desc</span>
+<span class="err"># 查看分片磁盘占用排序</span>
+<span class="err">GET _cat/shards/你的索引名?v&amp;s=store:desc</span>
+</code></pre></div>
+
+<p>判定倾斜：分片文档/磁盘相差 <strong>1.5倍以上警惕，2倍以上确定倾斜</strong></p>
+<h3 id="2">步骤2：定位倾斜根因</h3>
+<ol>
+<li>如果索引使用了 <code>routing</code> 自定义路由，大概率热点Key导致</li>
+</ol>
+<p><code>http
+   GET 索引名/_search
+   {
+   "size": 0,
+   "aggs": {
+   "hot_routing_top50": {
+   "terms": {
+   "field": "_routing",
+   "size": 50
+   }
+   }
+   }
+   }</code></p>
+<p>观察某个 routing 文档量远超其他，确定热点路由倾斜。
+2. 未自定义 routing：查看节点硬件、磁盘水位、分片分配约束</p>
+<p><code>http
+   # 查看磁盘水位是否触发分片搬迁冻结
+   GET _cluster/settings?include_defaults=true&amp;filter_path=*.disk*
+   # 查看分片无法均衡原因详情
+   GET _cluster/allocation/explain</code></p>
+<p>### 步骤3：应急缓解（高峰期快速降压力，治标）
+3. 调高集群分片迁移并发，加速自动均衡</p>
+<p><code>http
+   PUT _cluster/settings
+   {
+   "transient": {
+   "cluster.routing.allocation.cluster_concurrent_rebalance": 4,
+   "cluster.routing.allocation.node_concurrent_recoveries": 4
+   }
+   }</code></p>
+<blockquote>
+<p>业务低谷可改更大，高峰期不要超过4，避免IO打满。
+4. 检查并合理设置磁盘水位，防止节点塞满拒绝分片迁入</p>
+</blockquote>
+<p><code>http
+   PUT _cluster/settings
+   {
+   "transient": {
+   "cluster.routing.allocation.disk.watermark.low": "85%",
+   "cluster.routing.allocation.disk.watermark.high": "90%",
+   "cluster.routing.allocation.disk.watermark.flood_stage": "95%",
+   "cluster.routing.allocation.disk.include_relocations": true
+   }
+   }</code>
+5. 热点分片段合并限流，防止CPU/IO打垮节点</p>
+<p><code>http
+   PUT 索引名/_settings
+   {
+   "index.merge.scheduler.max_thread_count": 1,
+   "indices.store.throttle.max_bytes_per_sec": "20mb"
+   }</code></p>
+<p>### 步骤4：根治方案（业务低峰执行）</p>
+<p>#### 场景A：自定义 routing 热点倾斜（最常见）
+6. 设计路由打散策略（热点key增加后缀分流）
+7. 新建规划合理分片数的索引
+8. reindex 迁移数据</p>
+<p><code>http
+   POST _reindex
+   {
+   "source": {"index": "旧索引"},
+   "dest": {"index": "新索引"}
+   }</code>
+9. 别名切换流量，下线旧索引</p>
+<p>#### 场景B：原生_id轻微不均匀、分片规划不合理</p>
+<p>直接 reindex 重建，重新预估分片数量：
+   <code>建议分片数 ≈ 总数据量 ÷ 40GB</code>（单分片最优30~50G）</p>
+<p>#### 场景C：节点硬件/机架策略导致摆放不均
+10. 统一节点内存、磁盘类型、磁盘容量
+11. 按需修改机架感知策略，解除不合理分配约束
+12. 等待集群自动均衡完成</p>
+<div class="codehilite"><pre><span></span><code>### 步骤5：事后预防配置
+</code></pre></div>
+
+<ol>
+<li>时序日志启用 ILM 滚动索引，避免单索引无限膨胀</li>
+<li>上线前预估数据量，提前算好分片数量</li>
+<li>非业务强聚合场景，禁止滥用自定义 routing</li>
+</ol>
+<hr />
+<h1 id="murmurhash3-es">二、MurmurHash3 完整知识点汇总（原理、版本、ES源码、场景、碰撞、面试全集）</h1>
+<h2 id="1_1">1. 基础概述</h2>
+<p>MurmurHash 是<strong>非加密型哈希函数</strong>，由 Austin Appleby 设计；
+特点：运算速度极快、雪崩性好、随机性强、低碰撞，适合分片打散、哈希表、基数统计场景；
+<strong>不是加密哈希（MD5/SHA），不可逆、不能用于加密场景</strong>。
+MurmurHash3 是第三代最终版本，废弃 MurmurHash1/2。</p>
+<h2 id="2-murmurhash3">2. MurmurHash3 两大正式版本（核心区分）</h2>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>输出位数</th>
+<th>适用场景</th>
+<th>ES使用位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MurmurHash3_x86_32</td>
+<td>32bit 有符号int</td>
+<td>分片路由、轻量哈希映射</td>
+<td>ES默认分片路由算法</td>
+</tr>
+<tr>
+<td>MurmurHash3_x64_128</td>
+<td>128bit（两个long：h1、h2）</td>
+<td>低碰撞需求、基数统计</td>
+<td>cardinality聚合、murmur3字段类型</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">关键结论</h3>
+<p>MurmurHash3 <strong>本身不是固定128位</strong>，有两个输出规格，ES根据业务需求分别选用。</p>
+<h2 id="3-murmurhash3_x86_32es">3. MurmurHash3_x86_32（ES分片路由核心）</h2>
+<h3 id="_3">运算流程</h3>
+<ol>
+<li>输入字符串 <code>_id/routingKey</code> 转为 UTF-16 字节数组</li>
+<li>设置固定种子 seed=0（保证集群所有节点哈希结果一致）</li>
+<li>分块混合运算、位旋转、乘法扰动、末尾混淆（fmix雪崩）</li>
+<li>输出 32 位有符号整型</li>
+</ol>
+<p>### ES路由完整公式</p>
+<p><code>hashVal = Murmur3HashFunction.hash(routing/_id)
+   shardId = Math.abs(hashVal) % number_of_primary_shards</code></p>
+<p>源码位置：
+   <code>server/src/main/java/org/elasticsearch/cluster/routing/Murmur3HashFunction.java</code>
+   底层调用 Lucene <code>StringHelper.murmurhash3_x86_32</code></p>
+<p>### 设计目的（重点面试）
+5. <strong>核心目标：打散数据，避免分片数据倾斜</strong>
+   消除自增ID、前缀重复ID的规律性，让数据均匀分布在所有主分片
+6. 不是为消除哈希碰撞，碰撞无害</p>
+<p>## 4. MurmurHash3_x64_128（128位完整版）</p>
+<p>### 结构</p>
+<p>输出封装 <code>Hash128</code> 对象，包含 <code>h1</code>、<code>h2</code> 两个64位long，合计128bit哈希空间。
+   源码位置：<code>org.elasticsearch.common.hash.MurmurHash3</code></p>
+<p>### ES使用场景
+7. <code>cardinality</code> 基数去重聚合（UV统计、唯一值估算）
+   - 该逻辑依靠哈希判断元素是否重复，碰撞会导致统计偏小
+   - 128位超大哈希空间，极大降低碰撞概率，保证估算准确度
+8. <code>murmur3</code> 字段类型，预计算字段哈希值，减少存储、加速去重判断</p>
+<p>## 5. 哈希碰撞详细解读</p>
+<p>### （1）路由哈希碰撞定义</p>
+<p>两个不同字符串，经过哈希运算得到相同hash值，取模后进同一个分片。
+   例：<code>idA ≠ idB</code>，<code>hash(idA)=hash(idB)</code> → 落到同一个shard。</p>
+<p>### （2）路由碰撞有没有危害？</p>
+<p><strong>完全无害</strong>
+- 哈希仅用来定位分片；
+- 分片内部以原始 <code>_id</code> 作为文档唯一主键区分两条数据；
+- 不会发生文档覆盖、更新错乱，仅少量数据扎堆，对整体均衡几乎无影响。</p>
+<p>### （3）为什么路由不用128位进一步降低碰撞？
+1. 32位int运算更快、CPU开销更低，海量写入更友好
+2. 32位哈希空间足够巨大，自然碰撞概率极低，满足分片打散需求
+3. 碰撞无业务负面影响，没必要引入128位的性能开销</p>
+<p>### （4）什么场景不能容忍碰撞，必须用128位版本？</p>
+<p>基数统计 cardinality，碰撞会导致唯一值统计失真，必须更大哈希空间压低碰撞率。</p>
+<p>## 6. 雪崩效应（哈希核心特性）</p>
+<p>优秀哈希必备雪崩性：输入微小改动，哈希结果发生巨大变化
+   示例：
+   <code>user1001</code> 与 <code>user1002</code> 仅末尾数字不同，哈希值完全离散，避免规律性扎堆，是解决分片倾斜的底层基础。</p>
+<p>## 7. 自定义 routing 与 MurmurHash 关系
+4. 不指定 routing：<code>routing = _id</code>，哈希打散均衡性最好
+5. 指定 routing=业务维度（商家ID、用户ID）：
+   路由公式变为 <code>shardId = hash(业务key) % 分片数</code>
+   若存在热点业务key，MurmurHash再均匀也无法避免分片倾斜，这是业务设计问题，不是哈希算法缺陷。</p>
+<p>## 8. 常见误区汇总
+6. ❌ 误区：32位哈希代表分片最多存储2^32条数据
+   ✅ 纠正：32位只是哈希中间运算结果，和分片存储容量无任何限制，分片容量由磁盘/配置决定
+7. ❌ 误区：ES分片路由使用128位MurmurHash3
+   ✅ 纠正：路由固定32位版本；128位仅用于基数统计等低碰撞场景
+8. ❌ 误区：哈希碰撞会造成ES文档覆盖
+   ✅ 纠正：碰撞仅同分片扎堆，内部靠原始_id区分，不会覆盖
+9. ❌ 误区：MurmurHash用来加密敏感ID
+   ✅ 纠正：非加密哈希，可逆推导特征，不能做加密</p>
+<p>## 9. 面试一句话精简总结</p>
+<p>MurmurHash3分为32位、128位两个版本；ES分片路由采用MurmurHash3_x86_32，核心作用打散数据防止分片倾斜，哈希碰撞无害；cardinality去重等对碰撞敏感场景使用MurmurHash3_x64_128扩大哈希空间降低碰撞概率。
+   需要我整理成<strong>一页纸面试背诵极简版（MurmurHash3+分片倾斜整套）</strong>吗？</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

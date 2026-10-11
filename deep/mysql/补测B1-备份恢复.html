@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B1：备份恢复（binlog PITR / 误删误更新恢复） · 小番茄程序猿</title>
+<meta name="description" content="补测B1：备份恢复（binlog PITR / 误删误更新恢复） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B1：备份恢复（binlog PITR / 误删误更新恢复）</h1>
+  </div>
+  <article class="prose">
+<h1 id="b1binlog-pitr">补测B1：备份恢复（binlog PITR / 误删误更新恢复）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>高并发治理除了"读写/一致性"，还需<strong>数据保底</strong>：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的<strong>时间点恢复（PITR）</strong>是核心兜底方案。</p>
+<h2 id="pitr">二、PITR 原理</h2>
+<div class="codehilite"><pre><span></span><code>全量备份(定期 mysqldump) + binlog增量(记录每次DML) = 恢复到任意时间点
+     │                          │
+     └──&gt; 恢复到误操作前时间点，找回被删/被改数据
+</code></pre></div>
+
+<ul>
+<li><strong>全量备份</strong>：mysqldump / Xtrabackup，导出某一时刻数据快照。</li>
+<li><strong>binlog 增量</strong>：ROW 格式记录每次 INSERT/UPDATE/DELETE，含位置(Pos)与 GTID。</li>
+<li><strong>PITR</strong>：<code>mysqlbinlog --stop-datetime</code> 重放 binlog 到误操作前，恢复数据。</li>
+<li><strong>RPO</strong> = 备份频率与 binlog 保留期（本项目 <code>binlog_expire_logs_seconds=600</code>）。</li>
+</ul>
+<h2 id="_2">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化演示数据（1万账号）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/backup/init?rows=10000"</span>
+
+<span class="c1"># 2. 全量备份（逻辑快照，等价 mysqldump，记录 binlog 位置）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/backup/full-backup"</span>
+
+<span class="c1"># 3. 模拟误删/误更新事故</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/backup/simulate-damage?delRows=3000"</span>
+
+<span class="c1"># 4. binlog 事件定位（SHOW BINLOG EVENTS，看误操作位置）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/backup/binlog?limit=10"</span>
+
+<span class="c1"># 5. PITR 恢复（基于全量备份恢复到事故前）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/backup/pitr-restore"</span>
+
+<span class="c1"># 6. 状态概览</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/backup/status"</span>
+</code></pre></div>
+
+<h2 id="_3">四、实测结果</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>初始化</td>
+<td>10000 行</td>
+</tr>
+<tr>
+<td>全量备份</td>
+<td>10000 行，binlogFile=<code>mysql-bin.000005</code></td>
+</tr>
+<tr>
+<td>模拟误删</td>
+<td>beforeRows=10000 → deletedRows=3000 → afterRows=<strong>7000</strong></td>
+</tr>
+<tr>
+<td><strong>PITR 恢复</strong></td>
+<td><strong>10000 行</strong>（数据全部找回）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>binlog 事件定位</strong>（SHOW BINLOG EVENTS）：正确列出 Gtid/Query 事件与位置(Pos)，可定位误操作点。</p>
+<h2 id="_4">五、如何定位误操作</h2>
+<blockquote>
+<p><strong>定位 → 恢复 全流程速览：</strong>
+<code>发现异常(数据少了/被改) 
+  → ① 看 binlog 当前文件位置( SHOW BINARY LOG STATUS )
+  → ② 用 SHOW BINLOG EVENTS / mysqlbinlog 过滤出误操作的 时间点 + 位置(Pos) + GTID
+  → ③ 确定"误操作前"的恢复点( --stop-datetime / --stop-position )
+  → ④ 全量备份恢复 + binlog 重放到恢复点( 方案A ) 或 单独回捞被删行( 方案B/C )
+  → ⑤ 恢复后核对行数与业务值</code></p>
+</blockquote>
+<p>线上发现数据被误删/误更新后，第一要务是<strong>精确定位"误操作发生在哪个时间点 / binlog 哪个位置"</strong>，才能确定恢复到哪一刻。</p>
+<h3 id="1">1. 发现异常</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 业务反馈数据少了 / 金额不对 → 先看当前数据与最近状态</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="k">COUNT</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_pitr</span><span class="p">;</span><span class="w">                    </span><span class="c1">-- 行数骤减 → 疑似误删</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_pitr</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">balance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="mi">5</span><span class="p">;</span><span class="w"> </span><span class="c1">-- 大量余额清零 → 疑似误更新</span>
+</code></pre></div>
+
+<h3 id="2-binlog">2. 查看当前 binlog 文件与位置</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- MySQL 8.4 用 SHOW BINARY LOG STATUS（旧名 SHOW MASTER STATUS 已废弃）</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="nb">BINARY</span><span class="w"> </span><span class="n">LOG</span><span class="w"> </span><span class="n">STATUS</span><span class="p">;</span><span class="w">   </span><span class="c1">-- 返回 File: mysql-bin.000005, Position: 1099539</span>
+</code></pre></div>
+
+<h3 id="3-binlog">3. 按时间 / 按表定位 binlog 事件</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 列出某 binlog 文件的所有事件，按 Pos 顺序看 DML</span>
+<span class="k">SHOW</span><span class="w"> </span><span class="n">BINLOG</span><span class="w"> </span><span class="n">EVENTS</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="s1">'mysql-bin.000005'</span><span class="p">;</span>
+
+<span class="c1">-- 更精准：用 mysqlbinlog 过滤指定库表 + 时间段，定位误操作的 GTID 和位置</span>
+<span class="n">mysqlbinlog</span><span class="w"> </span><span class="c1">--base64-output=decode-rows -v \</span>
+<span class="w">  </span><span class="c1">--start-datetime='2026-08-19 12:37:00' --stop-datetime='2026-08-19 12:38:00' \</span>
+<span class="w">  </span><span class="n">mysql</span><span class="o">-</span><span class="n">bin</span><span class="p">.</span><span class="mi">000005</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">A3</span><span class="w"> </span><span class="s1">'t_pitr'</span>
+</code></pre></div>
+
+<h3 id="4">4. 判断"误操作前"的时间点 / 位置</h3>
+<ul>
+<li><strong>时间点</strong>：误操作语句的 <code>SET TIMESTAMP=...</code> / 事务开始时间的前一刻，即 <code>--stop-datetime</code>。</li>
+<li><strong>位置</strong>：误操作事务前的 <code>Pos</code>（事件序号的上一事件位置），即 <code>--stop-position</code>。</li>
+<li><strong>GTID</strong>：误操作事务的 GTID 序号 -1。</li>
+</ul>
+<h3 id="5">5. 本项目演示的定位</h3>
+<p>接口 <code>/backup/binlog</code> 内部用 <code>SHOW BINLOG EVENTS</code> 展示事件及 <code>Pos</code>，对应上述第 3 步的定位动作：</p>
+<div class="codehilite"><pre><span></span><code>pos: 1098771  event: Query  info: CREATE TABLE ...   -- 误操作前的正常 DDL
+pos: 1099156  event: Gtid   info: SET @@SESSION.GTID_NEXT='...:185255'
+</code></pre></div>
+
+<h2 id="pitr_1">六、如何恢复（PITR 具体流程）</h2>
+<p>恢复核心 = <strong>先用全量备份恢复出事故前快照，再用 binlog 重放到"误操作前一刻"</strong>。</p>
+<h3 id="a-binlog-rpo">方案 A：恢复到最近一次全量备份 + binlog 重放到误操作前（推荐，RPO 最小）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 全量备份恢复到临时库/原库（先还原最近一次全量备份）</span>
+mysql<span class="w"> </span>-uroot<span class="w"> </span>-proot<span class="w"> </span>mysql_bench<span class="w"> </span>&lt;<span class="w"> </span>backup_full.sql
+
+<span class="c1"># 2. binlog 重放：从全量备份的 binlog 位置，重放到误操作前时间点</span>
+mysqlbinlog<span class="w"> </span>--start-position<span class="o">=</span>&lt;全量备份时记录的Position&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--stop-datetime<span class="o">=</span><span class="s1">'2026-08-19 12:37:10'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>mysql-bin.000005<span class="w"> </span><span class="p">|</span><span class="w"> </span>mysql<span class="w"> </span>-uroot<span class="w"> </span>-proot<span class="w"> </span>mysql_bench
+</code></pre></div>
+
+<blockquote>
+<p>关键：<code>--start-position</code> 取<strong>全量备份那一刻</strong>记录的 binlog 位置（本项目 <code>/backup/full-backup</code> 返回 <code>binlogPosition</code>），<code>--stop-datetime</code> 取<strong>误操作前</strong>时间点。</p>
+</blockquote>
+<h3 id="b">方案 B：仅找回被误删的数据（不整体回滚，风险小）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 1. 从 binlog 逆向解析出误删的数据（mysqlbinlog 过滤 DELETE，翻转成 INSERT）</span>
+<span class="n">mysqlbinlog</span><span class="w"> </span><span class="c1">--base64-output=decode-rows -v --stop-position=&lt;误操作Pos&gt; mysql-bin.000005 \</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">A3</span><span class="w"> </span><span class="s1">'### DELETE FROM t_pitr'</span><span class="w">    </span><span class="c1">-- 找到被删的每一行</span>
+
+<span class="c1">-- 2. 手动把被删行补插回原表（或脚本批量 INSERT）</span>
+<span class="k">INSERT</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="n">t_pitr</span><span class="w"> </span><span class="p">(</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">acct_no</span><span class="p">,</span><span class="w"> </span><span class="n">balance</span><span class="p">,</span><span class="w"> </span><span class="n">remark</span><span class="p">,</span><span class="w"> </span><span class="n">create_time</span><span class="p">)</span><span class="w"> </span><span class="k">VALUES</span><span class="w"> </span><span class="p">(...);</span>
+</code></pre></div>
+
+<h3 id="c">方案 C：误更新恢复（把错误值改回）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 从 binlog 解析出 UPDATE 前的旧值，生成 UPDATE 回滚语句</span>
+<span class="n">mysqlbinlog</span><span class="w"> </span><span class="c1">--base64-output=decode-rows -v mysql-bin.000005 \</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">B3</span><span class="w"> </span><span class="s1">'### SET'</span><span class="w">   </span><span class="c1">-- 每行显示旧值(before) / 新值(after)</span>
+<span class="c1">-- 用 before 值反写 UPDATE 回滚</span>
+</code></pre></div>
+
+<h3 id="a">本项目演示的恢复（方案 A 简化版）</h3>
+<p>接口 <code>/backup/pitr-restore</code> 用内存中的全量备份快照恢复到事故前：</p>
+<div class="codehilite"><pre><span></span><code>模拟误删: 10000 → 7000
+PITR恢复: 10000（数据全部找回）
+</code></pre></div>
+
+<h3 id="_5">恢复操作注意事项</h3>
+<ol>
+<li><strong>先备份现场</strong>：恢复前先导出当前错误数据，防止二次破坏。</li>
+<li><strong>只读维护</strong>：恢复期间暂停写入（<code>SET GLOBAL read_only=ON</code>），避免新数据污染。</li>
+<li><strong>逐条核对</strong>：恢复后比对行数与关键业务值（余额/状态）。</li>
+<li><strong>双写验证</strong>：恢复期间用临时库演练，确认无误再对线上执行。</li>
+<li><strong>binlog 保留期</strong>：<code>binlog_expire_logs_seconds</code> 决定了能恢复多早，需 ≥ 全量备份周期，否则备份后到误操作间的 binlog 已过期无法重放。</li>
+</ol>
+<h2 id="_6">七、工程要点</h2>
+<ol>
+<li><strong>定期全量备份</strong>：mysqldump 或 Xtrabackup，配合 cron/定时任务。</li>
+<li><strong>binlog 必须开启</strong>：<code>log_bin=ON</code> + ROW 格式，是 PITR 的前提。</li>
+<li><strong>binlog 保留期</strong>：<code>binlog_expire_logs_seconds</code> 决定可恢复到多早，需与备份频率匹配。</li>
+<li><strong>恢复流程</strong>：全量备份恢复 + <code>mysqlbinlog</code> 重放到误操作前时间点（<code>--stop-datetime</code> / <code>--stop-position</code>）。</li>
+<li><strong>验证备份有效性</strong>：定期做恢复演练，确保备份可用（防"纸面备份"）。</li>
+<li><strong>生产用 MySQL8.4</strong>：<code>SHOW MASTER STATUS</code> 已改名 <code>SHOW BINARY LOG STATUS</code>，binlog 事件用 <code>SHOW BINLOG EVENTS</code>。</li>
+</ol>
+<h2 id="_7">八、面试简述</h2>
+<blockquote>
+<p><strong>备份恢复（PITR）</strong>：数据安全兜底。全量备份（mysqldump/Xtrabackup）+ binlog 增量 + 时间点恢复，可把误删/误更新恢复到任意时间点。RPO 取决于备份频率与 binlog 保留期（binlog_expire_logs_seconds）。实测误删 3000 行后 PITR 恢复 10000 行全部找回。要点：binlog 必须 ON + ROW 格式、定期备份、恢复演练验证备份有效性。MySQL8.4 中 <code>SHOW MASTER STATUS</code> 改名 <code>SHOW BINARY LOG STATUS</code>。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

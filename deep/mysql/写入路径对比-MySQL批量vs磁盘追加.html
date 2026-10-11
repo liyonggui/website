@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>写入路径对比：单体 MySQL 批量 vs 本地磁盘追加 · 小番茄程序猿</title>
+<meta name="description" content="写入路径对比：单体 MySQL 批量 vs 本地磁盘追加 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>写入路径对比：单体 MySQL 批量 vs 本地磁盘追加</h1>
+  </div>
+  <article class="prose">
+<h1 id="mysql-vs">写入路径对比：单体 MySQL 批量 vs 本地磁盘追加</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>同样的数据写入，两条线路性能差异巨大：
+- <strong>线路1</strong>：单体 MySQL 批量写入（JDBC batch + rewriteBatchedStatements，落 InnoDB）。
+- <strong>线路2</strong>：直接追加写入本地磁盘文件（顺序 append）。</p>
+<p>对比两者吞吐，并<strong>加大并发测拐点</strong>（吞吐不再随并发提升的临界点）。</p>
+<h2 id="_2">二、原理</h2>
+<table>
+<thead>
+<tr>
+<th>线路</th>
+<th>写入路径</th>
+<th>主要开销</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MySQL 批量</td>
+<td>连接池 → SQL → 事务 → redo/binlog → 索引 → 刷盘</td>
+<td>网络、事务、redo 刷盘、B+树索引、锁竞争</td>
+</tr>
+<tr>
+<td>磁盘追加</td>
+<td>内存 buffer → 顺序 append 文件</td>
+<td>顺序写，几乎无额外开销</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>磁盘顺序追加</strong>利用顺序 IO，极快（可达百万行/s）。</li>
+<li><strong>MySQL</strong> 需保证事务持久性（redo）、索引维护、主从一致，开销大，且并发增大到一定程度后因连接池/锁/刷盘瓶颈出现<strong>拐点</strong>。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 初始化（清空测试表与磁盘目录）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/write-compare/init"</span>
+
+<span class="c1"># 对比压测：总行数 / 并发 / 批量大小</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/write-compare/compare?total=100000&amp;concurrency=8&amp;batchSize=500"</span>
+
+<span class="c1"># 拐点扫描：每线程行数 / 最大并发 / 批量大小</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/write-compare/scale?perThreadRows=50000&amp;maxConcurrency=50&amp;batchSize=500"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<h3 id="10-8batch-500">基础对比（10 万行，并发 8，batch 500）</h3>
+<table>
+<thead>
+<tr>
+<th>线路</th>
+<th>吞吐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MySQL 批量</td>
+<td><strong>120918 行/s</strong></td>
+</tr>
+<tr>
+<td>磁盘追加</td>
+<td><strong>1694915 行/s</strong>（169 万行/s）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>磁盘快约 14 倍</strong>（顺序写 vs 事务+日志+索引+刷盘）。</p>
+<h3 id="s">并发对比（行/s）——找拐点</h3>
+<table>
+<thead>
+<tr>
+<th>并发</th>
+<th>MySQL 批量</th>
+<th>磁盘追加</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>97276</td>
+<td>4000000（400万）</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>215053（峰值）</strong></td>
+<td><strong>11111111（1111万，峰值）</strong></td>
+</tr>
+<tr>
+<td>32</td>
+<td>122850（<strong>下降</strong>）</td>
+<td>4761904</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">拐点扫描</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MySQL 拐点并发</strong></td>
+<td><strong>32</strong>（超过后吞吐不增反降）</td>
+</tr>
+<tr>
+<td><strong>磁盘拐点并发</strong></td>
+<td><strong>8</strong>（顺序写太快，低并发即达带宽极限）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_6">五、核心结论</h2>
+<ol>
+<li><strong>磁盘追加远快于 MySQL</strong>：约 14 倍。磁盘顺序写几乎零额外开销，MySQL 需事务/redo/索引/锁/刷盘，写入成本高。</li>
+<li><strong>MySQL 有清晰拐点</strong>：并发 8 达峰值（21.5 万行/s），并发 32 下降（12.2 万行/s）——受<strong>连接池竞争、redo 刷盘、B+树索引维护、锁竞争</strong>限制。</li>
+<li><strong>磁盘拐点更低</strong>：顺序写太快，单线程/低并发已达文件系统带宽极限，高并发反而因 IO 竞争导致吞吐波动。</li>
+<li><strong>业务启示</strong>：高吞吐写入优先用磁盘批量/日志追加（如消息日志、临时数据）；必须落库的场景用 MySQL batch + 大事务 + rewriteBatchedStatements 提升吞吐。</li>
+</ol>
+<h2 id="_7">六、工程要点</h2>
+<ol>
+<li><strong>MySQL 批量</strong>：<code>PreparedStatement.addBatch/executeBatch</code> + <code>rewriteBatchedStatements</code>（驱动合并多值）。</li>
+<li><strong>磁盘追加</strong>：<code>BufferedWriter append</code>（顺序写），每线程独立文件避免竞争。</li>
+<li><strong>拐点成因</strong>：连接池连接数上限、redo 刷盘压力、B+树索引维护、行锁/间隙锁竞争、网络 IO。</li>
+<li><strong>大批量落盘 vs 落库</strong>：根据数据重要性与查询需求选路。</li>
+</ol>
+<h2 id="executebatch">七、踩坑记录（executeBatch 返回负数）</h2>
+<p><code>executeBatch()</code> 在 <code>rewriteBatchedStatements</code> 下对成功批次返回 <code>SUCCESS_NO_INFO (-2)</code>，导致累加行数为负。修复：判断 <code>v &gt; 0 || v == SUCCESS_NO_INFO</code> 视为批次成功，按批次数累加。</p>
+<h2 id="_8">八、面试简述</h2>
+<blockquote>
+<p><strong>MySQL 批量 vs 磁盘追加写入</strong>：同样的数据，MySQL 批量 12 万行/s，磁盘顺序追加 169 万行/s（快 14 倍）。加大并发找拐点：MySQL 并发 8 达峰值（21.5 万行/s），32 时降到 12 万（连接池/锁/刷盘瓶颈）；磁盘低并发即达带宽极限。启示：高吞吐写入优先磁盘追加，落库场景用 batch + 大事务 + rewriteBatchedStatements。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B10：主从延迟告警与从库自动摘除 · 小番茄程序猿</title>
+<meta name="description" content="补测B10：主从延迟告警与从库自动摘除 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B10：主从延迟告警与从库自动摘除</h1>
+  </div>
+  <article class="prose">
+<h1 id="b10">补测B10：主从延迟告警与从库自动摘除</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>读写分离下，从库复制延迟会导致读从库读到<strong>过期数据</strong>。延迟超阈值必须<strong>告警 + 自动把从库从读写分离摘除</strong>（读全部回主库），延迟恢复后再重新挂载。否则高并发下读到陈旧数据引发业务事故。</p>
+<h2 id="_2">二、原理</h2>
+<div class="codehilite"><pre><span></span><code>主库 --复制--&gt; 从库
+                 │
+   Seconds_Behind_Source 超过阈值
+                 │
+   ├── 告警 (ALERT)
+   ├── 自动摘除 (EVICT)：从库从读写分离移除，读全部回主库
+   └── 延迟恢复 → 重新挂载 (REMOUNT)
+</code></pre></div>
+
+<ul>
+<li><strong>模拟延迟</strong>：<code>CHANGE REPLICATION SOURCE TO SOURCE_DELAY=N</code> 人为设置复制延迟。</li>
+<li><strong>检测</strong>：<code>SHOW REPLICA STATUS</code> 的 <code>Seconds_Behind_Source</code>。</li>
+<li><strong>摘除</strong>：延迟 &gt; 阈值 → 标记从库摘除，路由策略变为"读全部回主库"。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化读写分离</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/init"</span>
+
+<span class="c1"># 2. 模拟从库复制延迟 10s（会等延迟累计）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/simulate?delaySeconds=10"</span>
+
+<span class="c1"># 3. 延迟检测 + 自动摘除（阈值5s，延迟&gt;5触发）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/check?threshold=5"</span>
+
+<span class="c1"># 4. 从库状态（应已摘除，读全部回主库）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/status"</span>
+
+<span class="c1"># 5. 恢复从库（延迟归零，重新挂载）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/recover"</span>
+
+<span class="c1"># 6. 恢复后检测（应重新挂载）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/check?threshold=5"</span>
+</code></pre></div>
+
+<h2 id="10s5s">四、实测结果（模拟延迟10s，阈值5s）</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>延迟</th>
+<th>摘除</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>init</td>
+<td>0</td>
+<td>false</td>
+<td>正常</td>
+</tr>
+<tr>
+<td>模拟延迟10s</td>
+<td><strong>7s</strong></td>
+<td>false</td>
+<td>SOURCE_DELAY生效</td>
+</tr>
+<tr>
+<td><strong>检测(阈值5)</strong></td>
+<td>7 &gt; 5</td>
+<td><strong>true</strong></td>
+<td><strong>ALERT+EVICT</strong></td>
+</tr>
+<tr>
+<td>状态</td>
+<td>7</td>
+<td>true</td>
+<td>读全部回主库</td>
+</tr>
+<tr>
+<td>恢复</td>
+<td>0</td>
+<td>false</td>
+<td>重新挂载</td>
+</tr>
+<tr>
+<td>恢复后检测</td>
+<td>0</td>
+<td>false</td>
+<td>NORMAL</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心闭环</strong>：延迟超阈值 → 告警 + 自动摘除从库（读全部回主库保一致）→ 延迟恢复 → 自动重新挂载。</p>
+<h2 id="_4">五、工程要点</h2>
+<ol>
+<li><strong>延迟监控</strong>：轮询 <code>Seconds_Behind_Source</code>（或 <code>SHOW REPLICA STATUS</code>），超阈值告警。</li>
+<li><strong>自动摘除</strong>：延迟超阈值自动把从库从读写分离移除，读全部回主库。</li>
+<li><strong>自动恢复</strong>：延迟降回后自动重新挂载，避免人工干预。</li>
+<li><strong>摘除策略</strong>：可配置（延迟超阈值摘除 N 分钟 / 连续 N 次超阈值才摘除，防抖动）。</li>
+<li><strong>监控指标</strong>：延迟秒数、摘除次数、从库健康度，接入告警平台。</li>
+<li><strong>注</strong>：<code>Seconds_Behind_Source</code> 只在有复制流量时体现延迟，静态无写时为 0。</li>
+</ol>
+<h2 id="_5">六、踩坑记录（延迟不显示）</h2>
+<p>最初 simulate 只设 <code>SOURCE_DELAY</code> 但无写流量，<code>Seconds_Behind_Source=0</code>（无事件待应用）。<strong>需往主库写数据制造复制流量</strong>，并等待延迟累计，延迟才真实体现（实测设置10s、等待约7s后延迟显示7s）。</p>
+<h2 id="_6">七、面试简述</h2>
+<blockquote>
+<p><strong>主从延迟告警与从库自动摘除</strong>：读写分离下从库延迟会导致读过期数据。实测模拟延迟10s，<code>Seconds_Behind_Source</code> 累计到7s，超过阈值5s后自动摘除从库（读全部回主库），恢复后自动重新挂载。要点：监控 <code>Seconds_Behind_Source</code>、超阈值告警+摘除、恢复自动挂载；注意延迟只在有复制流量时体现。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

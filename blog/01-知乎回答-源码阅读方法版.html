@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>01-知乎回答-源码阅读方法版 · 小番茄程序猿</title>
+<meta name="description" content="01-知乎回答-源码阅读方法版 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../assets/css/style.css"/>
+<link rel="stylesheet" href="../assets/css/article.css"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../index.html">首页</a>
+      <a href="../projects.html">项目</a>
+      <a href="../blog.html" class="active">博客</a>
+      <a href="../deep.html">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../blog.html">← 返回博客索引</a>
+    <h1>01-知乎回答-源码阅读方法版</h1>
+  </div>
+  <article class="prose">
+<p>我的做法是三步：<strong>先立一个可证伪的假设 → 去源码里找到定义和调用链 → 写代码把它跑出来验证</strong>。只看不跑，读完记住的还是别人的结论；带着问题读，一个 <code>object.c</code> 能顶十篇解读文章。</p>
+<p>《Redis 设计与实现》那本书我也读过，但读完做的是另一件事：<strong>把书里那些"embstr 一次 malloc 所以更快"的结论，逐个写压测验证一遍</strong>。大部分成立，有一个反直觉的发现，是书里和所有源码解读文章都不会告诉你的。下面用这个真实案例讲方法。</p>
+<h2 id="redis">第一步：把"我想学 Redis 源码"换成一个能被证伪的假设</h2>
+<p>绝大多数人读源码卡在第一步——目标太泛。"读懂 Redis"不是目标，是愿望。真正的目标长这样：</p>
+<blockquote>
+<p>假设 A：embstr 只做 1 次 malloc、raw 做 2 次，所以 embstr 的 SET 应该更快。</p>
+<p>假设 B：embstr 是只读编码，那反复 APPEND 应该会明显劣化。</p>
+</blockquote>
+<p>区别在于：<strong>A 和 B 都能被一次实验推翻</strong>。能被推翻的假设才叫问题，不能被推翻的问题读不出结果。带着 A 去翻代码，你会自然翻到 <code>object.c</code>；带着 B 去翻，你会撞见 <code>t_string.c</code> 里那个关键的转换函数——这两条路径，比你从 <code>main.c</code> 往下通读高效一个数量级。</p>
+<h2 id="_1">第二步：只找三样东西——定义、入口、调用链</h2>
+<p>不要试图"读完一个文件"。每个假设只需要定位三类代码：</p>
+<p><strong>① 常量定义在哪。</strong> 比如 embstr 那个被背烂的 44 字节：</p>
+<div class="codehilite"><pre><span></span><code><span class="cm">/* object.c */</span>
+<span class="cp">#define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44</span>
+</code></pre></div>
+
+<p>顺手就明白 44 不是魔法数——它是 <code>RedisObject + sdshdr8 + 对齐</code> 之后，还能塞进同一个分配块的余量。所以<strong>换平台、换版本，这个数会变</strong>。这就是"读源码"相对"背八股"的第一个收益：你知道哪些数字是可以不信任的。</p>
+<p><strong>② 命令入口在哪。</strong> <code>APPEND</code> 对应 <code>t_string.c</code> 里的 <code>appendCommand</code>，它在改 value 之前会先调 <code>dbUnshareStringValue()</code>，而那个函数里有这么一行判断：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">o</span><span class="o">-&gt;</span><span class="n">refcount</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">o</span><span class="o">-&gt;</span><span class="n">encoding</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">OBJ_ENCODING_EMBSTR</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">robj</span><span class="w"> </span><span class="o">*</span><span class="n">decoded</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">getDecodedObject</span><span class="p">(</span><span class="n">o</span><span class="p">);</span>
+<span class="w">    </span><span class="n">o</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">createRawStringObject</span><span class="p">(</span><span class="n">decoded</span><span class="o">-&gt;</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">sdslen</span><span class="p">(</span><span class="n">decoded</span><span class="o">-&gt;</span><span class="n">ptr</span><span class="p">));</span><span class="w">  </span><span class="cm">/* 强制转 raw */</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>embstr 是只读编码，只要想修改它，就必须整体复制成 raw。</strong> 这一行代码，就是"为什么不能对短字符串反复 APPEND"的全部答案——比任何一篇解读文章讲得都清楚。</p>
+<p><strong>③ 分配与扩容逻辑在哪。</strong> <code>sds.c</code> 里的 <code>sdsMakeRoomFor</code>：1MB 以内近似翻倍扩容，超过 <code>SDS_MAX_PREALLOC</code> 改成固定步长线性增长。看到这一行，"预分配后追加是摊销 O(1)"这个结论就不再需要背了。</p>
+<p>调试技巧：别硬看，<strong>在 <code>createStringObject</code> 下断点</strong>，redis-cli 里敲一次 <code>SET k hello</code> 和一次 <code>SET k &lt;200字节的值&gt;</code>，两次调用栈的差异 30 秒就能看懂 embstr 和 raw 的分配区别。看十遍代码不如下一次断点。</p>
+<h2 id="_2">第三步：跑起来验证——这一步大多数人会跳过，但收益最大</h2>
+<p>读完上面三处代码，理论上你已经"懂"了。但<strong>懂了机制不等于知道值多少钱</strong>。我搭了个小压测（Redis 7 单体、Lettuce Pipeline、c=16、每轮 5s 预热 + 10s 采样，每轮用 <code>OBJECT ENCODING</code> 回查编码），结果有两类：</p>
+<p><strong>① 验证成功的假设。</strong> embstr 确实比 raw 快，而且量级值得记：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SET 40B</td>
+<td style="text-align: center;">embstr</td>
+<td style="text-align: right;"><strong>448,159</strong></td>
+<td style="text-align: right;">3.58ms</td>
+<td style="text-align: right;">9.15ms</td>
+</tr>
+<tr>
+<td>SET 200B</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;">357,566</td>
+<td style="text-align: right;">4.49ms</td>
+<td style="text-align: right;">12.01ms</td>
+</tr>
+<tr>
+<td>GET 40B</td>
+<td style="text-align: center;">embstr</td>
+<td style="text-align: right;"><strong>457,400</strong></td>
+<td style="text-align: right;">3.52ms</td>
+<td style="text-align: right;">10.93ms</td>
+</tr>
+<tr>
+<td>GET 200B</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;">400,466</td>
+<td style="text-align: right;">4.01ms</td>
+<td style="text-align: right;">10.01ms</td>
+</tr>
+<tr>
+<td>INCR（int）</td>
+<td style="text-align: center;">int</td>
+<td style="text-align: right;"><strong>532,654</strong></td>
+<td style="text-align: right;">3.02ms</td>
+<td style="text-align: right;">7.85ms</td>
+</tr>
+</tbody>
+</table>
+<p>embstr 比 raw：SET <strong>+25.3%</strong>、GET <strong>+14.2%</strong>。而且 SET 差距比 GET 大一倍——因为写入路径要多付一次 malloc + memcpy，分配器开销只在写入时放大；读取两边都是 O(1) 查 dict 返回指针，差距只剩 cache 命中率。<strong>这个"SET 差 25%、GET 只差 14%"的不对称，只有压过才会讲。</strong></p>
+<p><strong>② 一个源码读完仍然没告诉我的东西。</strong> 既然 embstr 只读、APPEND 会强制转 raw，那追加延迟会差多少？我测了两组：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th style="text-align: center;">编码</th>
+<th style="text-align: right;">ops/s</th>
+<th style="text-align: right;">avg</th>
+<th style="text-align: right;">p99</th>
+<th style="text-align: right;"><strong>max</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>APPEND（raw 预分配）</td>
+<td style="text-align: center;">raw</td>
+<td style="text-align: right;">410,066</td>
+<td style="text-align: right;">3.92ms</td>
+<td style="text-align: right;">11.22ms</td>
+<td style="text-align: right;"><strong>39.31ms</strong></td>
+</tr>
+<tr>
+<td>APPEND（embstr 起步）</td>
+<td style="text-align: center;">embstr→raw</td>
+<td style="text-align: right;">409,705</td>
+<td style="text-align: right;">3.93ms</td>
+<td style="text-align: right;">9.71ms</td>
+<td style="text-align: right;"><strong>286.79ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>平均吞吐几乎一样，max 差了 7.3 倍。</strong> 只看 avg 和 p99，你会得出"两种写法没区别"的结论——但生产上那 287ms 就是一个查不出原因的毛刺。</p>
+<p>这一步为什么重要：源码给你的是<strong>机制</strong>，压测给你的是<strong>代价的量级</strong>。<code>createRawStringObject</code> 那行代码不会告诉你它是 39ms 还是 287ms，而这个数字才决定你在架构评审时能不能说服别人。</p>
+<h2 id="_3">从这个案例里能提炼的四条方法</h2>
+<ol>
+<li><strong>别从 <code>main.c</code> 通读。</strong> 挑一个命令当入口（<code>APPEND</code> 就够你挖三层：t_string → db → sds），一个命令挖通，Redis 的骨架就通了大半。</li>
+<li><strong>每个结论都写成一句可证伪的假设。</strong> 写不出假设，说明你还没想清楚要读什么。</li>
+<li><strong>看不懂就下断点或打日志。</strong> 在 <code>createStringObject</code>、<code>dbUnshareStringValue</code> 下断点，一次调用胜过十遍阅读。Redis 是 C，调试成本比你想的低。</li>
+<li><strong>用命令把内部状态暴露出来。</strong> <code>OBJECT ENCODING</code>、<code>OBJECT REFCOUNT</code>、<code>DEBUG JMAP</code>、<code>INFO</code>、<code>LATENCY DOCTOR</code>——这些是源码和现实之间的望远镜。我每轮压测都回查一次 <code>OBJECT ENCODING</code>，就是为了确认自己没在测错东西。</li>
+</ol>
+<h2 id="_4">一份按难度排开的阅读路径</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">顺序</th>
+<th>文件</th>
+<th>能搞懂什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td><code>sds.c</code></td>
+<td>动态字符串、预分配，最小闭环，成就感最快</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td><code>object.c</code></td>
+<td>类型与编码切换，所有数据结构的总入口</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td><code>dict.c</code></td>
+<td>哈希表、渐进式 rehash、字典扩容</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td><code>t_string.c</code> / <code>t_hash.c</code></td>
+<td>命令层怎么落到编码上（APPEND 那个坑就在这）</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td><code>adlist.c</code> / <code>zmalloc.c</code></td>
+<td>双向链表、内存分配封装</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td><code>ae.c</code> / <code>anet.c</code></td>
+<td>事件循环、fd 就绪分发，理解"单线程为什么快"</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td><code>rdb.c</code> / <code>aof.c</code></td>
+<td>持久化、fork 与 COW</td>
+</tr>
+<tr>
+<td style="text-align: center;">8</td>
+<td><code>cluster.c</code> / <code>replication.c</code></td>
+<td>槽位、迁移、主从同步</td>
+</tr>
+</tbody>
+</table>
+<p>前四个文件加起来不到一万行，认真读一到两周就能把"数据结构 + 编码"这条主线打通——<strong>这已经足够覆盖面试和日常调优 80% 的问题</strong>。剩下的网络层和集群层，等你有具体问题时再挖，不要提前啃。</p>
+<hr />
+<p><strong>一点诚实的补充</strong>：上面的数据是单轮采样，max 是本次观测到的单次极值，绝对值当量级参考；也没记录内存分配器（jemalloc / libc）和 lazyfree 配置，它们会影响 malloc 相关路径的绝对耗时。<strong>看相对差距，别拿这些数字和 redis-benchmark 对比。</strong></p>
+<p>同一套方法我还测了 Hash、Set、ZSet 的编码对比，结论和八股文同样有出入（比如 field 逼近 128 时 hashtable 反而比 listpack 快 21%）。</p>
+<p><strong>八股可以被背，结论只能被跑出来。</strong> 源码读完记得跑一遍——这是读源码和背源码唯一的区别。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

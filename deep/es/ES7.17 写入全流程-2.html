@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ES7\.17 写入全流程\+底层存储算法精准拆解（完整版文档） · 小番茄程序猿</title>
+<meta name="description" content="ES7\.17 写入全流程\+底层存储算法精准拆解（完整版文档） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>ES7\.17 写入全流程\+底层存储算法精准拆解（完整版文档）</h1>
+  </div>
+  <article class="prose">
+<h1 id="es717">ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）</h1>
+<h2 id="_1">文档说明</h2>
+<p>本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注<strong>使用算法、底层数据结构、磁盘存储格式、源码逻辑</strong>，适配后端面试、源码学习、性能调优使用，所有内容贴合Lucene底层及ES原生源码实现。</p>
+<hr />
+<h2 id="_2">目录</h2>
+<ol>
+<li>
+<p><a href="https://www.doubao.cn">分片路由：数据分片分配算法</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">Translog事务日志：WAL预写日志存储算法</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">内存缓冲区：内存索引结构与并发算法</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">Refresh刷新：倒排索引构建+词条排序核心算法</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">Flush落盘：磁盘Segment文件全套存储算法</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">Merge段合并：后台索引合并与清理算法</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">不同字段类型专属存储算法区分</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">写入全流程算法执行顺序（背诵精简版）</a></p>
+</li>
+<li>
+<p><a href="https://www.doubao.cn">高频面试核心问答（纯算法考点）</a></p>
+</li>
+</ol>
+<hr />
+<h1 id="_3">一、分片路由：数据分到哪个节点【分片分配算法】</h1>
+<h2 id="1">1. 文档分片路由哈希算法</h2>
+<ul>
+<li>
+<p><strong>核心算法</strong>：MurmurHash3（128位变体）</p>
+</li>
+<li>
+<p><strong>源码位置</strong>：<code>org.elasticsearch.common.hash.Murmur3.java</code></p>
+</li>
+<li>
+<p><strong>核心路由源码逻辑</strong></p>
+</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ES原生分片路由计算逻辑</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3</span><span class="p">.</span><span class="na">hash128</span><span class="p">(</span><span class="n">routingKey</span><span class="p">);</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">hash</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">主分片数量</span><span class="p">;</span>
+</code></pre></div>
+
+<ul>
+<li>
+<p><strong>算法特性</strong>：低哈希碰撞、运算速度极快、数据分片均匀散列</p>
+</li>
+<li>
+<p><strong>默认路由键</strong>：文档内置<code>_id</code>字段</p>
+</li>
+<li>
+<p><strong>核心约束</strong>：索引创建后主分片数量不可修改，同一条文档永远固定落在同一个主分片，路由规则永久不变</p>
+</li>
+</ul>
+<h2 id="2">2. 分片节点物理分配算法</h2>
+<p><strong>核心算法</strong>：分片感知+权重轮询分配（7.x新增自适应分片均衡算法）</p>
+<p>集群分片节点分配四大优先级策略：</p>
+<ol>
+<li>
+<p>就近原则：优先同机架、同机房节点分配，减少跨机房网络开销</p>
+</li>
+<li>
+<p>负载均衡：结合节点磁盘使用率做权重轮询，避免单节点磁盘压力过高</p>
+</li>
+<li>
+<p>容灾约束：主分片与副本分片强制分配至不同节点，防止节点宕机数据丢失</p>
+</li>
+<li>
+<p>自适应均衡：后台自动检测节点数据量偏差，无感迁移分片，平衡集群存储压力</p>
+</li>
+</ol>
+<hr />
+<h1 id="translog">二、写入第一步：Translog 事务日志存储【落盘日志算法】</h1>
+<p>ES写入遵循<strong>先写日志、后写内存索引</strong>原则，依靠WAL机制保证宕机数据不丢失。</p>
+<h2 id="1-translog">1. Translog基础存储结构</h2>
+<ul>
+<li>
+<p>物理文件：<code>.translog</code> 二进制日志文件</p>
+</li>
+<li>
+<p>底层数据结构：<strong>Append-Only 顺序追加写</strong>，无随机写，写入性能极高</p>
+</li>
+<li>
+<p>核心机制：WAL预写日志（Write Ahead Log）</p>
+</li>
+</ul>
+<h2 id="2_1">2. 日志编码与刷盘核心算法</h2>
+<h3 id="1_1">（1）序列化算法</h3>
+<p>ES自研二进制序列化工具 <code>StreamOutput</code>，不依赖JSON、Protobuf等通用序列化协议，采用【字段长度+字段类型+字段值】紧凑二进制拼接格式，序列化体积更小、速度更快。</p>
+<h3 id="2_2">（2）刷盘持久化两种策略</h3>
+<ul>
+<li>
+<p><strong>request策略（默认）</strong>：fsync强制内核缓冲区刷盘，写入请求返回前数据一定持久化到磁盘，数据零丢失</p>
+</li>
+<li>
+<p><strong>async策略</strong>：依赖操作系统页缓存延迟刷盘，内核定时回写磁盘，写入吞吐更高，极端断电存在少量数据丢失风险</p>
+</li>
+</ul>
+<h3 id="3">（3）日志清理算法</h3>
+<p>触发索引Flush动作后，采用<strong>版本号轮转清理算法</strong>，批量删除过期旧translog日志文件，避免磁盘日志持续膨胀。</p>
+<h2 id="3_1">3. 宕机恢复算法</h2>
+<p><strong>顺序回放算法</strong>：ES节点重启后，定位最后一次Flush持久化点位，从断点开始顺序读取translog日志，重做所有写入操作，恢复内存中未落盘的索引数据。</p>
+<hr />
+<h1 id="_4">三、写入第二步：内存缓冲区存储【内存索引结构+算法】</h1>
+<p>translog日志写入完成后，数据写入Lucene内存索引缓冲区，构建内存级临时索引，此时数据仅在内存，不可被检索。</p>
+<h2 id="1_2">1. 核心底层数据结构</h2>
+<ol>
+<li>
+<p><strong>字节数组缓冲池（Recycler池化复用算法）</strong>：统一复用内存块，避免频繁创建销毁字节数组，大幅降低JVM GC频率，提升高并发写入吞吐</p>
+</li>
+<li>
+<p><strong>字段域内存哈希表</strong>：以字段名为key，字段值为value，实现文档字段毫秒级快速存取</p>
+</li>
+</ol>
+<h2 id="2_3">2. 不同字段内存存储规则</h2>
+<ul>
+<li>
+<p>基础数值类型（long/int/double）：原生定长二进制存储，long8字节、int4字节，无额外序列化开销</p>
+</li>
+<li>
+<p>未分词字符串（keyword）：UTF-8紧凑编码存储</p>
+</li>
+<li>
+<p>分词文本（text）：先完成分词，词条临时存入内存哈希表，等待后续全局排序</p>
+</li>
+</ul>
+<h2 id="3_2">3. 并发写入控制算法</h2>
+<p><strong>分段锁 + 内存块隔离算法</strong>：同一个分片支持多线程并发写入，按照文档ID哈希做分段拆分，不同分段加独立锁，避免单一把锁导致的写入串行化，最大化分片并发写入能力。</p>
+<hr />
+<h1 id="refresh">四、Refresh 刷新阶段【核心：倒排索引构建+排序算法】</h1>
+<p>默认1秒自动执行一次Refresh，将内存缓冲区数据生成不可变内存Segment，构建完整倒排索引，数据可被检索，<strong>无磁盘IO</strong>。</p>
+<h2 id="1_3">1. 分词底层算法</h2>
+<ul>
+<li>
+<p>ES标准内置分词器：<strong>Unicode断词算法</strong></p>
+</li>
+<li>
+<p>IK中文分词器：<strong>正向最大匹配分词算法</strong>（从左至右扫描词典，优先匹配最长词条，主流中文分词标配）</p>
+</li>
+</ul>
+<h2 id="2_4">2. 倒排索引两大核心结构</h2>
+<ol>
+<li>
+<p>Term Dictionary：词条词典，存储所有分词后的唯一词条</p>
+</li>
+<li>
+<p>Posting List：倒排链表，存储每个词条对应的文档ID、分词位置、词频等信息</p>
+</li>
+</ol>
+<h2 id="3_3">3. 词条全局排序（面试必考）</h2>
+<ul>
+<li>
+<p><strong>排序算法</strong>：快速排序 + 归并排序混合排序</p>
+</li>
+<li>
+<p><strong>排序规则</strong>：Unicode 码点字典升序</p>
+</li>
+<li>
+<p><strong>执行时机</strong>：Refresh生成内存Segment瞬间，完成全量词条全局排序</p>
+</li>
+<li>
+<p><strong>核心目的</strong>：有序词条词典支持<strong>二分查找算法</strong>快速定位词条，是ES检索高性能的底层核心</p>
+</li>
+</ul>
+<h2 id="4-lucene">4. 词典压缩核心算法（Lucene核心）</h2>
+<ol>
+<li>
+<p><strong>FST有限状态机压缩算法（重中之重）</strong>
+全称：Finite State Transducer，ES和Lucene专属词典压缩算法，可将几十GB的原始词条压缩至数GB，无损压缩且查询速度无衰减，是ES海量文本存储的核心基石。</p>
+</li>
+<li>
+<p><strong>前缀差分压缩算法</strong>：相邻词条重复前缀仅存储一次，消除词典前缀冗余，进一步节省内存与磁盘空间。</p>
+</li>
+</ol>
+<h2 id="5-posting-list">5. 倒排链表Posting List压缩算法</h2>
+<ol>
+<li>
+<p><strong>Delta-Gap增量差值压缩</strong>：连续文档ID不存储完整ID，仅存储前后ID差值，大幅减少存储空间</p>
+</li>
+<li>
+<p><strong>FOR帧单值压缩算法</strong>：高密度连续docId做批量数值压缩</p>
+</li>
+<li>
+<p><strong>BitPacking位压缩</strong>：极小整数直接按比特位打包存储，极致压缩空间</p>
+</li>
+</ol>
+<hr />
+<h1 id="flush-segment">五、Flush 阶段：内存Segment → 磁盘持久化【磁盘文件存储算法】</h1>
+<p>内存Segment达到阈值（默认内存达到512MB/定时触发）执行Flush，将内存索引批量落盘，同时清空translog事务日志。</p>
+<h2 id="1-segment">1. 磁盘Segment六大核心文件及对应存储算法</h2>
+<table>
+<thead>
+<tr>
+<th>索引文件后缀</th>
+<th>文件作用</th>
+<th>底层存储算法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.tim</td>
+<td>词条字典主文件</td>
+<td>FST有限状态机 + 前缀差分压缩</td>
+</tr>
+<tr>
+<td>.tip</td>
+<td>词条索引辅助文件</td>
+<td>有序数组二分查找索引，加速词条定位</td>
+</tr>
+<tr>
+<td>.doc</td>
+<td>倒排文档ID链表</td>
+<td>Delta差值压缩 + FOR整数压缩</td>
+</tr>
+<tr>
+<td>.pos</td>
+<td>分词位置偏移信息</td>
+<td>VInt变长整数压缩</td>
+</tr>
+<tr>
+<td>.pay</td>
+<td>词频、相关性分值、负载数据</td>
+<td>浮点量化压缩</td>
+</tr>
+<tr>
+<td>.fdx / .fdt</td>
+<td>正向索引，存储原始文档内容</td>
+<td>fdx：有序数组二分查找；fdt：LZ4高速无损压缩</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2_5">2. 磁盘写入落盘算法</h2>
+<p><strong>顺序批量落盘算法</strong>：一次性将完整内存Segment顺序写入磁盘，全程几乎无随机IO，规避机械硬盘随机读写慢的痛点，保证大批量写入高性能。</p>
+<h2 id="3_4">3. 文档原始内容压缩算法</h2>
+<ul>
+<li>
+<p>默认压缩算法：<strong>LZ4无损高速压缩</strong></p>
+</li>
+<li>
+<p>优势：压缩速度、解压速度双高，读写性能均衡，适配搜索引擎读写混合场景</p>
+</li>
+<li>
+<p>可选替换：Deflate算法（更高压缩率，但是读写速度变慢，适合冷数据归档）</p>
+</li>
+</ul>
+<hr />
+<h1 id="merge">六、后台段合并 Merge 阶段【合并重排+清理算法】</h1>
+<p>ES后台异步执行Segment合并，将大量小Segment合并为大Segment，减少文件句柄、提升查询效率，全程不影响前端业务读写。</p>
+<h2 id="1_4">1. 小段筛选算法</h2>
+<p><strong>大小比例筛选策略</strong>：自动识别体积相近、差距较小的小Segment，避免合并大小差距悬殊的段，减少合并IO开销。</p>
+<h2 id="2_6">2. 索引合并重排两大核心算法</h2>
+<ol>
+<li>
+<p><strong>词条全局归并排序算法</strong>：多个有序小Segment词条，通过归并排序合并为一份全局有序词条字典，维持词典有序特性，保障二分查询效率</p>
+</li>
+<li>
+<p><strong>文档ID归并有序重排</strong>：让大Segment内部文档ID连续有序，优化正向索引读取命中率，加快原始文档查询速度</p>
+</li>
+</ol>
+<h2 id="3_5">3. 逻辑删除物理清理算法</h2>
+<p><strong>墓碑标记清除算法</strong>：ES删除/更新文档仅做逻辑墓碑标记，不会立即物理删除；段合并时扫描所有删除标记，直接剔除无效文档，完成真正物理删除，释放磁盘空间。</p>
+<h2 id="4-io">4. 合并IO限流算法</h2>
+<p><strong>令牌桶流量控制算法</strong>：限制后台段合并每秒磁盘IO吞吐量，防止业务高峰期合并操作打满磁盘IO，影响线上写入、查询业务。</p>
+<hr />
+<h1 id="_5">七、不同字段类型专属存储算法（精准区分）</h1>
+<ol>
+<li>
+<p><strong>keyword 精准字符串</strong>
+存储方式：完整UTF-8原生存储 + 全局词条排序 + FST词典压缩
+能力支持：精确查询、聚合统计、分组、排序</p>
+</li>
+<li>
+<p><strong>text 分词文本</strong>
+存储方式：分词后Term词条 + 倒排链表 + 分词位置偏移
+核心算法：IK正向最大匹配分词 + FST词典压缩</p>
+</li>
+<li>
+<p><strong>数值类型 long/int/double</strong>
+存储方式：定长二进制存储 + Delta增量差值压缩
+核心算法：区间二分索引，适配高效范围查询</p>
+</li>
+<li>
+<p><strong>date 日期类型</strong>
+存储方式：统一转换为毫秒级long时间戳存储
+复用全部数值型字段压缩、索引、查询算法</p>
+</li>
+<li>
+<p><strong>geo_point 地理坐标</strong>
+存储方式：经纬度通过<strong>哈希网格算法</strong>编码压缩
+能力支持：地理位置范围筛选、距离排序</p>
+</li>
+</ol>
+<hr />
+<h1 id="_6">八、写入全程算法执行顺序（一字不差面试背诵版）</h1>
+<ol>
+<li>
+<p>文档<code>_id</code>经过<strong>MurmurHash3哈希算法</strong> 计算分片ID，确定文档归属主分片</p>
+</li>
+<li>
+<p>主分片接收写入请求，通过<strong>WAL预写日志机制</strong>，以自研二进制序列化格式写入translog事务日志</p>
+</li>
+<li>
+<p>数据同步写入JVM内存缓冲区，依托<strong>池化内存复用算法</strong>减少GC开销</p>
+</li>
+<li>
+<p>默认1秒定时触发Refresh刷新：文本分词、词条排序、构建内存倒排索引</p>
+<ul>
+<li>
+<p>中文文本执行<strong>正向最大匹配分词算法</strong></p>
+</li>
+<li>
+<p>全量词条执行<strong>快速排序+归并混合排序</strong>，遵循Unicode字典升序规则</p>
+</li>
+<li>
+<p>有序词条构建<strong>FST有限状态机压缩词典</strong></p>
+</li>
+<li>
+<p>倒排链表开启<strong>Delta-Gap差值压缩</strong>节省空间</p>
+</li>
+</ul>
+</li>
+<li>
+<p>内存数据达到阈值触发Flush落盘：</p>
+<ul>
+<li>
+<p>内存Segment通过<strong>LZ4高速压缩算法</strong>批量顺序落盘</p>
+</li>
+<li>
+<p>生成tim/tip/doc/fdt等全套结构化索引文件</p>
+</li>
+<li>
+<p>旧translog日志通过<strong>版本轮转删除算法</strong>批量清理</p>
+</li>
+</ul>
+</li>
+<li>
+<p>后台异步执行Segment段合并：</p>
+<ul>
+<li>
+<p>通过<strong>归并排序</strong>全局重排词条与文档ID</p>
+</li>
+<li>
+<p>通过<strong>墓碑清除算法</strong>物理删除逻辑删除数据</p>
+</li>
+<li>
+<p>通过<strong>令牌桶算法</strong>限制合并IO流量，保护线上业务</p>
+</li>
+</ul>
+</li>
+</ol>
+<hr />
+<h1 id="_7">九、核心面试精准问答（纯算法考点，直接背）</h1>
+<ol>
+<li>
+<p><strong>Q：ES分片路由用什么哈希算法？</strong>
+A：MurmurHash3 128位哈希算法</p>
+</li>
+<li>
+<p><strong>Q：Refresh阶段词条排序用什么算法、排序规则是什么？</strong>
+A：快速排序+归并排序混合算法；按照Unicode码点字典升序排序</p>
+</li>
+<li>
+<p><strong>Q：ES海量词条词典依靠什么算法极致压缩？</strong>
+A：FST有限状态机压缩算法（Lucene核心）</p>
+</li>
+<li>
+<p><strong>Q：倒排索引docId文档ID使用什么压缩算法？</strong>
+A：Delta-Gap差值压缩 + FOR帧单值压缩</p>
+</li>
+<li>
+<p><strong>Q：ES原始文档磁盘落地默认压缩算法是什么？</strong>
+A：LZ4高速无损压缩算法</p>
+</li>
+<li>
+<p><strong>Q：ES写入是先写内存还是先写磁盘？</strong>
+A：先磁盘（translog WAL日志），再内存（内存索引），保证数据可靠性</p>
+</li>
+<li>
+<p><strong>Q：Refresh阶段最核心的两个算法动作是什么？</strong>
+A：词条全局排序、构建FST压缩词条词典</p>
+</li>
+</ol>
+<blockquote>
+<p>（注：部分内容可能由 AI 生成）</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

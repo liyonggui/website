@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B7：统计信息过期与执行计划优化 · 小番茄程序猿</title>
+<meta name="description" content="补测B7：统计信息过期与执行计划优化 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B7：统计信息过期与执行计划优化</h1>
+  </div>
+  <article class="prose">
+<h1 id="b7">补测B7：统计信息过期与执行计划优化</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>优化器依赖<strong>统计信息</strong>选索引。数据量突变/统计信息过期时，优化器可能<strong>选错索引</strong>（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是<strong>高度倾斜数据</strong>（一个值占绝大部分），InnoDB 基数采样严重失真。</p>
+<h2 id="_2">二、原理</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- EXPLAIN 关键字段</span>
+<span class="k">type</span><span class="w">           </span><span class="c1">-- ALL(全表扫)/range/ref(走索引)/const，越靠左越差</span>
+<span class="n">possible_keys</span><span class="w">  </span><span class="c1">-- 可能用的索引</span>
+<span class="k">key</span><span class="w">            </span><span class="c1">-- 实际用的索引</span>
+<span class="k">rows</span><span class="w">           </span><span class="c1">-- 优化器估算的扫描行数（统计信息决定）</span>
+
+<span class="c1">-- 刷新统计信息</span>
+<span class="k">ANALYZE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">t_plan</span><span class="p">;</span><span class="w">                          </span><span class="c1">-- 常规刷新</span>
+<span class="k">ANALYZE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">t_plan</span><span class="w"> </span><span class="k">UPDATE</span><span class="w"> </span><span class="n">HISTOGRAM</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">category</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 生成直方图，精确统计倾斜分布</span>
+</code></pre></div>
+
+<ul>
+<li><strong>ANALYZE</strong>：刷新索引基数（cardinality），常规手段。</li>
+<li><strong>直方图</strong>：MySQL 8.0+，统计各值占比，对倾斜数据比基数采样精确。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化数据（热分类30万 + 冷1千，高度倾斜）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/plan/init?hotRows=300000&amp;coldRows=1000"</span>
+
+<span class="c1"># 2. EXPLAIN 执行计划（看 rows 估算 vs 实际）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/plan/explain?category=0"</span>
+
+<span class="c1"># 3. ANALYZE 刷新统计信息</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/plan/analyze"</span>
+
+<span class="c1"># 4. ANALYZE 前后对比（rows 偏差 + 直方图）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/plan/before-after?category=0"</span>
+
+<span class="c1"># 5. 状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/plan/status"</span>
+</code></pre></div>
+
+<h2 id="30-1">四、实测结果（热分类30万 + 冷1千）</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EXPLAIN category=0</td>
+<td>type=ref、key=idx_category、<strong>rows估算=150380</strong>、<strong>实际=300000</strong></td>
+</tr>
+<tr>
+<td>ANALYZE 后</td>
+<td>rows 估算仍 <strong>150112</strong>，偏差 <strong>49.9%</strong>（InnoDB 基数采样失真）</td>
+</tr>
+<tr>
+<td><strong>直方图</strong></td>
+<td><code>buckets=[[0, 0.9967],[1, 1.0]]</code> → <strong>category=0 占 99.67%</strong>（精确揭示倾斜）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心</strong>：普通 ANALYZE 的基数采样对高度倾斜数据严重失真（估算 50% vs 实际 99.7%），<strong>直方图能精确统计各值占比</strong>（99.67%），是处理倾斜数据的进阶手段。</p>
+<h2 id="_4">五、优化方案</h2>
+<ol>
+<li><strong>ANALYZE 常规刷新</strong>：大批量 DML 后执行 <code>ANALYZE TABLE</code>，刷新基数统计。</li>
+<li><strong>直方图</strong>：倾斜数据用 <code>ANALYZE TABLE ... UPDATE HISTOGRAM ON 列</code>，精确统计分布。</li>
+<li><strong>EXPLAIN 定位</strong>：定期 EXPLAIN 巡检慢查询，看 type/rows 是否走错索引。</li>
+<li><strong>强制索引</strong>：必要时 <code>FORCE INDEX (idx)</code> 或优化 SQL 谓词。</li>
+<li><strong>统计信息过期检测</strong>：监控 <code>information_schema_stats_expiry</code>、索引 cardinality 异常。</li>
+<li><strong>索引优化</strong>：复合索引顺序、覆盖索引，减少回表。</li>
+</ol>
+<h2 id="_5">六、面试简述</h2>
+<blockquote>
+<p><strong>统计信息与执行计划</strong>：优化器靠统计信息选索引，数据倾斜/过期会走错索引。实测热分类30万+冷1千，EXPLAIN rows 估算 15万 vs 实际 30万（偏差 50%），普通 ANALYZE 采样基数仍失真；<strong>直方图</strong> <code>[[0,0.9967],[1,1.0]]</code> 精确揭示 category=0 占 99.67%。优化：ANALYZE 刷新、直方图统计倾斜、EXPLAIN 巡检、FORCE INDEX。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

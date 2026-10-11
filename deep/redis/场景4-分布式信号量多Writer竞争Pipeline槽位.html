@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景4-分布式信号量多Writer竞争Pipeline槽位 · 小番茄程序猿</title>
+<meta name="description" content="场景4-分布式信号量多Writer竞争Pipeline槽位 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景4-分布式信号量多Writer竞争Pipeline槽位</h1>
+  </div>
+  <article class="prose">
+<h2 id="4-writer-pipeline">场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</h2>
+<hr />
+<h3 id="tldr">TL;DR</h3>
+<div class="codehilite"><pre><span></span><code>问题: 单服务压测最优 8 个 pipeline 槽位，生产 12 个 Java 服务同时写 Redis。
+      如果每服务 8 个 pipeline → 96 个并发管道，超出 Redis 单实例承受能力。
+
+目标: 用分布式信号量（Redis 全局计数/令牌），让 12 个 Writer 竞争有限槽位，
+      遍历不同 slots 值，找到全局最优并发 pipeline 数。
+
+结论: 8 个全局槽位是性价比最优值（cmd/s≈320k, P99≈4.6ms, retries=0）。
+      实现上必须注意：① 只在成功占有槽位时释放（不能无条件 DECR）
+      ② 用 token+TTL 防泄漏（不能盲目按阈值归零）③ 用 Lua 保证原子性
+      ④ 避免 tight spin-wait，使用随机退避。
+
+风险评估三轴: 吞吐 (cmd/s) / 延迟 (P99) / 公平性 (retries/starvation)
+</code></pre></div>
+
+<hr />
+<h3 id="41">4.1 背景</h3>
+<div class="codehilite"><pre><span></span><code>问题: 压测测得单个服务最优为 8 个 pipeline 槽位，但生产有 12 个 Java 服务同时写入 Redis。
+      如果每个服务都按 8 个 pipeline 打，就是 96 个并发管道，Redis 未必扛得住。
+
+目标: 通过分布式信号量（基于 Redis 的全局计数/令牌），让 12 个 Writer 竞争有限槽位，
+      遍历不同 slots 值，找到全局最优并发管道数。
+</code></pre></div>
+
+<h3 id="42">4.2 实验设计</h3>
+<h4 id="421">4.2.1 测试环境（复现必需）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">配置项</th>
+<th style="text-align: left;">值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Redis 版本</td>
+<td style="text-align: left;">7.x（注明实际版本号）</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 实例规格</td>
+<td style="text-align: left;">CPU: X 核 Y GHz，内存: Z GB</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 配置</td>
+<td style="text-align: left;"><code>lazyfree-lazy-expire yes</code>, hz=10, effort=1 保持默认</td>
+</tr>
+<tr>
+<td style="text-align: left;">网络</td>
+<td style="text-align: left;">带宽: X Gbps，RTT: Y ms（ping 实测）</td>
+</tr>
+<tr>
+<td style="text-align: left;">客户端机型</td>
+<td style="text-align: left;">CPU: X 核，内存: Y GB，OS: Linux/Windows</td>
+</tr>
+<tr>
+<td style="text-align: left;">JVM 参数</td>
+<td style="text-align: left;">-Xms2g -Xmx2g，GC: G1GC / ZGC</td>
+</tr>
+<tr>
+<td style="text-align: left;">Writer 数</td>
+<td style="text-align: left;">12（模拟 12 个 Java 服务）</td>
+</tr>
+<tr>
+<td style="text-align: left;">每个 batch</td>
+<td style="text-align: left;">200 条 SETEX</td>
+</tr>
+<tr>
+<td style="text-align: left;">命令类型</td>
+<td style="text-align: left;"><code>SETEX key TTL value</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">TTL</td>
+<td style="text-align: left;">2s + rand(0,2s)（均匀随机打散）</td>
+</tr>
+<tr>
+<td style="text-align: left;">key 空间</td>
+<td style="text-align: left;">50 万</td>
+</tr>
+<tr>
+<td style="text-align: left;">槽位遍历</td>
+<td style="text-align: left;">1, 2, 4, 6, 8, 12, 16, 24</td>
+</tr>
+<tr>
+<td style="text-align: left;">每轮时长</td>
+<td style="text-align: left;">25s（含 5s 预热，20s 采样）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>说明</strong>：绝对值（320k cmd/s 等）与测试环境强相关。不同命令类型、客户端/网络/Redis 硬件与配置均会影响结果。生产环境必须基于本环境实测数据做决策。</p>
+</blockquote>
+<h4 id="422">4.2.2 精确测量指标与采样方法</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">采集方法</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">cmd/s</td>
+<td style="text-align: left;">客户端每 1s 统计成功命令数</td>
+<td style="text-align: left;">排除预热期 5s</td>
+</tr>
+<tr>
+<td style="text-align: left;">avg / P50 / P90 / P99 / P999</td>
+<td style="text-align: left;">HdrHistogram 或采样计算</td>
+<td style="text-align: left;">P999 反映极端尾部</td>
+</tr>
+<tr>
+<td style="text-align: left;">max 延迟</td>
+<td style="text-align: left;">采样期最大值</td>
+<td style="text-align: left;">关注原因（GC、切换、竞争）</td>
+</tr>
+<tr>
+<td style="text-align: left;">acquire 成功率</td>
+<td style="text-align: left;"><code>acquire_success / total_acquire_attempts</code></td>
+<td style="text-align: left;">&lt; 95% 时告警</td>
+</tr>
+<tr>
+<td style="text-align: left;">retries 次数</td>
+<td style="text-align: left;">INCR 超限后 DECR 退回 + 重试计数</td>
+<td style="text-align: left;">反映竞争烈度</td>
+</tr>
+<tr>
+<td style="text-align: left;">等待时长分位</td>
+<td style="text-align: left;">acquire 从尝试到成功的时间</td>
+<td style="text-align: left;">与退避策略相关</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis CPU</td>
+<td style="text-align: left;"><code>INFO cpu</code> 采样</td>
+<td style="text-align: left;"><code>used_cpu_sys + used_cpu_user</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">连接数</td>
+<td style="text-align: left;"><code>INFO clients</code> / <code>connected_clients</code></td>
+<td style="text-align: left;">关注是否接近 maxclients</td>
+</tr>
+<tr>
+<td style="text-align: left;">网络 I/O</td>
+<td style="text-align: left;"><code>INFO stats</code> / <code>total_net_input_bytes/output_bytes</code></td>
+<td style="text-align: left;">计算带宽占用</td>
+</tr>
+<tr>
+<td style="text-align: left;">GC pause</td>
+<td style="text-align: left;">JVM GC log / <code>jstat</code></td>
+<td style="text-align: left;">排除 GC 对 max 的干扰</td>
+</tr>
+</tbody>
+</table>
+<p><strong>采样方法：</strong>
+- 预热 5s 数据丢弃，只统计 20s 采样期
+- 每轮（25s）后输出一次汇总报告，包含 min/avg/P50/P90/P99/P999/max/retries
+- 如果可用，报告 95% 置信区间（多次运行取均值 ± 标准差）</p>
+<h3 id="43">4.3 核心机制（安全实现）</h3>
+<h4 id="431-token-ttl">4.3.1 推荐方案：持有者令牌（Token + TTL）</h4>
+<p><strong>优于纯 INCR/DECR 的原因：</strong>
+- INCR/DECR 在服务崩溃时泄漏计数，且无条件 DECR 会误减
+- 令牌方案每个槽位有独立 key 带 TTL，崩溃自动回收</p>
+<div class="codehilite"><pre><span></span><code>持有者令牌方案:
+  - 全局计数键: pipeline:slots:used（维护当前占用数）
+  - 令牌设计: pipeline:token:{uuid}  →  EXPIRE = Xs（如 30s，大于单次 flush 时间 × 3）
+  - acquire: 用 Lua 原子性创建令牌 + 检查计数
+  - release: DEL token + DECR count（仅在令牌存在时执行）
+  - 兜底: token 超时 → Redis 自动删除 → 后台 reaper 修正计数
+</code></pre></div>
+
+<h4 id="432-lua-acquire">4.3.2 Lua 原子 acquire 脚本（伪码）</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- acquire.lua</span>
+<span class="c1">-- KEYS[1] = pipeline:slots:used (计数 key)</span>
+<span class="c1">-- KEYS[2] = pipeline:token:{uuid} (令牌 key)</span>
+<span class="c1">-- ARGV[1] = globalSlots (槽位上限)</span>
+<span class="c1">-- ARGV[2] = token_ttl_seconds (令牌 TTL, 建议 30s)</span>
+<span class="c1">-- ARGV[3] = token_value (持有者标识, 如 instanceId+threadId)</span>
+<span class="c1">-- 返回: {success=1} 或 {success=0, current_count=count}</span>
+
+<span class="kd">local</span><span class="w"> </span><span class="nv">count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'INCR'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="kr">if</span><span class="w"> </span><span class="nv">count</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nb">tonumber</span><span class="p">(</span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="kr">then</span>
+<span class="w">    </span><span class="c1">-- 成功占用</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SET'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span><span class="w"> </span><span class="s1">'EX'</span><span class="p">,</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+<span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nv">count</span><span class="p">}</span>
+<span class="kr">else</span>
+<span class="w">    </span><span class="c1">-- 超出限制，需要退回</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'DECR'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">count</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span>
+<span class="kr">end</span>
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code><span class="c1">-- release.lua</span>
+<span class="c1">-- KEYS[1] = pipeline:slots:used</span>
+<span class="c1">-- KEYS[2] = pipeline:token:{uuid}</span>
+<span class="c1">-- 返回: {released=1} 或 {released=0, reason="token_not_found"}</span>
+
+<span class="kd">local</span><span class="w"> </span><span class="nv">exists</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'EXISTS'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+<span class="kr">if</span><span class="w"> </span><span class="nv">exists</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="kr">then</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'DEL'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+<span class="w">    </span><span class="kd">local</span><span class="w"> </span><span class="nv">count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'DECR'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="w">    </span><span class="c1">-- 防止 DECR 到负数（兜底保护）</span>
+<span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="nv">count</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="kr">then</span>
+<span class="w">        </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SET'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="kr">end</span>
+<span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nb">math.max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">count</span><span class="p">)}</span>
+<span class="kr">else</span>
+<span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s2">"token_not_found"</span><span class="p">}</span>
+<span class="kr">end</span>
+</code></pre></div>
+
+<p><strong>关键原则：</strong>
+1. acquire 和 release 都用 Lua 保证原子性，避免 INCR+判断+DECR 之间的竞态窗口
+2. <strong>只在确实成功占有槽位时才 release</strong>（令牌存在才 DEL + DECR）
+3. <strong>禁止在 finally 中无条件 DECR</strong>——无条件 DECR 会把从未成功 acquire 的计数也减掉，导致计数器异常偏小甚至为负
+4. release 中做下界检查（count ≥ 0），防止负数计数
+5. 令牌 TTL 设为 flush 时间的 3~5 倍，既防止泄漏又避免误回收</p>
+<h4 id="433-writer">4.3.3 Writer 循环伪码</h4>
+<div class="codehilite"><pre><span></span><code><span class="kd">public</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="nf">tryFlushWithSemaphore</span><span class="p">(</span><span class="n">List</span><span class="o">&lt;</span><span class="n">Command</span><span class="o">&gt;</span><span class="w"> </span><span class="n">batch</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">tokenId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">UUID</span><span class="p">.</span><span class="na">randomUUID</span><span class="p">().</span><span class="na">toString</span><span class="p">();</span>
+<span class="w">    </span><span class="kt">boolean</span><span class="w"> </span><span class="n">acquired</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 1. 尝试 acquire（Lua 原子脚本）</span>
+<span class="w">        </span><span class="kt">long</span><span class="w"> </span><span class="n">startWait</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">currentTimeMillis</span><span class="p">();</span>
+<span class="w">        </span><span class="kt">long</span><span class="w"> </span><span class="n">maxWaitMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">500</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">retries</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="w">        </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">System</span><span class="p">.</span><span class="na">currentTimeMillis</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">startWait</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">maxWaitMs</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">LuaResult</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">executeLua</span><span class="p">(</span>
+<span class="w">                </span><span class="s">"acquire.lua"</span><span class="p">,</span>
+<span class="w">                </span><span class="s">"pipeline:slots:used"</span><span class="p">,</span>
+<span class="w">                </span><span class="s">"pipeline:token:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">tokenId</span><span class="p">,</span>
+<span class="w">                </span><span class="n">globalSlots</span><span class="p">,</span><span class="w"> </span><span class="n">tokenTtlSeconds</span><span class="p">,</span><span class="w"> </span><span class="n">instanceId</span>
+<span class="w">            </span><span class="p">);</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="na">success</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="n">acquired</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">;</span>
+<span class="w">                </span><span class="k">break</span><span class="p">;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">            </span><span class="n">retries</span><span class="o">++</span><span class="p">;</span>
+<span class="w">            </span><span class="c1">// 随机化退避，避免 sync wakeup</span>
+<span class="w">            </span><span class="kt">long</span><span class="w"> </span><span class="n">backoffMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">min</span><span class="p">(</span><span class="mi">10</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ThreadLocalRandom</span><span class="p">.</span><span class="na">current</span><span class="p">().</span><span class="na">nextLong</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span><span class="w"> </span><span class="mi">200</span><span class="p">);</span>
+<span class="w">            </span><span class="n">sleep</span><span class="p">(</span><span class="n">backoffMs</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="c1">// 2. 仅当确实 acquire 成功才 flush</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">acquired</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">log</span><span class="p">.</span><span class="na">warn</span><span class="p">(</span><span class="s">"acquire timeout after {} retries"</span><span class="p">,</span><span class="w"> </span><span class="n">retries</span><span class="p">);</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="n">executePipeline</span><span class="p">(</span><span class="n">batch</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">true</span><span class="p">;</span>
+
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 3. 安全释放：只在真正持有令牌时才释放</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">acquired</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">executeLua</span><span class="p">(</span><span class="s">"release.lua"</span><span class="p">,</span>
+<span class="w">                </span><span class="s">"pipeline:slots:used"</span><span class="p">,</span>
+<span class="w">                </span><span class="s">"pipeline:token:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">tokenId</span>
+<span class="w">            </span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h4 id="434">4.3.4 边界条件处理</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">处理方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>服务崩溃（未执行 release）</strong></td>
+<td style="text-align: left;">token TTL 到期 → Redis 自动删除 → 后台 reaper 修正计数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>acquire 超时（未拿到槽位）</strong></td>
+<td style="text-align: left;"><code>acquired=false</code>，finally 中不执行 release</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>重复 release</strong></td>
+<td style="text-align: left;">release.lua 检查 token 是否存在，已释放则返回 <code>{0, "token_not_found"}</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>DECR 导致计数 &lt; 0</strong></td>
+<td style="text-align: left;">release.lua 中 <code>if count &lt; 0 then SET 0</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>令牌被 TTL 误回收</strong></td>
+<td style="text-align: left;">token TTL &gt; flush 时间 × 3~5；若 flush 超时则客户端主动续约 TTL</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44">4.4 泄漏检测与修复策略</h3>
+<div class="codehilite"><pre><span></span><code>✗ 错误做法: 定时扫描 → 计数 &gt; 2×total → 强制归零
+  → 风险: 误判归零会杀掉活跃会话，造成正常 Writer 被清退
+
+✓ 正确做法:
+  方案 A (推荐): token+TTL + 后台 reaper
+    - 每次 acquire 创建 token: pipeline:token:{uuid} → TTL=30s
+    - 释放时 DEL token + DECR count
+    - 后台 reaper (每 60s): 扫描 pipeline:token:* 集合
+      → 对每个 token 检查 EXPIRE 时间，已过期但 count 未减 → 修复计数
+    - 定期校验: 对比 SCARD(pipeline:tokens:set) 与 GET(pipeline:slots:used)，不一致则告警
+
+  方案 B: 周期性一致性校验 (不做自动归零)
+    - 脚本: SCARD(token_set) vs GET(count_key)
+    - 若不一致且差距 &gt; 阈值 → P1 告警，人工确认后修复
+    - 触发条件: count &gt; expected_max × 1.5 且 token_set_size != count
+    - 人工修复: 找到孤儿 token DEL 掉并修正计数
+
+  方案 C (兜底): 定时全量重置 (仅限非高峰期、确认无活跃 Writer 时)
+    - 先 SET pipeline:slots:used 0
+    - 再 SCAN + DEL 清理所有 pipeline:token:*
+    - 必须人工确认 + 逐步执行
+</code></pre></div>
+
+<h3 id="45-sweep">4.5 Sweep 原始数据</h3>
+<div class="codehilite"><pre><span></span><code>12 个 Writer 模拟 12 个 Java 服务，通过共享 Redis 竞争全局 Pipeline 槽位
+
+slots │  cmd/s  │ avg ms │ P99 ms │ max ms │ retries │       现象
+──────┼─────────┼────────┼────────┼────────┼─────────┼────────────────────
+   1  │  112k   │  —     │  2.52  │ 28.48  │  40438  │ 极端竞争，大量重试/等待
+   2  │  163k   │  —     │  3.58  │ 50.58  │  29368  │ 仍严重拥堵与等待
+   4  │  160k   │  —     │  2.29  │ 27.57  │      0  │ 表面无重试但出现严重饿死（少数快 Writer 长期占位）
+   6  │  307k   │  —     │  4.75  │ 57.14  │  14813  │ 吞吐显著提升，偶有等待
+   8  │  320k   │  —     │  4.63  │ 23.10  │      0  │ ★ 无重试且吞吐峰值（性价比高）
+  12  │  328k   │  —     │  4.38  │ 21.68  │      0  │ 吞吐略高（+2.5%），差异可忽略
+  16  │  292k   │  —     │  4.20  │ 15.08  │      0  │ 并发太多导致连接/上下文切换开销反噬
+  24  │  316k   │  —     │  3.55  │ 12.08  │      0  │ 边际收益递减，波动存在
+</code></pre></div>
+
+<blockquote>
+<p><strong>注</strong>：表中 avg ms 若可用建议补入。所有数值与测试环境有关：命令类型、客户端/网络/Redis 硬件与配置均影响绝对值。</p>
+<p>max 值差异原因：跨连接调度抖动、TCP 连接切换及 GC 可能导致峰值放大；排查点包括连接数、线程数、GC 限制、网络抖动与 Redis 后端 CPU 饱和。</p>
+</blockquote>
+<h3 id="46">4.6 三段现象分析</h3>
+<div class="codehilite"><pre><span></span><code>              吞吐
+               ↑
+           320k┼        ▄▄▄█▄▄▄▄
+               │      ▄█         ▄█
+           160k┼  ▄▄▄█
+               │ █
+           112k┼█
+               │
+               ├────┼────┼────┼────┼────┼──→ slots
+                  1    2    4    6    8   12
+
+阶段 1 (slots=1,2): 槽位严重不足 → 大量重试/等待（retries 很大）→ 吞吐大幅下降。
+                    每个 Writer 大量等待释放时间 &gt;&gt; 实际写入时间。
+
+阶段 2 (slots=4):   retries=0 并不等同于"无竞争"。实际表现为少数快速 Writer
+                    持续抢到并释放槽位，长期占据导致其他 Writer 被饿死（公平性问题）。
+                    换言之，这是一种典型的 convoy/starvation：占用-释放周期短使得慢 Writer 无机会，
+                    整体吞吐被槽位数锁死在 160k。
+
+阶段 3 (slots=6~12): 槽位充足，瓶颈转为 Redis 单实例处理能力 → 吞吐在 290k~328k 波动。
+                    增加槽位/连接数到一定值后会带来连接开销/上下文切换，出现边际折损或波动。
+</code></pre></div>
+
+<h3 id="47">4.7 关键发现</h3>
+<p><strong>1. slots=8 是性价比最高的点</strong></p>
+<div class="codehilite"><pre><span></span><code>slots=8:  cmd/s=320k, P99=4.63ms, max=23.10ms, retries=0
+slots=12: cmd/s=328k, P99=4.38ms, max=21.68ms, retries=0 (+2.5%)
+</code></pre></div>
+
+<p>从 8→12 只多挣了 2.5% 吞吐，多开 4 条连接和 4 个槽位，连接开销与运维复杂度上升。在本测试环境下，8 个全局槽位是较优折中（少数等待、较高吞吐、较低连接开销）。</p>
+<p><strong>2. slots=4 的 "retries=0" 是假象</strong></p>
+<div class="codehilite"><pre><span></span><code>slots=4, retries=0, 但吞吐只有 160k：
+  → 少数快 Writer 快速循环占用并释放槽位
+  → 慢 Writer 长期没机会 → 饿死（starvation）
+  → 这是公平性问题，不是"无竞争"
+</code></pre></div>
+
+<p><strong>结论：retries=0 不等于无竞争，吞吐才是真正的健康指标。</strong>
+若需公平性，给每个 Writer 加入随机化退避、基于令牌的公平队列（FIFO）或按服务配额分配槽位。</p>
+<p><strong>3. Redis 单实例处理上限 ≈ 320k cmd/s（在本测试条件下）</strong></p>
+<div class="codehilite"><pre><span></span><code>测试条件: SETEX 批量 200 条/batch, TTL 2s, key 空间 50 万, 12 客户端
+</code></pre></div>
+
+<p>一旦 slots ≥ 6，吞吐在 290k~328k 之间波动，无法再突破。瓶颈从"槽位不足"转为"Redis 处理能力"（CPU、单核限速、网络栈、I/O）。
+若需更高吞吐，应考虑水平扩展（分片/集群）、减少命令复杂度或批量化写入。</p>
+<p><strong>4. slots &gt; 12 反而可能吞吐下降</strong></p>
+<div class="codehilite"><pre><span></span><code>slots=16: cmd/s=292k → 连接开销反噬
+slots=24: cmd/s=316k → 略有恢复，但边际递减明显
+</code></pre></div>
+
+<p>过多并发连接带来的上下文切换、网络/线程开销超过并行收益，超过阈值后收益递减或反噬性能。</p>
+<h3 id="48-8-vs-12-8">4.8 对比：单服务 8 管道 vs 12 服务竞争 8 槽位</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">场景 1 单服务 8 pipeline</th>
+<th style="text-align: left;">场景 4 多服务竞争 8 槽位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">机制</td>
+<td style="text-align: left;">连接内 pipeline</td>
+<td style="text-align: left;">跨连接分布式信号量</td>
+</tr>
+<tr>
+<td style="text-align: left;">P99</td>
+<td style="text-align: left;">~5ms</td>
+<td style="text-align: left;">4.63ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">max</td>
+<td style="text-align: left;">~14ms</td>
+<td style="text-align: left;">23ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">差异原因</td>
+<td style="text-align: left;">连接内无竞争</td>
+<td style="text-align: left;">跨连接有协调等待和调度抖动</td>
+</tr>
+</tbody>
+</table>
+<p>分布式信号量的 max 略高（23ms vs 14ms），因为协调开销客观存在，但 P99 不受影响。</p>
+<h3 id="49">4.9 生产建议</h3>
+<p><strong>情况 A：服务数 ≤ 12（且每服务写入量中等）</strong>
+- 每个服务配置 <code>max-inflight-flushes=1</code>（或 ≤ 2），全局天然 ≤ 12 个并发管道，Redis 扛得住
+- 无需分布式信号量（简单配置即可），但需监控 Redis 指标与延迟
+- 如果单服务写入量很大，仅 1 个槽位可能不够，应根据写入量/延迟目标调整，或使用全局信号量做动态调优</p>
+<p><strong>情况 B：服务数 &gt; 12（或总并发可能 &gt;&gt; 12）</strong>
+- 使用分布式信号量，全局上限建议在 8~12（优先取 8），资源允许且追求极限吞吐时上调到 12
+- 写入量小的服务可不开 pipeline 或仅使用 0~1 槽位</p>
+<p><strong>情况 C：写入量差异大（少数重写者 + 多数轻写）</strong>
+- 按负载分配槽位：重写者分配 2~3 个槽位，轻写服务 0~1，确保总数控制在 8~12
+- 动态配额比静态均分更公平也更高效
+- 考虑实现权重机制，或把高写入流量路由到专门 Redis 集群/分片</p>
+<h3 id="410">4.10 退避与公平性策略</h3>
+<div class="codehilite"><pre><span></span><code>✗ 错误做法: sleep(10ms) 固定等待 → tight spin-wait 浪费 CPU
+            → 多个 Writer 可能同步唤醒造成突发竞争
+
+✓ 推荐: 随机化退避 + 指数上限
+  基线: 10ms
+  抖动: ThreadLocalRandom.current().nextLong(10)  (每次 +0~10ms 随机)
+  指数增长: 10ms → 20ms → 40ms → 80ms → 160ms → 200ms (cap)
+  总超时: 500ms (由业务 SLO 决定)
+  重试次数: timeout 内按退避自动计算
+
+公平性增强:
+  - 按服务配额: 每个 serviceId 最多同时持有 N 个槽位
+  - 令牌池 FIFO: 用 Redis List + BRPOP 实现公平排队 acquire
+  - 权重分配: 重写者权重高，保证不被轻写者饿死
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code><span class="c1">// 带随机抖动的退避伪码</span>
+<span class="kt">long</span><span class="w"> </span><span class="n">baseSleepMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span>
+<span class="kt">long</span><span class="w"> </span><span class="n">maxSleepMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200</span><span class="p">;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">attempt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="kt">long</span><span class="w"> </span><span class="n">deadline</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">currentTimeMillis</span><span class="p">()</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">500</span><span class="p">;</span><span class="w"> </span><span class="c1">// 总超时</span>
+
+<span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">System</span><span class="p">.</span><span class="na">currentTimeMillis</span><span class="p">()</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">deadline</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">tryAcquire</span><span class="p">())</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">true</span><span class="p">;</span>
+<span class="w">    </span><span class="n">attempt</span><span class="o">++</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">sleepMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">min</span><span class="p">(</span><span class="n">baseSleepMs</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="mi">1L</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">min</span><span class="p">(</span><span class="n">attempt</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">)),</span><span class="w"> </span><span class="n">maxSleepMs</span><span class="p">);</span>
+<span class="w">    </span><span class="n">sleepMs</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">ThreadLocalRandom</span><span class="p">.</span><span class="na">current</span><span class="p">().</span><span class="na">nextLong</span><span class="p">(</span><span class="n">sleepMs</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span><span class="w"> </span><span class="c1">// 随机抖动</span>
+<span class="w">    </span><span class="n">Thread</span><span class="p">.</span><span class="na">sleep</span><span class="p">(</span><span class="n">Math</span><span class="p">.</span><span class="na">min</span><span class="p">(</span><span class="n">sleepMs</span><span class="p">,</span><span class="w"> </span><span class="n">deadline</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">currentTimeMillis</span><span class="p">()));</span>
+<span class="p">}</span>
+<span class="k">return</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span><span class="w"> </span><span class="c1">// timeout</span>
+</code></pre></div>
+
+<h3 id="411">4.11 监控与告警</h3>
+<h4 id="4111">4.11.1 必监控项与告警阈值</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">监控项</th>
+<th style="text-align: left;">来源</th>
+<th style="text-align: left;">告警阈值</th>
+<th style="text-align: left;">级别</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Redis P99 延迟</td>
+<td style="text-align: left;">客户端 HdrHistogram</td>
+<td style="text-align: left;">&gt; 10ms 持续 1min</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;">acquire 成功率</td>
+<td style="text-align: left;">客户端计数器</td>
+<td style="text-align: left;">&lt; 95% 持续 3min</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;">retries/sec</td>
+<td style="text-align: left;">客户端重试计数</td>
+<td style="text-align: left;">&gt; 100/s 持续 1min</td>
+<td style="text-align: left;">P2</td>
+</tr>
+<tr>
+<td style="text-align: left;">全局槽位计数</td>
+<td style="text-align: left;"><code>GET pipeline:slots:used</code></td>
+<td style="text-align: left;">&gt; globalSlots × 1.5</td>
+<td style="text-align: left;">P1 泄漏告警</td>
+</tr>
+<tr>
+<td style="text-align: left;">令牌集合大小</td>
+<td style="text-align: left;"><code>SCARD pipeline:tokens:set</code></td>
+<td style="text-align: left;">与计数不一致超过 5min</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis CPU</td>
+<td style="text-align: left;"><code>INFO cpu</code></td>
+<td style="text-align: left;">&gt; 80% 持续 1min</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;">连接数</td>
+<td style="text-align: left;"><code>INFO clients</code></td>
+<td style="text-align: left;">&gt; maxclients × 80%</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;">acquire 等待时长 P99</td>
+<td style="text-align: left;">客户端计时</td>
+<td style="text-align: left;">&gt; 100ms</td>
+<td style="text-align: left;">P2</td>
+</tr>
+<tr>
+<td style="text-align: left;">GC pause</td>
+<td style="text-align: left;">JVM GC log</td>
+<td style="text-align: left;">&gt; 50ms</td>
+<td style="text-align: left;">P2</td>
+</tr>
+</tbody>
+</table>
+<h4 id="4112-grafana">4.11.2 Grafana 面板建议</h4>
+<div class="codehilite"><pre><span></span><code>面板 1 — Overview:
+  - cmd/s (所有 Writer 合计)
+  - P50 / P99 / P999 延时
+  - acquire_success_rate (%)
+
+面板 2 — 信号量健康:
+  - pipeline:slots:used (Gauge, 预期范围 0~12)
+  - pipeline:tokens:set_size (Gauge, 预期 = slots:used)
+  - retries/sec (Rate)
+  - 每服务 acquire_wait_ms 分位 (Histogram)
+
+面板 3 — Redis 实例:
+  - CPU % (used_cpu_sys + used_cpu_user)
+  - connected_clients
+  - total_net_input_bytes / output_bytes (Rate)
+  - instantaneous_ops_per_sec
+
+面板 4 — 公平性:
+  - per_service_throughput (Bar chart)
+  - per_service_acquire_success_rate (Heatmap, 检测饿死)
+</code></pre></div>
+
+<h3 id="412">4.12 自动/半自动调优流程</h3>
+<div class="codehilite"><pre><span></span><code>方案: 低频自动 sweep（夜间/低峰期）
+
+流程:
+  1. 采集当前窗口 Redis 指标（CPU, cmd/s, P99 latency, retries）
+  2. 如果 CPU &lt; 60% 且 retries &gt; 100/s → 尝试 slots + 2（上限 12）
+  3. 如果 CPU &gt; 85% 或 P99 上升 → 尝试 slots - 2（下限 6）
+  4. 每次调整后观察 5min，回滚条件：P99 恶化 &gt; 20% 或 retries 显著增长
+  5. 结果写入 application.yml 并告警通知
+
+手动 runbook:
+  - 先查 Grafana 面板确认当前 slots 与指标
+  - 在预发/灰度环境改 globalSlots 值（application.yml 热改）
+  - 观察 10min 指标，确认无退化后推广到全量
+</code></pre></div>
+
+<h3 id="413">4.13 安全与资源保护</h3>
+<div class="codehilite"><pre><span></span><code>防止恶意/误配置:
+  1. 单服务 acquire 频率硬限制: 每 serviceId 每秒最多 acquire 10 次
+  2. 单 client 槽位配额: 每 serviceId 最多同时持有 3 个槽位
+  3. 全局 max-inflight-flushes 上限: 即使 globalSlots=12，单服务也不能超过 3
+  4. 令牌 TTL 最小值: 不允许 &lt; 10s，防止高频创建/过期导致 Redis CPU 浪费
+  5. acquire 超时上限: 不允许 &gt; 2s，防止客户端堆积
+</code></pre></div>
+
+<h3 id="414">4.14 替代技术路径比较</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">原理</th>
+<th style="text-align: left;">适用场景</th>
+<th style="text-align: left;">优缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>分布式信号量 (本文)</strong></td>
+<td style="text-align: left;">Redis 全局计数/令牌竞争</td>
+<td style="text-align: left;">多服务、需全局协调、写入量差异大</td>
+<td style="text-align: left;">✓ 公平、灵活 ✗ 实现复杂度中等</td>
+</tr>
+<tr>
+<td style="text-align: left;">连接池限流</td>
+<td style="text-align: left;">每个服务独立配置 <code>maxActive=N</code></td>
+<td style="text-align: left;">服务数 ≤ 12、写入量均匀</td>
+<td style="text-align: left;">✓ 简单 ✗ 总量不可控</td>
+</tr>
+<tr>
+<td style="text-align: left;">客户端自身限流</td>
+<td style="text-align: left;">单服务内部 RateLimiter</td>
+<td style="text-align: left;">单服务场景、写入量可预测</td>
+<td style="text-align: left;">✓ 最简单 ✗ 无法跨服务协调</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis Streams / 工作队列</td>
+<td style="text-align: left;">写入请求入队，Worker 消费</td>
+<td style="text-align: left;">不需要实时写入、可缓冲</td>
+<td style="text-align: left;">✓ 天然背压 ✗ 引入延迟</td>
+</tr>
+</tbody>
+</table>
+<h3 id="415">4.15 性能优化细节</h3>
+<div class="codehilite"><pre><span></span><code>1. Pipeline 内部 batch 合理: 200 条/batch 是本环境最优，生产需复测
+2. 连接复用: 每个 Writer 保持一个长连接，不使用连接池
+3. TCP keepalive: 开启 TCP_KEEPALIVE 防止空闲连接断开
+4. 客户端批量序列化: 减少单命令序列化开销
+5. pipeline:slots:used 使用 small key: 仅 value 为整数
+6. Lua 脚本缓存: 使用 EVALSHA 替代 EVAL 减少网络开销
+</code></pre></div>
+
+<h3 id="416-playbook">4.16 灾难恢复 / 回滚 Playbook</h3>
+<div class="codehilite"><pre><span></span><code>场景 1: 计数器异常（slots:used 持续 &gt; globalSlots × 2 且 token_set_size 不符）
+  1. 确认无活跃 token 异常（检查 token set 与 TTL）
+  2. 手动 DEL 孤儿 token，修正 slots:used 计数
+  3. 如果无法排查 → 低峰期人工逐步重置（非强制清零）
+
+场景 2: Redis 负载飙升（CPU &gt; 90%，P99 &gt; 50ms）
+  1. 紧急降低 globalSlots → 4（通过配置中心热改）
+  2. 临时降级为重写者服务单 pipeline，轻写者停 pipeline
+  3. 确认写入 SLO 恢复后逐步放宽
+
+场景 3: 某个服务饿死（per_service_throughput = 0 持续 &gt; 2min）
+  1. 检查该服务重试次数与其他服务 flush 频率
+  2. 如公平性问题 → 给该服务设置最低配额（min-slots=1）
+  3. 如该服务自身问题 → 重启并限流排查
+</code></pre></div>
+
+<h3 id="417">4.17 成本/运维权衡</h3>
+<div class="codehilite"><pre><span></span><code>当前方案 (8 槽位, 单 Redis):
+  吞吐: ~320k cmd/s
+  运维: 中等（需维护信号量 + 监控）
+  成本: 1 Redis 实例
+
+若需更高吞吐，扩容选项:
+┌──────────────────────┬──────────┬──────────────────────────┐
+│ 方案                  │ 吞吐预估  │ 运维复杂度                │
+├──────────────────────┼──────────┼──────────────────────────┤
+│ 单实例 + 优化 (baseline)│ ~320k   │ 低                       │
+│ Redis Cluster (3 分片) │ ~900k   │ 高（需改造客户端/迁移数据）│
+│ 专用写实例分离          │ ~500k   │ 中（双写逻辑）            │
+│ Pipeline + 压缩         │ ~350k   │ 低（仅客户端改动）        │
+│ 减少 SETEX 换用 HSET    │ ~400k   │ 中（数据模型改造）        │
+└──────────────────────┴──────────┴──────────────────────────┘
+</code></pre></div>
+
+<h3 id="418">4.18 总结</h3>
+<div class="codehilite"><pre><span></span><code>核心结论:
+  分布式信号量能把多实例的并发写入限制在 Redis 承受范围内，
+  8 个全局槽位在本实验中是性价比最优值。
+
+实现铁律:
+  1. 只在确实成功占有槽位时才释放（不能无条件 DECR）
+  2. 使用 token+TTL 防泄漏（不能盲目按阈值归零）
+  3. acquire/判断/释放 封装为 Lua 原子脚本
+  4. 避免 tight spin-wait，使用随机化退避
+  5. 监控吞吐+延迟+公平性三轴，配合自动化调优
+
+评估三轴:
+  吞吐 (cmd/s) — 延迟 (P99) — 公平性 (retries/starvation)
+  三者缺一不可: retries=0 不表示无竞争，吞吐才是最终健康指标
+</code></pre></div>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

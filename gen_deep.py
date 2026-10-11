@@ -1,6 +1,6 @@
 import os, urllib.parse
 
-ROOT = "D:/personal-website"
+ROOT = os.path.dirname(os.path.abspath(__file__))
 DEEP = os.path.join(ROOT, "deep")
 
 SERIES = [
@@ -64,7 +64,7 @@ parts.append("""<!DOCTYPE html>
         <h1>项目背后的<br />底层原理与方法论。</h1>
         <p class="lead">
           这里不是项目罗列，而是支撑那些项目跑起来、能量化的底层知识：数据库内核与治理、压测方法论、云原生底层，以及 AI Agent 的原理实现。
-          每篇都是可打开的 Markdown 原文，建议在桌面端阅读。
+          每篇都已渲染为网页文章，点开即可阅读，建议在桌面端阅读。
         </p>
         <div class="cta">
           <a class="btn btn-primary" href="#mysql">MySQL 底层 →</a>
@@ -85,13 +85,13 @@ for key, title, desc in SERIES:
     parts.append(f'        <div class="section-head">\n          <h2>{title}</h2>\n          <p>{desc}</p>\n        </div>\n')
     parts.append('        <ul class="doc-list">\n')
     for fn in files:
-        href = f"deep/{key}/{urllib.parse.quote(fn)}"
+        href = f"deep/{key}/{urllib.parse.quote(fn[:-3] + '.html')}"
         if fn == "README.md":
             label = "phase1 · 最小 Agent 工程 README" if key == "agent" else ("K3s 项目总览 README" if key == "k8s" else "项目总览 README")
         else:
             label = disp(fn)
         badge = ' <span class="badge core">核心</span>' if is_core(fn) else ''
-        parts.append(f'          <li><a href="{href}" target="_blank" rel="noopener">{label}</a>{badge}</li>\n')
+        parts.append(f'          <li><a href="{href}">{label}</a>{badge}</li>\n')
     parts.append('        </ul>\n      </div>\n    </section>\n')
 
 parts.append(f"""  </main>
@@ -104,7 +104,7 @@ parts.append(f"""  </main>
     </div>
   </section>
 
-  <script src="assets/js/comments.js"></script>
+  <script src="assets/js/comments.js?v=2"></script>
 
   <footer>
     <div class="wrap">

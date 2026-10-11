@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景13：InnoDB 参数调优对吞吐的影响 · 小番茄程序猿</title>
+<meta name="description" content="场景13：InnoDB 参数调优对吞吐的影响 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景13：InnoDB 参数调优对吞吐的影响</h1>
+  </div>
+  <article class="prose">
+<h1 id="13innodb">场景13：InnoDB 参数调优对吞吐的影响</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用"<strong>强持久性</strong>"配置：每次事务提交都执行 <code>fsync</code> 刷盘，保证崩溃不丢数据，但<strong>牺牲写入性能</strong>。调优的本质是<strong>「性能 vs 持久性」的权衡</strong>——降低刷盘频率可显著提升吞吐，但崩溃时可能丢失少量已提交数据。</p>
+<h2 id="_2">二、关键参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+<th>默认</th>
+<th>调优方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>innodb_flush_log_at_trx_commit</code></td>
+<td>redo log 刷盘时机</td>
+<td>1</td>
+<td>1=每次提交刷盘(最安全最慢)；2=写 OS 缓存每秒刷盘(性能好,OS 崩溃丢1s)；0=后台每秒刷(最快,最多丢1s)</td>
+</tr>
+<tr>
+<td><code>sync_binlog</code></td>
+<td>binlog 刷盘频率</td>
+<td>1</td>
+<td>1=每次提交刷盘(最安全最慢)；0=由 OS 决定；N=每 N 次刷盘</td>
+</tr>
+<tr>
+<td><code>innodb_buffer_pool_size</code></td>
+<td>缓冲池(缓存数据页/索引)</td>
+<td>128M</td>
+<td>设为可用内存 60%~75%，越大读命中越高</td>
+</tr>
+<tr>
+<td><code>innodb_flush_method</code></td>
+<td>数据页刷盘方式</td>
+<td>fsync</td>
+<td>O_DIRECT 直写磁盘避免双缓存</td>
+</tr>
+<tr>
+<td><code>innodb_io_capacity</code></td>
+<td>InnoDB 异步 IO 能力</td>
+<td>200</td>
+<td>按磁盘 IOPS 调整，越高后台刷脏页越快</td>
+</tr>
+<tr>
+<td><code>innodb_log_buffer_size</code></td>
+<td>redo log 缓冲区</td>
+<td>16M</td>
+<td>大事务/高并发时调大减少刷盘</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">三、动态调参演示接口</h2>
+<p>MySQL 支持 <code>SET GLOBAL</code> 动态修改部分参数（无需重启），本项目据此演示运行时调参。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 查看当前关键 InnoDB / 写入参数</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tuning/params"</span>
+
+<span class="c1"># 2. 动态设置参数（白名单：innodb_flush_log_at_trx_commit / sync_binlog / innodb_flush_method / innodb_io_capacity）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tuning/set?name=sync_binlog&amp;value=0"</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tuning/set?name=innodb_flush_log_at_trx_commit&amp;value=2"</span>
+
+<span class="c1"># 3. 刷盘参数组合对写入吞吐的影响（逐条提交负载，5000行）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tuning/flush-log-bench?total=5000"</span>
+
+<span class="c1"># 4. 调优前后整体写入吞吐对比（逐条提交，5000行）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tuning/bench?total=5000"</span>
+
+<span class="c1"># 5. 缓冲池大小对读性能的影响（信息 + 命中率）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tuning/buffer-pool"</span>
+
+<span class="c1"># 6. 恢复默认参数</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tuning/reset"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果与趋势</h2>
+<p>在容器环境中，逐条提交（每次 fsync）负载下的结果（Docker + SSD/内存缓存）：</p>
+<table>
+<thead>
+<tr>
+<th>组合</th>
+<th>说明</th>
+<th>写入吞吐（行/秒）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flush_log=1, sync_binlog=1</code></td>
+<td>强持久：每次提交刷 redo + binlog</td>
+<td>~30000（最慢）</td>
+</tr>
+<tr>
+<td><code>flush_log=2, sync_binlog=0</code></td>
+<td>平衡：redo 写 OS 缓存</td>
+<td>~40000（提升约 30%）</td>
+</tr>
+<tr>
+<td><code>flush_log=0, sync_binlog=0</code></td>
+<td>极速：后台每秒刷</td>
+<td>波动大</td>
+</tr>
+</tbody>
+</table>
+<p><strong>趋势</strong>：调低刷盘频率后写入吞吐有提升（约 20%~35%），符合"减少 fsync 提升写入性能"的理论。</p>
+<blockquote>
+<p>⚠️ <strong>容器环境限制说明</strong>：Docker 容器 + SSD + 内存缓存下，redo/binlog 刷盘的开销被页缓存大幅稀释，且测试数据量小，<code>fsync</code> 差异不如<strong>机械硬盘/高 IO 压力</strong>环境显著。在生产环境（尤其是高 IO 压力或 HDD），<code>flush_log=1</code> 到 <code>0/2</code> 的吞吐差距可达<strong>数倍</strong>。本场景演示了"调参机制 + 趋势"，绝对数值受环境影响的波动属正常现象。</p>
+</blockquote>
+<h2 id="_5">五、调优准则</h2>
+<ol>
+<li><strong>账务/订单系统保强持久</strong>：<code>innodb_flush_log_at_trx_commit=1 + sync_binlog=1</code>，宁可吞吐低也要保证不丢数据。</li>
+<li><strong>日志/缓存/非关键数据可激进调优</strong>：降为 <code>2 + 0</code>（MySQL 崩溃不丢，仅 OS 崩溃丢 1s），或 <code>0 + 0</code>（最多丢 1s）。</li>
+<li><strong>buffer_pool 设大</strong>：建议 60%~75% 可用内存，热数据全进内存，读吞吐飙升；需配合 <code>innodb_buffer_pool_instances</code> 减少锁竞争。</li>
+<li><strong>开启 binlog 的复制主库</strong>，<code>sync_binlog=1</code> 时每次提交刷 binlog 会显著拖慢写；若可容忍少量丢失可降为 <code>0</code> 或大 N。</li>
+<li><strong>参数变更走 my.cnf + 重启</strong>：生产环境 <code>SET GLOBAL</code> 只改运行值、重启即失效，需写进配置文件持久化。</li>
+<li><strong>先压测后上线</strong>：不同负载（读多/写多/混合）、不同硬件下最佳参数不同，务必在目标环境压测验证。</li>
+</ol>
+<h2 id="_6">六、面试简述</h2>
+<blockquote>
+<p><strong>InnoDB 调优核心是「性能 vs 持久性」权衡</strong>。<code>innodb_flush_log_at_trx_commit</code>：1 每次提交 fsync 刷 redo（最安全最慢）、2 写 OS 缓存每秒刷、0 后台每秒刷（最快最多丢 1s）；<code>sync_binlog</code> 同理控制 binlog 刷盘。账务类保 <code>(1,1)</code> 强持久，日志类可降 <code>(2,0)/(0,0)</code> 换吞吐。<code>innodb_buffer_pool_size</code> 设 60%~75% 内存提升读命中；开启 binlog 的复制主库注意 sync_binlog 对写的影响。参数可用 <code>SET GLOBAL</code> 动态调，但生产需写 my.cnf 重启持久化，并在目标环境压测确定最佳值。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

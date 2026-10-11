@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页） · 小番茄程序猿</title>
+<meta name="description" content="补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</h1>
+  </div>
+  <article class="prose">
+<h1 id="b6limit">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>高频慢查询源头：<code>LIMIT 1000000,20</code> 深分页。MySQL 需<strong>扫描并丢弃前 100 万行</strong>，offset 越大越慢，是列表页/管理后台最常见的慢查询。</p>
+<h2 id="_2">二、深分页原理</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 深分页慢：先扫描 offset+size 行，再丢弃前 offset 行</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_page</span><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="mi">400000</span><span class="p">,</span><span class="w"> </span><span class="mi">20</span><span class="p">;</span><span class="w">   </span><span class="c1">-- 扫描 40 万行丢弃</span>
+
+<span class="c1">-- 游标分页(keyset)快：基于主键/索引定位，只扫一页</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_page</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="k">LIMIT</span><span class="w"> </span><span class="mi">20</span><span class="p">;</span><span class="w">  </span><span class="c1">-- 走主键索引只扫一页</span>
+</code></pre></div>
+
+<ul>
+<li><strong>深分页</strong>：<code>LIMIT 大offset</code>，扫描量 = offset + size，offset 越大越慢（线性增长）。</li>
+<li><strong>游标分页</strong>：<code>WHERE id &gt; last_id</code>，基于主键索引定位，无论翻多深只扫一页。</li>
+<li><strong>延迟关联</strong>：子查询先取 id（走索引），再 <code>JOIN</code> 取全字段，减少深分页回表。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化大数据量（50万行）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/init?rows=500000"</span>
+
+<span class="c1"># 2. 深分页 LIMIT 400000,20（慢，扫描40万行丢弃）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/deep?offset=400000&amp;size=20"</span>
+
+<span class="c1"># 3. 游标分页 WHERE id&gt;400000 LIMIT 20（快）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/cursor?lastId=400000&amp;size=20"</span>
+
+<span class="c1"># 4. 性能对比（多个深度）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/bench?pages=5&amp;size=20"</span>
+
+<span class="c1"># 5. 状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/status"</span>
+</code></pre></div>
+
+<h2 id="50">四、实测结果（50万行）</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>深分页 LIMIT 400000,20</td>
+<td><strong>149 ms</strong>（扫描40万行丢弃）</td>
+</tr>
+<tr>
+<td>游标分页 WHERE id&gt;400000</td>
+<td><strong>15 ms</strong>（主键定位只扫一页）</td>
+</tr>
+<tr>
+<td><strong>bench（5个深度平均）</strong></td>
+<td>深分页 <strong>93.6ms</strong> vs 游标 <strong>3.0ms</strong>，<strong>快 31.2 倍</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：深分页 offset 越大扫描+丢弃越多，线性变慢；游标分页基于主键索引恒定快。50 万行下游标分页快约 <strong>31 倍</strong>，数据量越大差距越明显。</p>
+<h2 id="_4">五、优化方案</h2>
+<ol>
+<li><strong>游标分页（keyset）</strong>：<code>WHERE id &gt; last_id</code>（或 <code>create_time &lt; 上一页末尾</code>），走索引只扫一页，最推荐。</li>
+<li><strong>延迟关联</strong>：<code>SELECT * FROM t JOIN (SELECT id FROM t ORDER BY id LIMIT ?,?) d ON t.id=d.id</code>，先索引取 id 再回表。</li>
+<li><strong>覆盖索引</strong>：查询字段全部在索引内，避免回表。</li>
+<li><strong>禁止深翻页</strong>：前端限制页数/改用"加载更多"，避免用户翻到万级页。</li>
+<li><strong>业务折中</strong>：只允许查看前 N 页，超过则提示用条件筛选。</li>
+</ol>
+<h2 id="bench">六、踩坑记录（bench 缓存失真）</h2>
+<p>最初用 20 万行数据 bench 对比，因数据全在 InnoDB buffer pool 缓存，深分页扫描也在内存完成，平均耗时被稀释到个位数 ms，深分页/游标差异失真。<strong>改用 50 万行 + 大 offset（400000）深翻后差异显著</strong>（深分页 149ms vs 游标 15ms）。</p>
+<h2 id="_5">七、面试简述</h2>
+<blockquote>
+<p><strong>深分页优化</strong>：<code>LIMIT 大offset</code> 扫描并丢弃大量行，offset 越大越慢。实测 50 万行：深分页 offset=400000 耗时 149ms，游标分页 <code>WHERE id&gt;last_id</code> 仅 15ms，快约 31 倍。优化：游标分页（keyset 走索引）、延迟关联（先取 id 再回表）、覆盖索引、禁止深翻页。注意：小数据量+缓存会掩盖差异，需用大数据量深 offset 验证。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

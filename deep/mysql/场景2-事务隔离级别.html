@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景2：事务隔离级别（脏读 / 不可重复读 / 幻读） · 小番茄程序猿</title>
+<meta name="description" content="场景2：事务隔离级别（脏读 / 不可重复读 / 幻读） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）</h1>
+  </div>
+  <article class="prose">
+<h1 id="2">场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>MySQL 并发事务访问同一数据时，不同隔离级别决定是否出现<strong>脏读、不可重复读、幻读</strong>。生产环境常因错误设置隔离级别或对现象理解不清，导致数据一致性问题或性能下降。</p>
+<p>本场景通过<strong>并发连接 + 信号量精确同步执行时序</strong>，在四个隔离级别下逐一复现三种现象。</p>
+<h2 id="_2">二、四种隔离级别与三种异常</h2>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>脏读</th>
+<th>不可重复读</th>
+<th>幻读</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>READ UNCOMMITTED</td>
+<td>可能</td>
+<td>可能</td>
+<td>可能</td>
+</tr>
+<tr>
+<td>READ COMMITTED</td>
+<td>阻止</td>
+<td>可能</td>
+<td>可能</td>
+</tr>
+<tr>
+<td>REPEATABLE READ（MySQL默认）</td>
+<td>阻止</td>
+<td>阻止</td>
+<td>阻止（MVCC快照读）</td>
+</tr>
+<tr>
+<td>SERIALIZABLE</td>
+<td>阻止</td>
+<td>阻止</td>
+<td>阻止</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注：标准 SQL 中 REPEATABLE READ 仍可能幻读，但 <strong>MySQL InnoDB 通过 MVCC 快照读</strong> 解决了普通读的幻读（仅当前读 <code>FOR UPDATE</code> 等仍需间隙锁防幻读）。</p>
+</blockquote>
+<h2 id="_3">三、三种现象说明</h2>
+<h3 id="dirty-read">脏读（Dirty Read）</h3>
+<p>事务 A 修改数据<strong>未提交</strong>，事务 B 读到 A 的<strong>未提交修改</strong>。</p>
+<h3 id="non-repeatable-read">不可重复读（Non-Repeatable Read）</h3>
+<p>同一事务内<strong>两次读取同一条记录</strong>，因另一事务在期间修改并提交，读到<strong>不同值</strong>。</p>
+<h3 id="phantom-read">幻读（Phantom Read）</h3>
+<p>同一事务内<strong>两次范围统计</strong>，因另一事务在期间插入新行并提交，<strong>行数变化</strong>。</p>
+<h2 id="isolationmatrix">四、实测结果（<code>/isolation/matrix</code>）</h2>
+<p>通过并发连接精确控制时序，实测四种隔离级别下的现象矩阵：</p>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>脏读</th>
+<th>不可重复读</th>
+<th>幻读</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>READ UNCOMMITTED</td>
+<td>✅ 发生（读到未提交 100100）</td>
+<td>✅ 发生</td>
+<td>✅ 发生</td>
+</tr>
+<tr>
+<td>READ COMMITTED</td>
+<td>❌ 阻止（读到已提交 100000）</td>
+<td>✅ 发生</td>
+<td>✅ 发生</td>
+</tr>
+<tr>
+<td>REPEATABLE READ</td>
+<td>❌ 阻止</td>
+<td>❌ 阻止（快照一致）</td>
+<td>❌ 阻止（MVCC快照）</td>
+</tr>
+<tr>
+<td>SERIALIZABLE</td>
+<td>❌ 阻止</td>
+<td>❌ 阻止</td>
+<td>❌ 阻止</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">关键观测</h3>
+<ol>
+<li><strong>脏读</strong>：连接 A <code>UPDATE +100</code> 未提交，连接 B 读取。</li>
+<li>READ UNCOMMITTED 下读到 <code>100100</code>（未提交值）→ <strong>脏读</strong></li>
+<li>READ COMMITTED 及以上读到 <code>100000</code>（已提交值）→ <strong>阻止脏读</strong></li>
+<li><strong>不可重复读</strong>：连接 A 读两次，期间连接 B 修改 +100 并提交。</li>
+<li>READ COMMITTED：第一次 <code>100000</code>、第二次 <code>100100</code> → <strong>发生</strong></li>
+<li>REPEATABLE READ：两次都 <code>100000</code>（MVCC 快照）→ <strong>阻止</strong></li>
+<li><strong>幻读</strong>：连接 A 统计行数两次，期间连接 B 插入新行并提交。</li>
+<li>READ COMMITTED：<code>0</code> → <code>1</code> → <strong>发生</strong></li>
+<li>REPEATABLE READ：两次都 <code>0</code>（MVCC 快照）→ <strong>阻止</strong></li>
+</ol>
+<h2 id="_5">五、实现要点</h2>
+<ul>
+<li><strong>并发连接 + 信号量</strong>：用两个独立连接（A/B），通过 <code>CountDownLatch</code> 精确同步"修改未提交时读取"等关键时序，避免时序竞争导致结果不稳定。</li>
+<li><strong>每演示前重置基准</strong>：脏读演示前将余额重置为 100000，确保脏读判定准确（读到 &gt;100000 即读到未提交值）。</li>
+<li><strong>现象矩阵</strong>：<code>/isolation/matrix</code> 一次性跑 4 级别 × 3 现象 = 12 次演示并汇总。</li>
+</ul>
+<h2 id="rc-vs-rr-isolationbench-rc-rr">六、RC vs RR 写吞吐压测（公平对比 <code>/isolation/bench-rc-rr</code>）</h2>
+<p>公平设计：多行分布式（压力分散）、相同并发/请求数、每模式前重置数据。</p>
+<h3 id="100-50-20000">多行分布式（100 行、并发 50、每模式 20000 请求）</h3>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>QPS</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+<th>avg</th>
+<th>失败</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>READ COMMITTED</td>
+<td><strong>2338</strong></td>
+<td>16</td>
+<td>45</td>
+<td>89</td>
+<td>20.8</td>
+<td>0</td>
+</tr>
+<tr>
+<td>REPEATABLE READ</td>
+<td>2214</td>
+<td>17</td>
+<td>47</td>
+<td>87</td>
+<td>22.0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RC 比 RR 快约 5.6%</strong>：竞争低（多行）时差距小。</p>
+<h3 id="1-5010000">单行热点（1 行、并发 50、10000 请求）</h3>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>QPS</th>
+<th>P50</th>
+<th>P99</th>
+<th>avg</th>
+<th>失败</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>READ COMMITTED</td>
+<td><strong>321</strong></td>
+<td>150</td>
+<td>225</td>
+<td>155</td>
+<td>0</td>
+</tr>
+<tr>
+<td>REPEATABLE READ</td>
+<td>74</td>
+<td>447</td>
+<td><strong>8172</strong></td>
+<td>559</td>
+<td>36</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RC 是 RR 的 4.3 倍（提速 332%）</strong>：单行热点下 RR 的间隙锁/Next-Key 锁导致严重锁竞争（P99 高达 8 秒），RC 通过半一致性读（只锁匹配行）大幅胜出。</p>
+<h3 id="_6">结论</h3>
+<ul>
+<li><strong>竞争低（多行分布式）</strong>：RR 与 RC 吞吐差距小（RC 快 ~5.6%），RR 的 MVCC 快照读无锁优势。</li>
+<li><strong>竞争高（单行热点）</strong>：RC 的锁降级优势巨大（4.3 倍），因 RC 不加间隙锁、只锁匹配行。</li>
+<li><strong>选型</strong>：默认 RR 兼顾一致性；写并发高或单行热点场景可用 RC 换取吞吐，但需接受不可重复读。</li>
+</ul>
+<h2 id="_7">七、生产建议</h2>
+<ol>
+<li><strong>MySQL 默认 REPEATABLE READ</strong>：用 MVCC 快照读已阻止普通读的三种异常，业务通常无需改。</li>
+<li>需<strong>读最新已提交</strong>数据的场景（如"先读后写"逻辑）用 READ COMMITTED；但要注意它会发生不可重复读。</li>
+<li><strong>避免 READ UNCOMMITTED</strong>：存在脏读，几乎不适用生产。</li>
+<li><strong>SERIALIZABLE</strong>：全锁保证最高一致，但并发极差，仅限极强一致性且低并发场景。</li>
+<li><strong>高写并发/单行热点</strong>：可用 READ COMMITTED 换取吞吐（实测单行热点下 RC 是 RR 的 4.3 倍），但需接受不可重复读。</li>
+</ol>
+<h2 id="_8">八、面试简述</h2>
+<blockquote>
+<p><strong>隔离级别</strong>：MySQL InnoDB 默认 REPEATABLE READ，用 MVCC 快照读同时解决脏读、不可重复读和普通读的幻读。实测对比四级别：READ UNCOMMITTED 三种异常都发生，READ COMMITTED 阻止脏读但保留不可重复读/幻读，REPEATABLE READ 全阻止，SERIALIZABLE 用锁全阻止但并发最差。核心是理解 MVCC 快照读与当前读（FOR UPDATE）的差异。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

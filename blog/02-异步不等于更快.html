@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38% · 小番茄程序猿</title>
+<meta name="description" content="高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38% —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../assets/css/style.css"/>
+<link rel="stylesheet" href="../assets/css/article.css"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../index.html">首页</a>
+      <a href="../projects.html">项目</a>
+      <a href="../blog.html" class="active">博客</a>
+      <a href="../deep.html">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../blog.html">← 返回博客索引</a>
+    <h1>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</h1>
+  </div>
+  <article class="prose">
+<h1 id="mysql-qps-38">高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</h1>
+<blockquote>
+<p>「高并发实测」系列第 2 篇。</p>
+<p>环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boot 2.5 + JDK 8，线程池 core=12 / max=24 / queue=1000（CallerRunsPolicy）。k6 每档 250 并发持续 60s，<strong>每个版本先跑 3 轮 10s 预热，正式跑 3 轮取中位数，每轮结束做四库对账</strong>。<strong>结论有强前提——CPU 是瓶颈</strong>，资源富裕时别照搬。</p>
+</blockquote>
+<h2 id="_1">〇、一分钟带走版</h2>
+<p>一条「HTTP → Disruptor → Kafka → 3 个消费者 → 写 4 个存储」的高并发写入链路，三种"同步/异步怎么分配"的写法，交错跑了 9 轮（每轮都是全新进程），结果：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">版本</th>
+<th>写入方式</th>
+<th style="text-align: right;">中位 QPS</th>
+<th>线程池状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">A</td>
+<td>ES 同步 + 其余 3 个异步</td>
+<td style="text-align: right;">7,574</td>
+<td>队列打满 1000，CallerRuns 持续触发</td>
+</tr>
+<tr>
+<td style="text-align: center;">B</td>
+<td>4 个存储全异步</td>
+<td style="text-align: right;">7,387</td>
+<td>队列打满 1000，触发最猛（367-448 次/60s）</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>C</strong></td>
+<td><strong>MySQL 同步 + 其余 3 个异步</strong></td>
+<td style="text-align: right;"><strong>10,171</strong></td>
+<td><strong>队列全程≈0，一次都没触发</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>把最重的 MySQL 改回同步执行，比"全异步"快了 38%——「异步 ≠ 更快」。</strong> 根因是线程池的 <code>CallerRunsPolicy</code>：高负载下它把异步任务踢回调用线程执行，<strong>你以为在异步，其实早就退化成同步了，还额外背上调度开销</strong>。这次我用埋点把它抓了个正着（第三节），顺便还讲一个<strong>我们差点发布错误结论的故事</strong>（第四节）——它比性能数字更值得看。</p>
+<blockquote>
+<p>全文关键词：线程池拒绝策略、CallerRunsPolicy、Kafka 消费者、异步/同步选型、压测方法论、数据一致性对账。</p>
+</blockquote>
+<h2 id="_2">一、场景：一条典型的"削峰 + 多写"链路</h2>
+<p>先说清楚：<strong>这是我自己搭的实验环境，不是生产系统。</strong> 我想验证一个业务系统里非常典型的形态——接口收到数据要同时落到 4 个存储（MySQL 存业务、Redis 做缓存、ES 做搜索、Mongo 做流水），还要扛住突发流量。既然"削峰 + 多写"到处都在用，我就把整条链路搭出来，把"同步/异步怎么分配"这一个变量单独拎出来压。</p>
+<p>实现分三段：</p>
+<div class="codehilite"><pre><span></span><code>HTTP → Controller → Disruptor RingBuffer(2^17) → Kafka Producer → Kafka(4 分区)
+                                                                    ↓
+                                              3 个消费者线程（批量拉取 + 手动 ACK）
+                                                                    ↓
+                                                    写入 4 个存储（批量）
+</code></pre></div>
+
+<p>问题出在最后一步：<strong>这 4 个存储的写入，是同步做还是异步做？</strong></p>
+<h2 id="_3">二、对照实验：一个变量，三轮中位数</h2>
+<p>先交代实验是怎么试出来的——<strong>我是穷举着测的</strong>：最先是 4 个存储全部同步写；然后一个一个换，让每个存储轮流当那个"同步"、其余异步；最后才收敛到现在这个组合（MySQL 同步 + 其余 3 个异步）。</p>
+<p>为什么最终是 MySQL 当同步？因为四个存储里<strong>只有它是主数据源</strong>——Redis 是缓存、ES 是搜索索引、Mongo 是流水，这三个丢了都能从 MySQL 重建，只有 MySQL 不行。所以"最不能丢的那个先落、同步落"，是从数据角色推出来的选择，不是猜的。</p>
+<p>（其余组合的完整记录我没留全，下面只讲三个有完整数据的代表性版本。）</p>
+<p>三个版本的代码差异只有一处——消费者拿到一批数据后，怎么安排这 4 次写入：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 版本 A：ES 同步（bulkAsync().get() 等 HTTP 返回），其余异步</span>
+<span class="n">CasUtil</span><span class="p">.</span><span class="na">runSafe</span><span class="p">(()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">bulkProcessorESService</span><span class="p">.</span><span class="na">batchBulkWrite</span><span class="p">(</span><span class="n">list</span><span class="p">));</span>
+<span class="n">CompletableFuture</span><span class="p">.</span><span class="na">allOf</span><span class="p">(</span><span class="n">Redis</span><span class="p">,</span><span class="w"> </span><span class="n">MySQL</span><span class="p">,</span><span class="w"> </span><span class="n">Mongo</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">);</span>
+
+<span class="c1">// 版本 B：4 个存储全部丢进线程池，全异步</span>
+<span class="n">CompletableFuture</span><span class="p">.</span><span class="na">allOf</span><span class="p">(</span><span class="n">Redis</span><span class="p">,</span><span class="w"> </span><span class="n">ES</span><span class="p">,</span><span class="w"> </span><span class="n">MySQL</span><span class="p">,</span><span class="w"> </span><span class="n">Mongo</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">);</span>
+
+<span class="c1">// 版本 C：MySQL 同步（消费者线程直接 batchInsert），其余异步</span>
+<span class="n">CasUtil</span><span class="p">.</span><span class="na">runSafe</span><span class="p">(()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">batchInsertService</span><span class="p">.</span><span class="na">batchInsert</span><span class="p">(</span><span class="n">list</span><span class="p">));</span>
+<span class="n">CompletableFuture</span><span class="p">.</span><span class="na">allOf</span><span class="p">(</span><span class="n">Redis</span><span class="p">,</span><span class="w"> </span><span class="n">ES</span><span class="p">,</span><span class="w"> </span><span class="n">Mongo</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">);</span>
+</code></pre></div>
+
+<p>注意版本 C 里那个"同步"是<strong>真同步</strong>——<code>batchInsert()</code> 是实打实的 DB 批量写入，不是往队列里 <code>offer()</code> 一下就返回：</p>
+<div class="codehilite"><pre><span></span><code><span class="nd">@Transactional</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">batchInsert</span><span class="p">(</span><span class="n">List</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="w"> </span><span class="n">userList</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">userMapper</span><span class="p">.</span><span class="na">batchInsert</span><span class="p">(</span><span class="n">userList</span><span class="p">);</span><span class="w">   </span><span class="c1">// 真正的 DB 写，不是入队</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>实验协议（这一条差点没做到，第四节细说）：</p>
+<ul>
+<li>三个版本<strong>交错轮跑</strong>：每轮按 A→B→C 顺序各起一个<strong>全新进程</strong>（先杀干净再启动，并校验启动成功）</li>
+<li>每个进程先跑 3 轮 10s 预热（排除 JIT 冷启动），再正式跑 250 并发 × 60s</li>
+<li>共 3 轮 × 3 版本 = 9 次运行，<strong>每模式取中位数</strong></li>
+<li>每次正式运行前后做<strong>四库对账</strong>（第五节）</li>
+</ul>
+<p>9 次运行的原始数据：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">轮次</th>
+<th style="text-align: right;">A</th>
+<th style="text-align: right;">B</th>
+<th style="text-align: right;">C</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: right;">7,589</td>
+<td style="text-align: right;">7,421</td>
+<td style="text-align: right;">9,680</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: right;">7,574</td>
+<td style="text-align: right;">7,378</td>
+<td style="text-align: right;">10,171</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: right;">6,880</td>
+<td style="text-align: right;">7,387</td>
+<td style="text-align: right;">10,430</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>中位数</strong></td>
+<td style="text-align: right;"><strong>7,574</strong></td>
+<td style="text-align: right;"><strong>7,387</strong></td>
+<td style="text-align: right;"><strong>10,171</strong></td>
+</tr>
+</tbody>
+</table>
+<p>C 比 B 快 <strong>+37.7%</strong>，比 A 快 <strong>+34.3%</strong>；模式内波动只有 ±5%——这次信号是干净的。一个会阻塞消费者线程的真实同步 DB 写，赢了把 I/O 全部藏进线程池的版本。<strong>是谁在拖后腿？线程池自己。</strong></p>
+<h2 id="callerrunspolicy">三、凶手：CallerRunsPolicy 把"异步"偷偷变回同步</h2>
+<p>先看线程池配置：</p>
+<div class="codehilite"><pre><span></span><code>taskExecutor：core=12，max=24，queue=1000，拒绝策略 = CallerRunsPolicy
+</code></pre></div>
+
+<p><code>CallerRunsPolicy</code> 的行为是：<strong>队列满了、线程也满了，新任务不丢弃，而是由提交任务的那个线程自己执行</strong>。设计意图是"反压 + 不丢数据"，听起来很稳妥。但放进这条链路里，画面变成：</p>
+<div class="codehilite"><pre><span></span><code>Kafka 消费者线程 → 提交 4 个异步任务 → taskExecutor 队列满
+                                    → CallerRuns 触发
+                                    → 消费者线程被迫自己执行 ES/Redis/Mongo 写入 ❌
+</code></pre></div>
+
+<p><strong>说好的异步呢？</strong> 消费者线程不但要等，还等了个更贵的：既付出线程池调度成本，又付出同步阻塞成本。而且全程<strong>没有一行异常日志</strong>。</p>
+<p>光说没用，这次我给线程池埋了点：自定义一个带计数的拒绝策略（每次触发计数 +1 并打时间戳），外加每秒采样一次 active / poolSize / queue / completed / CallerRuns 累计 / 进程 CPU。9 轮跑下来，A/B/C 的线程池行为泾渭分明：</p>
+<table>
+<thead>
+<tr>
+<th>指标（60s 正式窗口）</th>
+<th>A</th>
+<th>B</th>
+<th>C</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>队列峰值</td>
+<td><strong>1000（满仓）</strong></td>
+<td><strong>1000（满仓）</strong></td>
+<td><strong>0</strong></td>
+</tr>
+<tr>
+<td>活跃线程峰值</td>
+<td>24（钉死 max）</td>
+<td>24（钉死 max）</td>
+<td>6-7</td>
+</tr>
+<tr>
+<td>CallerRuns 触发次数</td>
+<td>178-251</td>
+<td>367-448</td>
+<td><strong>0</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>同一个线程池、同样的流量，A/B 被打爆，C 基本闲着。</strong> B 的触发频率最高——4 个异步任务全挤一个池，I/O 等待把 24 个线程占满，队列顶到 1000，之后每秒都有 6-8 个任务被踢回消费者线程"亲自下场"。</p>
+<blockquote>
+<p><strong>一个我还没归因的反常</strong>：A 也只有 3 个异步任务（和 C 一样多），却和 B 一样把队列打满了。目前的猜测是——ES 同步把消费者线程拖慢后，批次到达的节奏从"均匀"变成"一阵一阵"，瞬时并发反而更高。但这只是猜测，要证实得给 A 再补一组拆解实验。<strong>先如实标在这里，不硬编故事。</strong></p>
+</blockquote>
+<p>机制串起来就是这条恶性循环：</p>
+<div class="codehilite"><pre><span></span><code>I/O 密集型任务长期占住线程（阻塞式 I/O 等待时线程不释放）
+  → 新批次到达，可用线程不足，queue(1000) 填满
+  → CallerRuns 触发，消费者线程亲自同步写
+  → 消费者被阻塞，RingBuffer 释放变慢 → Producer 端反压 → QPS 下跌
+  → 下一批任务继续堆积……（正反馈恶化）
+</code></pre></div>
+
+<p>而版本 C 把最重的 MySQL 拿回消费者线程同步做（本地 Docker 批量 insert 只要约 3ms），池里只剩 3 个轻量任务——<strong>队列再也没有满过，CallerRuns 一次都没触发</strong>。减少的不是工作量，是让线程池退出了那个"满负荷 + 频繁退化"的恶性区间。</p>
+<p>一句话总结这个坑：<strong><code>CallerRunsPolicy</code> 在低负载时是安全网，在高负载 I/O 场景下是伪装成异步的同步器。</strong></p>
+<h2 id="_4">四、差点被骗：这组数字重跑了三遍才对</h2>
+<p>上面那句"实验协议"看起来平平无奇，但它是踩了两次坑之后才立起来的。这段值得所有写压测的人看。</p>
+<p><strong>第一坑：杀不死的进程。</strong> 压测脚本里用 <code>kill $(cat app.pid)</code> 停应用，在 Windows + Git Bash 下<strong>经常是无效操作</strong>（MSYS 的 PID 不是 Windows 的 PID）。结果：上一个版本的进程一直霸占 8081，新起的进程端口冲突静默失败，<strong>k6 的流量从头到尾打在同一个旧应用上</strong>。我第一轮"交错矩阵"跑完，A/B/C 三个模式的 QPS 中位数几乎相同——当时差点下结论"三种写法没差异，原结论是错的"。</p>
+<p>说实话，看到那三个几乎相同的中位数时，我的第一反应不是兴奋，是<strong>不信</strong>。</p>
+<p>如果三种写法真的没差异，那我前面几轮的结论就全是噪声——这个可能性当然存在，但<strong>不能因为"看起来也说得通"就接受它</strong>。所以我做了两件事：给线程池加埋点，把内部状态打出来；再多跑几轮交叉验证。</p>
+<p><strong>正是这个"不信"救了我。</strong></p>
+<p><strong>揭穿它的是一行日志。</strong> 埋点计数器显示 CallerRuns 累计值在 9 轮之间<strong>严格单调递增</strong>（218→424→694→…→1959）。如果每轮真是独立的新进程，计数器每轮都必须从 0 开始——9 个独立计数器恰好严格递增的概率约四十万分之一。<strong>唯一解释：9 轮跑的是同一个进程。</strong> 改用按映像名强杀 + 每轮校验启动标记后重跑，才有了第二节那张干净的表。</p>
+<p><strong>第二坑：冷启动和脏数据。</strong> 修好进程问题后还栽过两次：一次是 k6 打在一个已经崩掉的应用上，60 秒"跑出" 13,845 QPS、P95 归零——错误响应被计成了请求；一次是清空数据库的时机早于消费积压排干，TRUNCATE 之后残留的异步写入又把数据填了回来，对账永远差一截。</p>
+<p>三个教训，值一张卡片：</p>
+<blockquote>
+<p><strong>① 每次压测前验证被测进程是新的</strong>（计数器归零、PID 比对、启动日志标记，任选其一）</p>
+<p><strong>② QPS 异常高 + 延迟异常低 = 你打在了空气上</strong></p>
+<p><strong>③ 清空数据要在写入端完全排干之后</strong>，清完还要再确认一次</p>
+</blockquote>
+<p>这也是我为什么把"协议"写进正文：<strong>压测文章里最贵的不是结论，是"这个结论在什么操作下才成立"。</strong></p>
+<h2 id="_5">五、闭环对账：快慢之外，先看丢没丢</h2>
+<p>压测只能回答"多快"，回答不了"丢没丢"。所以 9 次运行每次都做同一套对账：</p>
+<div class="codehilite"><pre><span></span><code>清空四库（等消费积压排干 + 二次确认归零）
+  → 正式压测 60s，记录 k6 注入请求数 N
+  → 等四库落库排干
+  → 对账：MySQL 16 分表 COUNT 之和 == Redis key 数 == ES _count == Mongo countDocuments == N
+</code></pre></div>
+
+<p>结果：<strong>9 次运行，四库总量全部精确等于注入数，一次不差。</strong> 最高的 C 第三轮是 626,538 条 / 60 秒，四个存储各自都是 626,538。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">轮次</th>
+<th style="text-align: center;">版本</th>
+<th style="text-align: right;">注入</th>
+<th style="text-align: center;">四库对账</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1-3</td>
+<td style="text-align: center;">A</td>
+<td style="text-align: right;">413K-455K</td>
+<td style="text-align: center;">✅✅✅</td>
+</tr>
+<tr>
+<td style="text-align: center;">1-3</td>
+<td style="text-align: center;">B</td>
+<td style="text-align: right;">443K-445K</td>
+<td style="text-align: center;">✅✅✅</td>
+</tr>
+<tr>
+<td style="text-align: center;">1-3</td>
+<td style="text-align: center;">C</td>
+<td style="text-align: right;">581K-627K</td>
+<td style="text-align: center;">✅✅✅</td>
+</tr>
+</tbody>
+</table>
+<p>两个结论：</p>
+<ol>
+<li><strong>三种模式都不丢数据</strong>——<code>CallerRunsPolicy</code> 确实兜住了任务（它把任务退回调用线程执行而不是丢弃），"异步 vs 同步"的选型是<strong>性能问题，不是安全问题</strong>；</li>
+<li><strong>真正的安全风险在别处，而且三种模式都有</strong>：代码里 <code>ack.acknowledge()</code> 都在<strong>异步任务提交之后立即执行</strong>（A/B/C 都一样），不等写入真正完成。稳态下没问题——这次 9 次对账一条没丢；但如果恰好在"任务已提交、尚未执行完"时进程被杀（发布、OOM、K8s 驱逐），队列里那些任务就是丢的数据，而 Kafka 已经认为消费成功了。<strong>C 的暴露窗口最小</strong>（只剩 3 个轻量任务、队列从不积压），A/B 的暴露窗口是那个 1000 容量的队列。<strong>要么等写入完成再 ACK，要么明确接受这个窗口</strong>——这次没踩到，不代表它不存在。</li>
+</ol>
+<h2 id="_6">六、那到底什么时候该异步？</h2>
+<p>复盘完，判断标准收敛成一张表：</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>建议</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单次操作耗时 &lt; 5ms，且失败必须立刻感知</td>
+<td><strong>同步</strong></td>
+<td>调度开销比 I/O 本身还贵；本次 MySQL 本地批量 insert 约 3ms</td>
+</tr>
+<tr>
+<td>单次操作耗时 &gt; 10ms，且失败可以后补</td>
+<td><strong>异步</strong></td>
+<td>ES 同步一次 10–30ms，阻塞代价太大</td>
+</tr>
+<tr>
+<td>线程池共享、多个 I/O 任务竞争同一池</td>
+<td><strong>减少任务数或拆池</strong></td>
+<td>本次 B 的 4 任务/批把 queue(1000) 打满</td>
+</tr>
+<tr>
+<td>拒绝策略是 <code>CallerRunsPolicy</code></td>
+<td><strong>必须监控队列水位和拒绝计数</strong></td>
+<td>它让"异步"静默退化成同步，零日志</td>
+</tr>
+<tr>
+<td>CPU 是明确瓶颈（核少、线程多）</td>
+<td><strong>优先做减法</strong></td>
+<td>4C/8T 上线程总数 20+，调度成本极高</td>
+</tr>
+<tr>
+<td>CPU 富裕、I/O 等待时间长</td>
+<td>异步</td>
+<td>前提不成立时，本文结论不适用</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">七、如果继续优化，我会做这五件事</h2>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>预期收益</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>给线程池加监控</strong>（active / queue / 拒绝计数）</td>
+<td>让退化可见</td>
+<td>本次最大教训是"静默退化"，一个计数指标五分钟定位</td>
+</tr>
+<tr>
+<td><strong>拆分线程池</strong>（每存储独立池）</td>
+<td>故障隔离，避免互相争抢</td>
+<td>共享池一刀切，一个慢存储拖垮全部</td>
+</tr>
+<tr>
+<td><strong>四存储分离部署</strong></td>
+<td>解除 CPU 争抢</td>
+<td>当前单机是绝对瓶颈</td>
+</tr>
+<tr>
+<td>关键后端用 Semaphore 限并发</td>
+<td>把"拒绝"变成可控的"排队/降级"</td>
+<td>比 CallerRuns 的隐式反压更可观测</td>
+</tr>
+<tr>
+<td>增加 Kafka 消费者数（3→6）</td>
+<td>提速消费</td>
+<td>需要更多 CPU 支撑</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_8">八、写在最后</h2>
+<p>这篇最有价值的不是 38%，是三件事：</p>
+<ol>
+<li><strong>"异步"是一个需要被验证的假设，不是默认正确的选择。</strong> 我是穷举着测出来的：全同步 → 每个存储轮流当同步 → 全异步，最后收敛到"MySQL 同步 + 其余异步"。而那个"看起来更高级"的全异步版本，<strong>比最终方案慢了 27%</strong>。这次推翻的不是别人的八股，是"把 I/O 藏进线程池就更先进"这个直觉。</li>
+<li><strong>反常数据比符合预期的数据更值钱。</strong> 差点因为"轮跑结果一致"就推翻原结论——揭穿假象的恰恰是埋点里那行不该单调递增的计数器。</li>
+<li><strong>优化的方向不一定是"加"。</strong> 在这台 CPU 紧张的机器上，<strong>减少并发任务数</strong>比调大线程池更有效。</li>
+</ol>
+<p><strong>局限照例先说</strong>：</p>
+<ul>
+<li><strong>环境</strong>：单机 4C/8T、Docker 部署全部中间件、250 并发档、正式 3 轮取中位数（轮次仍偏少，模式内 ±5% 的波动是真实水平）；未记录内存分配器（jemalloc / libc）与 lazyfree 配置。</li>
+<li><strong>适用前提</strong>：结论建立在 <strong>CPU 是瓶颈</strong> 之上。如果你的机器核多、下游 I/O 延迟高，异步的收益大概率仍然大于调度成本，<strong>别照搬</strong>。</li>
+<li><strong>施压模型</strong>：本实验用闭环压测（固定 250 VU），存在<strong>协同遗漏（coordinated omission）</strong> 效应：系统变慢时施压速率会同步下降，因此绝对延迟值偏乐观。三种方案用同一施压模型对比，<strong>相对结论不受影响</strong>。</li>
+<li><strong>覆盖范围</strong>：我把"每个存储轮流当同步"以及"全同步"都跑过，趋势一致，但<strong>早期那几轮的完整记录没留全</strong>，所以本文只报有完整数据的三个代表性版本，其余组合不列具体数字。</li>
+</ul>
+<p>如果你也在用共享线程池 + <code>CallerRunsPolicy</code>，去看一眼你的队列水位和拒绝计数。<strong>很可能你线上跑的也不是异步。</strong></p>
+<hr />
+<p>八股可以被背，结论只能被跑出来。这是「高并发实测」系列第二篇，上一篇：《别再死背 44 字节了：Redis String 三种编码压测》。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

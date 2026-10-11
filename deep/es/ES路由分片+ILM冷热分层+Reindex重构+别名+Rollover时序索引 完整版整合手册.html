@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ES路由分片\+ILM冷热分层\+Reindex重构\+别名\+Rollover时序索引 完整版整合手册 · 小番茄程序猿</title>
+<meta name="description" content="ES路由分片\+ILM冷热分层\+Reindex重构\+别名\+Rollover时序索引 完整版整合手册 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>ES路由分片\+ILM冷热分层\+Reindex重构\+别名\+Rollover时序索引 完整版整合手册</h1>
+  </div>
+  <article class="prose">
+<h1 id="esilmreindexrollover">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</h1>
+<h2 id="_1">目录</h2>
+<ol>
+<li>
+<p>索引/分片/节点层级基础关系</p>
+</li>
+<li>
+<p>路由寻址原理 \&amp; MurmurHash3 哈希机制</p>
+</li>
+<li>
+<p>两类分片倾斜成因与路由二次打散方案</p>
+</li>
+<li>
+<p>分片分配算法、磁盘水位、搬迁管控</p>
+</li>
+<li>
+<p>索引\&amp;节点容量生产规划标准</p>
+</li>
+<li>
+<p>ILM 冷热分层完整手册（原理、参数对照表、轮询vs定时任务、故障排查、运维命令）</p>
+</li>
+<li>
+<p>Reindex 数据重构全场景方案</p>
+</li>
+<li>
+<p>索引别名架构设计 + 普通索引上线初始化标准模板</p>
+</li>
+<li>
+<p>Rollover 时序滚动索引 完整初始化模板（日志/流水专用）</p>
+</li>
+<li>
+<p><strong>ILM反向回流：温层数据回滚至热节点（手动+批量脚本）</strong></p>
+</li>
+<li>
+<p>全局分片异常统一排障手册</p>
+</li>
+<li>
+<p>跨中间件统一分片思想（ES / MySQL / Redis / Kafka）</p>
+</li>
+<li>
+<p>面试3分钟整体总结背诵版</p>
+</li>
+</ol>
+<hr />
+<h1 id="_2">一、索引 / 分片 / 节点 层级关系</h1>
+<h2 id="_3">层级结构</h2>
+<p>集群 Cluster → 多个索引 Index → 索引包含主分片+副本分片 → 分片部署在节点 Node → 节点依托服务器磁盘、内存、CPU</p>
+<h2 id="_4">两条核心铁律</h2>
+<ol>
+<li>
+<p><strong>一个分片永久只归属一个索引</strong>，不能跨索引存储数据；不同索引分片可同名 shard-0，物理文件完全隔离。</p>
+</li>
+<li>
+<p><strong>同一个分片的主分片、副本分片禁止部署在同一节点</strong>，防止单机宕机同时丢失主副副本。</p>
+</li>
+</ol>
+<h2 id="3order-9118">示例：3节点，order索引 9主1副本（总分片18）</h2>
+<p>总分片公式：
+$\text{总分片}=主分片数\times(副本数+1) = 9\times 2 = 18$</p>
+<p>理论均分：3节点，每个节点承载该索引6个分片</p>
+<div class="codehilite"><pre><span></span><code>NodeA
+├─ order 索引6个分片
+├─ goods索引若干分片（多索引分片共存正常）
+
+NodeB
+├─ order 索引6个分片
+├─ goods索引若干分片
+
+NodeC
+├─ order 索引6个分片
+├─ goods索引若干分片
+</code></pre></div>
+
+<ul>
+<li>
+<p>节点：存储容器，容纳任意索引分片</p>
+</li>
+<li>
+<p>分片：索引私有存储单元，不可跨索引复用</p>
+</li>
+</ul>
+<hr />
+<h1 id="murmurhash3">二、路由寻址底层原理 \&amp; MurmurHash3</h1>
+<h2 id="1">1、路由计算公式（底层固定）</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">String</span><span class="w"> </span><span class="n">routingKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">自定义routing</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">自定义routing</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">文档_id</span><span class="p">;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3HashFunction</span><span class="p">.</span><span class="na">hash</span><span class="p">(</span><span class="n">routingKey</span><span class="p">);</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">hash</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">number_of_primary_shards</span><span class="p">;</span>
+</code></pre></div>
+
+<h3 id="_5">硬性约束</h3>
+<ol>
+<li>
+<p><code>number_of_primary_shards</code><strong>索引创建后永久不可修改</strong>，修改会导致全部路由错乱，数据无法查询</p>
+</li>
+<li>
+<p>副本数量 <code>number_of_replicas</code>可动态调整，不影响路由逻辑</p>
+</li>
+<li>
+<p>同一个路由Key，分配分片终身固定</p>
+</li>
+</ol>
+<h2 id="2murmurhash3">2、MurmurHash3 两个版本分工</h2>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>位数</th>
+<th>使用场景</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MurmurHash3_x86_32</td>
+<td>32位</td>
+<td>分片路由计算</td>
+<td>打散有序ID；哈希碰撞无害</td>
+</tr>
+<tr>
+<td>MurmurHash3_x64_128</td>
+<td>128位</td>
+<td>cardinality基数去重聚合</td>
+<td>极低碰撞，统计精准</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">哈希碰撞说明</h3>
+<p>不同 routing 算出相同哈希进入同一分片属于正常现象；
+分片内部依靠 <code>_id</code> 区分文档，<strong>不会发生数据覆盖、更新错乱</strong>；哈希目的是打散有序数据，不是彻底消除碰撞。</p>
+<h2 id="3routing">3、Routing 字符串长度规范</h2>
+<ol>
+<li>
+<p>不是越长打散越好：哈希结果固定32位，超长字符串只会增加CPU开销，易触发URL超长报错</p>
+</li>
+<li>
+<p>不是越短越好：字符过少样本空间小，容易哈希扎堆倾斜</p>
+</li>
+<li>
+<p>生产最优长度：<strong>6\~30个字符</strong></p>
+</li>
+</ol>
+<h2 id="4mysql">4、路由打散与MySQL兼容性</h2>
+<p>路由二次打散仅修改 <code>_routing</code> 字段，文档 <code>_id</code>、业务主键不变，ES与MySQL可依靠唯一主键正常关联。</p>
+<hr />
+<h1 id="_7">三、两类分片倾斜成因 + 路由二次打散解决方案</h1>
+<h2 id="1_1">类型1：路由数据倾斜（业务层面，分片均衡算法无法解决）</h2>
+<h3 id="_8">成因</h3>
+<p>为减少跨分片聚合，使用<strong>省份、日期、商户ID、大客户ID</strong>作为自定义 routing；热点Key长期落在单个分片，分片数据体量悬殊。</p>
+<h3 id="_9">典型场景</h3>
+<ul>
+<li>
+<p>按日期路由：当日写入分片爆满，历史分片闲置</p>
+</li>
+<li>
+<p>按省份路由：广东、浙江等大省分片体积远超其余分片</p>
+</li>
+</ul>
+<h3 id="_10">根治方案：路由二次后缀打散</h3>
+<p>思路：<code>原业务key_随机后缀</code>，单个热点路由拆分多路，分散至多个分片
+示例：
+原始路由：<code>guangdong</code> → 固定单个分片
+打散路由：<code>guangdong_0</code>、<code>guangdong_1</code>、<code>guangdong_2</code> 分散多个分片</p>
+<h3 id="java">Java 工具类</h3>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">java.util.ArrayList</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">java.util.List</span><span class="p">;</span>
+
+<span class="kd">public</span><span class="w"> </span><span class="kd">class</span> <span class="nc">RoutingSplitUtil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 写入生成打散路由</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">getSplitRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="n">Long</span><span class="w"> </span><span class="n">snowId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">splitNum</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">suffix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">snowId</span><span class="p">.</span><span class="na">intValue</span><span class="p">())</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">splitNum</span><span class="p">;</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">suffix</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="c1">// 查询遍历全部路由批量检索</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">listAllRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ArrayList</span><span class="o">&lt;&gt;</span><span class="p">();</span>
+<span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">splitNum</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">list</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">list</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_11">扩容兜底方案</h3>
+<p>打散份数仍无法缓解倾斜：主分片不能原地修改，新建更高分片数索引，<code>reindex</code> 迁移存量，业务双写切换别名。</p>
+<h2 id="2es">类型2：节点分片分配倾斜（集群层面，ES均衡算法自动调节）</h2>
+<p>现象：节点总分片数量差距过大，例：3节点理论各6分片，实际A=10、B=5、C=3。</p>
+<hr />
+<h1 id="_12">四、分片节点分配算法完整解析</h1>
+<h2 id="1_2">1、分配整体流程</h2>
+<p>前置过滤校验 → 候选节点打分计算 → 择优分配/搬迁分片</p>
+<h3 id="_13">前置过滤规则（优先级最高）</h3>
+<ol>
+<li>
+<p>同分片主、副本不能部署同一节点</p>
+</li>
+<li>
+<p>磁盘水位超限节点禁止迁入分片</p>
+</li>
+<li>
+<p>冷热层级节点角色匹配校验（hot/warm/cold隔离）</p>
+</li>
+<li>
+<p>节点离线、故障、单节点分片超限直接剔除</p>
+</li>
+</ol>
+<h2 id="2">2、加权打分均衡算法</h2>
+<p>公式：
+<code>综合得分 = index_balance差值 × 0.55 + shard_balance差值 × 0.45</code>
+<strong>得分越低，节点越空闲，优先分配分片</strong></p>
+<ol>
+<li>
+<p><strong>IndexBalance（权重0.55）</strong>：控制同一个索引分片在节点均匀分布，避免单节点塞满某索引大量分片</p>
+</li>
+<li>
+<p><strong>ShardBalance（权重0.45）</strong>：控制集群所有索引总分片整体均衡</p>
+</li>
+</ol>
+<p>均衡阈值 <code>cluster.routing.allocation.balance.threshold</code> 默认 1.0，偏差超出阈值才触发 rebalance；调小均衡更积极、IO更多，调大收敛惰性更强。</p>
+<h2 id="3">3、磁盘三级水位（分配强门槛）</h2>
+<ul>
+<li>
+<p>low(85%)：开始主动迁出分片</p>
+</li>
+<li>
+<p>high(90%)：禁止新分片迁入</p>
+</li>
+<li>
+<p>flood_stage(95%)：节点所有索引只读，防止磁盘打满宕机</p>
+</li>
+</ul>
+<h2 id="4">4、分片搬迁并发配置（运维常用）</h2>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
+<span class="err">{</span>
+<span class="err">  "transient": {</span>
+<span class="err">    "cluster.routing.allocation.node_concurrent_incoming_recoveries": 2,</span>
+<span class="err">    "cluster.routing.allocation.node_concurrent_outgoing_recoveries": 2,</span>
+<span class="err">    "cluster.routing.allocation.cluster_concurrent_rebalance": 2,</span>
+<span class="err">    "indices.recovery.max_bytes_per_sec": "40mb"</span>
+<span class="err">  }</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>业务高峰调低防IO雪崩，低峰调高加速分片均衡收敛。</p>
+<h2 id="5">5、主副分片补充规则</h2>
+<ol>
+<li>
+<p>节点宕机后，从可用副本中选举新主分片</p>
+</li>
+<li>
+<p>多副本自动打散不同节点、机架（开启机架感知）</p>
+</li>
+<li>
+<p>副本跟随主分片同步流转冷热层级</p>
+</li>
+</ol>
+<hr />
+<h1 id="_14">五、索引\&amp;节点容量规划规范（生产落地标准）</h1>
+<h2 id="1_3">1、单分片合理容量（核心规划依据）</h2>
+<ul>
+<li>
+<p>热数据高写入高频查询：<strong>20\~35GB</strong></p>
+</li>
+<li>
+<p>常规业务索引通用最优：<strong>35\~50GB</strong></p>
+</li>
+<li>
+<p>冷归档极少查询：上限放宽 60\~80GB</p>
+</li>
+</ul>
+<p>&gt; 分片过大：迁移、段合并、故障恢复、快照恢复速度极慢</p>
+<h2 id="2_1">2、主分片数量计算公式</h2>
+<p><code>建议主分片数 ≈ 预估未来3年总数据量 ÷ 50GB</code>
+原则：<strong>分片宁多勿少</strong>，主分片创建后不可修改，前期预留余量，避免后期重构迁移。</p>
+<h2 id="3_1">3、副本配置说明</h2>
+<p>示例：9主 + 副本数=1 → 9主9副本，总分片18，一对一主副配对；副本数量可随时动态调整。</p>
+<h2 id="4_1">4、节点磁盘使用率红线（冷热区分）</h2>
+<ul>
+<li>
+<p>hot热节点(SSD)：使用率 ≤75%</p>
+</li>
+<li>
+<p>warm温节点：使用率 ≤80%</p>
+</li>
+<li>
+<p>cold冷节点(HDD)：使用率 ≤82%</p>
+</li>
+</ul>
+<p>预留空间应对分片搬迁、段合并、数据突增，规避磁盘水位异常。</p>
+<h2 id="5_1">5、单节点分片总数上限</h2>
+<ul>
+<li>
+<p>保守阈值：单节点总分片 ≤ 800</p>
+</li>
+<li>
+<p>警戒上限：≤ 1000</p>
+</li>
+</ul>
+<p>分片过多元数据占用堆内存暴涨，集群管控压力激增。</p>
+<h2 id="6">6、单个索引总体积上限</h2>
+<ul>
+<li>
+<p>中小集群(3\~5节点)：单索引总容量 ≤1.5TB</p>
+</li>
+<li>
+<p>中大型集群：单索引 ≤3TB</p>
+</li>
+</ul>
+<p>时序数据禁止单索引长期膨胀，采用 Rollover+ILM 滚动拆分。</p>
+<hr />
+<h1 id="ilm">六、ILM 冷热分层完整手册</h1>
+<h2 id="61">6.1 底层核心原理</h2>
+<ol>
+<li>
+<p><strong>流转最小单位：整个索引，不支持单条文档单独冷热迁移</strong></p>
+</li>
+<li>
+<p>计时基准（高频误区）</p>
+<div class="codehilite"><pre><span></span><code>    \&gt; ILM 不会读取文档内部业务时间字段做冷热判断
+</code></pre></div>
+
+</li>
+<li>
+<p>普通静态索引：计时起点 = 索引创建时间，与文档 <code>create_time/update_time</code> 无关</p>
+</li>
+<li>
+<p>Rollover滚动索引：计时起点 = 索引滚动切换时刻</p>
+</li>
+<li>
+<p>调度模式：内置 <code>ilm-service</code> 后台轮询线程，<strong>非 Cron 定时任务</strong>，默认巡检间隔10分钟</p>
+</li>
+<li>
+<p>流转单向不可逆：<code>Hot → Warm → Cold → Delete</code>，无原生自动回流能力</p>
+</li>
+<li>
+<p>流转本质：修改索引 <code>data_tier</code> 分配标签约束，分片分配器自动搬迁分片至对应节点池</p>
+</li>
+</ol>
+<h2 id="62-ilm-vs">6.2 ILM轮询 vs 自定义定时任务 对比</h2>
+<p>结论：ILM轮询稳定性、容错、集群可控性全面优于自研Cron定时任务</p>
+<ol>
+<li>
+<p>负载：轮询分散触发无瞬时尖峰；Cron整点批量搬迁极易打满IO</p>
+</li>
+<li>
+<p>幂等：ILM内置状态机，阶段未完成不往下执行；自研需自行实现幂等、重试、状态记录</p>
+</li>
+<li>
+<p>资源管控：复用集群原生分片搬迁限流配置；定时任务需额外开发限流逻辑</p>
+</li>
+<li>
+<p>异常自愈：迁移失败下一轮自动重试；定时任务失败需要人工排查补偿</p>
+</li>
+<li>
+<p>资源开销：轮询仅遍历索引元数据，空闲开销极低；定时任务常驻调度维护成本高</p>
+</li>
+<li>
+<p>唯一短板：存在最多一个轮询周期时间误差；Cron可精准整点执行</p>
+</li>
+</ol>
+<h2 id="63-ilm">6.3 ILM 四阶段参数速查表（含义+默认+修改场景+推荐值）</h2>
+<h3 id="ilm_1">全局ILM配置</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+<th>默认</th>
+<th>修改场景</th>
+<th>推荐值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>indices.lifecycle.poll_interval</td>
+<td>ILM全局巡检间隔</td>
+<td>10m</td>
+<td>测试验证、时效敏感、大集群减负</td>
+<td>测试：1m；时效：3\~5m；大集群：15\~20m</td>
+</tr>
+</tbody>
+</table>
+<h3 id="hot">Hot 热阶段</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+<th>默认</th>
+<th>修改场景</th>
+<th>推荐值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>min_age</td>
+<td>进入热阶段等待时长</td>
+<td>0ms</td>
+<td>一般不修改</td>
+<td>固定0ms</td>
+</tr>
+<tr>
+<td>rollover.max_primary_shard_size</td>
+<td>单主分片容量阈值自动滚动</td>
+<td>45gb</td>
+<td>写入量偏大/偏小，规范分片30\~50GB</td>
+<td>高吞吐：30\~35gb；常规：40\~50gb</td>
+</tr>
+<tr>
+<td>rollover.max_age</td>
+<td>索引最长写入周期强制滚动</td>
+<td>7d</td>
+<td>调整索引拆分粒度、磁盘压力调节</td>
+<td>按天拆分：3\~7d；低流量：10\~15d</td>
+</tr>
+<tr>
+<td>set_priority</td>
+<td>分片故障恢复优先级</td>
+<td>100</td>
+<td>核心业务索引优先恢复</td>
+<td>普通100，核心110\~120</td>
+</tr>
+</tbody>
+</table>
+<h3 id="warmcolddelete">Warm/Cold/Delete阶段表格省略（和前文一致）</h3>
+<h2 id="64-ilm">6.4 ILM故障排查、运维命令、策略模板（全文保留原有内容，此处省略，和上文完全一致）</h2>
+<hr />
+<h1 id="reindex">七、Reindex 数据重构全场景方案</h1>
+<p>（全文原有内容完整保留，此处省略）</p>
+<hr />
+<h1 id="_15">八、索引别名架构设计 + 普通索引上线初始化标准模板</h1>
+<p>（全文原有内容完整保留，此处省略）</p>
+<hr />
+<h1 id="rollover">九、Rollover 时序滚动索引 完整初始化模板（日志/流水/时序订单专用）</h1>
+<p>（全文原有内容完整保留，此处省略）</p>
+<hr />
+<h1 id="ilm_2">十、ILM反向回流：温层数据回滚至热节点（手动+批量脚本，新增完整版）</h1>
+<h2 id="101">10.1 核心前置认知（面试必背）</h2>
+<p><strong>ILM天生单向流转：Hot→Warm→Cold→Delete，无任何自动回流机制</strong>，ES不会自动把温/冷索引迁回热节点；
+想要反向回滚，只能<strong>人工修改索引冷热标签，强制触发分片回迁</strong>，同时必须规避ILM巡检再次自动迁回。</p>
+<h2 id="102">10.2 单索引手动回滚步骤（生产精准操作，分步执行）</h2>
+<h3 id="1_4">步骤1：查询索引当前冷热层级</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 你的索引名/_settings?filter_path=*.data_tier</span>
+</code></pre></div>
+
+<h3 id="2_2">步骤2：强制修改索引归属热节点，自动触发分片搬迁</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">PUT 你的索引名/_settings</span>
+<span class="err">{</span>
+<span class="err">  "index.routing.allocation.data_tier": "hot"</span>
+<span class="err">}</span>
+</code></pre></div>
+
+<p>执行后ES自动检测分片节点不匹配，后台自动执行分片迁移，无需手动干预分片搬迁。</p>
+<h3 id="3_2">步骤3：查看分片回迁进度</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">GET _cat/recovery?v&amp;h=index,shard,stage,source_node,target_node,percent</span>
+</code></pre></div>
+
+<p>percent=100 代表分片全部回迁完成。</p>
+<h3 id="4ilm">步骤4：关键防护：防止ILM巡检再次回迁温层</h3>
+<p>索引依旧绑定原有ILM策略，到达温层最小存活时间后，会再次被ILM自动迁回warm，必须做防护：</p>
+<div class="codehilite"><pre><span></span><code><span class="err"># 暂停单个索引生命周期，停止自动流转（推荐精细化管控）</span>
+<span class="err">POST 你的索引名/_ilm/stop</span>
+
+<span class="err"># 后续业务稳定，需要恢复自动冷热流转再开启</span>
+<span class="err">POST 你的索引名/_ilm/start</span>
+</code></pre></div>
+
+<h3 id="5_2">步骤5：额外兼容处理（温索引常见变更）</h3>
+<ol>
+<li>温层索引默认只读，如需重新写入，解除只读锁：<div class="codehilite"><pre><span></span><code>    `PUT 你的索引名/_settings
+</code></pre></div>
+
+</li>
+</ol>
+<p>{
+   "index.blocks.write": null
+   }
+   `</p>
+<ol>
+<li>
+<p>索引做过shrink缩分片：<strong>只能回迁节点位置，无法自动恢复原有分片数量</strong>，如需恢复原始分片规格，只能走Reindex重建</p>
+</li>
+<li>
+<p>forcemerge段合并：合并结果永久保留，不影响分片回迁和读写性能</p>
+</li>
+</ol>
+<h2 id="103">10.3 生产一键批量脚本：所有温层索引自动回迁热节点（开箱即用）</h2>
+<p>适用场景：大批量业务索引误进入温层，需要一次性全部回退热节点，自动过滤系统内置索引（.开头索引）。</p>
+<h3 id="warm_to_hotsh-shell">warm_to_hot.sh 完整shell脚本</h3>
+<div class="codehilite"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1"># ES温层索引批量回迁热节点脚本</span>
+<span class="c1"># 功能：自动查询所有warm索引、过滤系统索引、批量修改data_tier、附带操作提示</span>
+
+<span class="c1"># ========== 请自行修改此处配置 ==========</span>
+<span class="nv">ES_HOST</span><span class="o">=</span><span class="s2">"http://127.0.0.1:9200"</span>
+<span class="c1"># 集群开启账号密码则取消注释，填写账号密码</span>
+<span class="c1"># ES_USER="elastic"</span>
+<span class="c1"># ES_PWD="xxxxxx"</span>
+<span class="c1"># =======================================</span>
+
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"========== ES温层索引批量回迁热节点 开始执行 =========="</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"1. 正在查询集群所有warm层级业务索引（过滤系统内置索引）"</span>
+
+<span class="c1"># 获取所有warm索引，过滤.开头系统索引</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_USER</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="k">then</span>
+<span class="w">  </span><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span>-u<span class="w"> </span><span class="nv">$ES_USER</span>:<span class="nv">$ES_PWD</span><span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:warm?pretty"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+<span class="k">else</span>
+<span class="w">  </span><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:warm?pretty"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+<span class="k">fi</span>
+
+<span class="c1"># 判断是否存在warm索引</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="k">then</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ 集群无待回迁的warm业务索引，脚本直接退出"</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+<span class="k">fi</span>
+
+<span class="c1"># 打印待处理索引</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"✅ 待批量回迁索引列表："</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"---------------------------------------------------------"</span>
+
+<span class="c1"># 循环批量修改冷热标签</span>
+<span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>index<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$index</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">continue</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"正在处理索引：【</span><span class="nv">$index</span><span class="s2">】"</span>
+<span class="w">  </span><span class="nv">JSON_BODY</span><span class="o">=</span><span class="s1">'{"index.routing.allocation.data_tier":"hot"}'</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_USER</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="k">then</span>
+<span class="w">    </span>curl<span class="w"> </span>-s<span class="w"> </span>-u<span class="w"> </span><span class="nv">$ES_USER</span>:<span class="nv">$ES_PWD</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_settings"</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$JSON_BODY</span><span class="s2">"</span>
+<span class="w">  </span><span class="k">else</span>
+<span class="w">    </span>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_settings"</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$JSON_BODY</span><span class="s2">"</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">"\n✅ </span><span class="nv">$index</span><span class="s2"> 已切换为hot热层级，分片开始自动回迁\n"</span>
+<span class="k">done</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span>
+
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"========== 全部索引批量回迁指令执行完成 =========="</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">""</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"👉 查看分片回迁实时进度：curl </span><span class="nv">$ES_HOST</span><span class="s2">/_cat/recovery?v"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"👉 防止ILM自动回迁：POST /索引名/_ilm/stop"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"👉 恢复生命周期自动流转：POST /索引名/_ilm/start"</span>
+</code></pre></div>
+
+<h3 id="_16">脚本使用步骤</h3>
+<ol>
+<li>
+<p>安装依赖：<code>yum install jq -y</code>（解析json必备）</p>
+</li>
+<li>
+<p>修改脚本内ES地址、账号密码</p>
+</li>
+<li>
+<p>授权+运行：<code>chmod +x warm_to_hot.sh &amp;&amp; ./warm_to_hot.sh</code></p>
+</li>
+</ol>
+<h2 id="104">10.4 两种回流方案选型对比</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>适用场景</th>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>临时暂停单索引ILM</td>
+<td>个别索引临时回热，后续仍要走生命周期</td>
+<td>精细化控制，不影响其他索引</td>
+<td>需要单独操作每个索引</td>
+</tr>
+<tr>
+<td>修改ILM策略拉长min_age</td>
+<td>全局所有索引延后进入温层</td>
+<td>一次修改全局生效</td>
+<td>影响全集群索引生命周期，风险较高</td>
+</tr>
+</tbody>
+</table>
+<h2 id="105">10.5 面试极简话术（直接背诵）</h2>
+<p>ES的ILM冷热流转是单向的，不支持自动从温层回退到热节点。如果温层数据需要回滚，核心操作是手动修改索引的data_tier标签为hot，触发ES分片分配器自动将分片迁回热节点；回迁完成后必须暂停该索引的ILM生命周期，否则下一轮ILM巡检会再次把索引迁回温层。另外做过shrink缩分片的索引只能迁移节点，无法恢复原有分片数量，想要还原分片结构只能通过Reindex重建。大批量索引回流可以使用shell脚本一键批量修改，规避重复人工操作。</p>
+<hr />
+<h1 id="_17">十一、全局分片异常统一排障手册</h1>
+<ul>
+<li>
+<p>分片未分配：使用GET _cluster/allocation/explain精准定位原因</p>
+</li>
+<li>
+<p>高峰期IO打满：临时关闭集群自动分片均衡</p>
+</li>
+<li>
+<p>冷热分片乱跑：禁止手动修改data_tier，核对节点角色</p>
+</li>
+<li>
+<p>分片搬迁过慢：调高恢复带宽与并发数</p>
+</li>
+</ul>
+<hr />
+<h1 id="es-mysql-redis-kafka">十二、跨中间件统一分片思想（ES / MySQL / Redis / Kafka）</h1>
+<p>ES、MySQL分库分表、Redis集群、Kafka分区底层完全一致：</p>
+<ol>
+<li>
+<p>分片key哈希取模，固定绑定分片</p>
+</li>
+<li>
+<p>热点维度做分片键必然倾斜</p>
+</li>
+<li>
+<p>前期分片宁多勿少，后期扩容成本极高</p>
+</li>
+<li>
+<p>不要自研分片，原生生命周期+均衡能力远强于自研</p>
+</li>
+</ol>
+<hr />
+<h1 id="3_3">十三、面试3分钟整体总结背诵版</h1>
+<p>（全文原有总结补充回流知识点，更新完整版总结）</p>
+<p>ES分片分为路由数据倾斜、节点分片分配倾斜两类。路由依靠MurmurHash3 32位哈希取模分配分片，主分片创建后不可修改，哈希碰撞不会覆盖数据；省份、日期自定义路由极易热点倾斜，解决方案为路由Key后缀二次打散。</p>
+<p>节点分片依靠IndexBalance、ShardBalance加权算法实现分片数量均衡，受磁盘三级水位、主副隔离、冷热层级三大前置约束管控分配逻辑；容量上单分片控制30\~50GB，前期分片规划宁多勿少。</p>
+<p>冷热分层依托ILM实现索引单向Hot→Warm→Cold→Delete流转，<strong>无原生自动回流能力</strong>，温层回退热需要手动修改冷热标签+暂停ILM；ILM仅依据索引创建/滚动时间判断，不识别文档业务时间；采用后台轮询调度，对比自研Cron定时任务流量更平滑、自带幂等状态、异常自愈更强，仅修改索引data_tier标签完成层级迁移，只能节约存储成本，无法治理热分片倾斜。</p>
+<p>字段改名改类型、重新分片、修改路由规则均无法原地变更，统一采用<strong>新建索引+Reindex脚本迁移+业务双写+原子别名切换</strong>方案；业务上线初期即规划固定访问别名，底层索引迭代重构无需修改业务代码，做到无感切换、回滚便捷。针对日志、流水无限写入场景，可采用Rollover滚动索引模式自动拆分时序索引，配合ILM完成生命周期管理。ILM、分片均衡属于集群常驻自动配置，而Reindex重构、ILM反向回流属于一次性人工运维变更流程，无法全自动配置执行。</p>
+<p>该分片思想通用于MySQL分库分表、Redis集群、Kafka分区；成熟中间件动态配置、内置自愈能力，运维成本更低，中小企业优先用好开源方案，不盲目自研分布式分片轮子。</p>
+<blockquote>
+<p>（注：部分内容可能由 AI 生成）</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

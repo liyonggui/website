@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层 · 小番茄程序猿</title>
+<meta name="description" content="Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../assets/css/style.css"/>
+<link rel="stylesheet" href="../assets/css/article.css"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../index.html">首页</a>
+      <a href="../projects.html">项目</a>
+      <a href="../blog.html" class="active">博客</a>
+      <a href="../deep.html">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../blog.html">← 返回博客索引</a>
+    <h1>Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层</h1>
+  </div>
+  <article class="prose">
+<h1 id="agent-p95-836ms-12ms-agent">Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层</h1>
+<blockquote>
+<p>「高并发实测」系列第 3 篇。</p>
+<p>环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring Boot 3.4）+ Spring AI 接百炼，Agent 服务单独 8084 端口。k6 <strong>开环</strong> <code>constant-arrival-rate</code> 100/s × 20s，5 个城市名做热点工作集。<strong>这是我自己搭的实验环境，不是生产系统。</strong></p>
+<p>上一篇讲了线程池在高负载下会把"异步"静默退化成同步；这一篇讲一个 Java 后端眼里的 AI Agent——<strong>教程都停在"调通 API"，而线上要的那一半：可观测、限并发、熔断、压测，几乎没人教。</strong></p>
+</blockquote>
+<h2 id="_1">〇、一分钟带走版</h2>
+<p>一个只查真实数据的问答 Agent（工具 → HTTP → 后端 → MySQL/Mongo），我把后端最熟的那几件护栏一件件加上去，同一份压测脚本做 A/B：</p>
+<table>
+<thead>
+<tr>
+<th>护栏</th>
+<th>实现</th>
+<th>实测效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>可观测</td>
+<td>Micrometer + 应用内自采延迟/成败/token/成本</td>
+<td>延迟一度算出 <strong>5.8e12 毫秒</strong>，被迫换口径（第二节）</td>
+</tr>
+<tr>
+<td>下游降级</td>
+<td>RestClient 连接/读超时 + 结构化 <code>unavailable</code></td>
+<td>下游指死端口 → <strong>秒失败、不雪崩</strong>，模型如实说查不到</td>
+</tr>
+<tr>
+<td>LLM 舱壁</td>
+<td><code>Semaphore(3)</code> + <code>tryAcquire</code> 失败即 503</td>
+<td>6/s 打到上限 3 → <strong>65/72 = 90.3% 被秒挡</strong>，只有约 7 个真进模型</td>
+</tr>
+<tr>
+<td>熔断</td>
+<td>手写 <code>Breaker</code>：CLOSED→OPEN→HALF_OPEN</td>
+<td>下游宕机连打 20 次：前 5 次真失败，<strong>后 16 次快速拒绝</strong></td>
+</tr>
+<tr>
+<td>本地缓存</td>
+<td>Caffeine，挂在工具层</td>
+<td><strong>p95 836ms → 12.34ms（约 68 倍）</strong>，命中率 97.7%</td>
+</tr>
+</tbody>
+</table>
+<p>但这一篇最值钱的不是那 68 倍。是加缓存之前我先测了一次<strong>不含 LLM 的纯编排层</strong>，发现：网关自己中位数 5.2ms，p95 却 762ms——<strong>长尾全在本机后端那一段，Agent 层是无辜的</strong>。这一步推翻了我的默认假设：<strong>我以为要优化的是"AI 那一层"，结果该优化的是它下面那个普通的 HTTP 调用。</strong></p>
+<p>而"再调一下阈值让 p95 变绿"这个诱惑，我忍住了（第六节）。</p>
+<blockquote>
+<p>全文关键词：Spring AI、可观测性、Semaphore 舱壁、熔断器、Caffeine 缓存、k6 开环压测。</p>
+</blockquote>
+<h2 id="agent">一、场景：Agent 跑通了，然后呢？</h2>
+<p>先摆一下我做的东西。业务背景很朴素：<strong>一个数据查询类业务</strong>，用户问"杭州有哪些""排名第三的是哪个"，Agent 不许凭自己的记忆答——<strong>必须调工具去查后端真实数据，再组织成人话</strong>。</p>
+<p>一次请求的链路长这样：</p>
+<div class="codehilite"><pre><span></span><code>用户提问
+  → ChatClient（Spring AI）→ 模型决定调哪个工具
+  → 工具层 ToolGateway → RestClient → 后端 /wxma/**  →  MySQL / Mongo
+  → 结果回填给模型 → 模型出终答
+</code></pre></div>
+
+<p>到"能答对"这一步，一个下午就够了，网上教程全是这一段。但我按后端的标准一看，四个问题一个没解：</p>
+<ol>
+<li><strong>它到底慢在哪？</strong> 一次问答几秒起步，我连"是模型慢还是我下游慢"都说不出来。</li>
+<li><strong>下游挂了会怎样？</strong> 我的第一反应是抛异常，第二反应是更可怕的：模型会不会<strong>因为拿不到数据就编一个排名出来</strong>？</li>
+<li><strong>谁来限流？</strong> 模型是按 token 付费的，而且一次请求要占住 servlet 线程四秒以上——<strong>这不就是我上一篇文章里那个"阻塞 I/O 长期占住线程"的经典场景吗</strong>。</li>
+<li><strong>能扛多少 QPS？</strong> 没人告诉我，包括教程作者。</li>
+</ol>
+<p>于是我把这四件事，按后端的常规做法一件件补上。补完最大的意外是：<strong>这四件事没有一件是"AI 技术"，全是十年前的老手艺。</strong></p>
+<h2 id="_2">二、可观测：先让它可被度量（不然优化都是玄学）</h2>
+<p><code>AgentMetrics</code> 里几类指标：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>类型</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agent.tool.invoke{tool,outcome}</code></td>
+<td>Counter</td>
+<td>工具成败比，下游健康度</td>
+</tr>
+<tr>
+<td><code>agent.cache.result{tool,result}</code></td>
+<td>Counter</td>
+<td>hit / miss_ok / miss_fail / circuit-open</td>
+</tr>
+<tr>
+<td><code>agent.llm.outcome</code></td>
+<td>Counter</td>
+<td>ok / rejected / error，<strong>分母是"被挡了多少"</strong></td>
+</tr>
+<tr>
+<td><code>agent.chat.latency</code></td>
+<td>应用内自采 mean/max</td>
+<td>模型往返耗时</td>
+</tr>
+<tr>
+<td>token 用量 → 成本</td>
+<td>Counter × 单价</td>
+<td>烧钱速率，进 /snapshot 直接看</td>
+</tr>
+</tbody>
+</table>
+<p><strong>这里踩了个坑，值得单说。</strong> 我一开始用最"标准"的做法：<code>Timer.record(nanos, NANOSECONDS)</code>，然后读 <code>takeSnapshot().percentileValues().value()</code>。结果快照里打出一个 <strong>5.8e12 毫秒</strong> 的延迟——换算下来是一百八十多年。</p>
+<p>原因是单位口径打架：record 时显式传了 <code>NANOSECONDS</code>，而读分位数时我按毫秒理解，Micrometer 那边又按它自己的 base unit 解释，三个口径凑一起就没人能对上了。我的处理不是"再调一次单位试试"，而是<strong>换掉可信源</strong>：应用内只自采 mean/max（<code>AtomicLong</code> 存纳秒，输出时 <code>/1e6</code>），<strong>p95/p99 全部交给 k6 这个权威源算</strong>。</p>
+<p>这条经验我觉得比缓存那 68 倍更通用：<strong>分位数是压测工具的活，不是应用埋点的活。应用只需要知道自己"平均多少、最差多少、拒绝多少次"。</strong></p>
+<p>还有一个坑更隐蔽：<strong>被舱壁拒绝的请求，别把 0 时长灌进延迟分布</strong>。503 是几毫秒返回的，一旦混进 <code>Timer</code>，中位数立刻变得非常好看——<strong>你的报表会开始骗你</strong>。我给拒绝单独开了 <code>countOutcome</code>，只计数、不进分布。</p>
+<h2 id="_3">三、降级：下游挂了的正确表现，是说"查不到"</h2>
+<p>Agent 的下游挂了会怎样？普通服务的表现是一串 500。Agent 多一层风险：<strong>模型拿到一个异常，它可能照样给你编一个看起来很像样的答案。</strong> 在这类场景里，一个编造的数字比一句"查不到"恶劣得多。</p>
+<p>所以这里要做两件事，一件在代码，一件在提示词：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ToolGateway.call() —— 异常不往外抛，吞成结构化"不可用"</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">List</span><span class="o">&lt;</span><span class="n">Map</span><span class="o">&lt;</span><span class="n">String</span><span class="p">,</span><span class="w"> </span><span class="n">Object</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">loader</span><span class="p">.</span><span class="na">get</span><span class="p">();</span>
+<span class="w">    </span><span class="n">br</span><span class="p">.</span><span class="na">onSuccess</span><span class="p">();</span><span class="w">  </span><span class="n">metrics</span><span class="p">.</span><span class="na">recordTool</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">cache</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="n">cache</span><span class="p">.</span><span class="na">put</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">result</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">result</span><span class="p">;</span>
+<span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">RuntimeException</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">br</span><span class="p">.</span><span class="na">onFailure</span><span class="p">();</span><span class="w">  </span><span class="n">metrics</span><span class="p">.</span><span class="na">recordTool</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">unavailable</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="p">.</span><span class="na">getClass</span><span class="p">().</span><span class="na">getSimpleName</span><span class="p">());</span><span class="w">   </span><span class="c1">// {unavailable:true, reason:...}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>配套的 <code>RestClient</code> 必须带<strong>连接超时和读超时</strong>（<code>TOOL_TIMEOUT_MS</code>，默认 2500ms，压测时我调到 1000ms）。没有超时的降级等于没有降级——异常要等 OS 层 TCP 超时才来，那一二十秒里 servlet 线程照样被占着。</p>
+<p>然后系统提示里明确告诉模型：<strong>拿到 <code>unavailable</code> 就照实说"暂时查不到"，不许用自己的记忆补。</strong></p>
+<p>验证方式很直接：把后端基址指到一个没人监听的死端口。结果 <code>{unavailable:true, reason:ResourceAccessException}</code>，秒级返回，不雪崩，模型回的是"目前查不到该校数据"。<strong>这一条是我最满意的实测：它证明的不是我的代码多强，而是"胡说"这条路被堵住了。</strong></p>
+<h2 id="llm-semaphore">四、LLM 舱壁：一个 Semaphore，挡住九成流量</h2>
+<p>一次真实问答的模型往返，我的埋点量出来是 <strong>mean 4665ms / max 4806ms</strong>（1393 输入 + 375 输出 token）。</p>
+<p>四秒看起来不长，但它就是把 Tomcat 线程一条条借出去不还——<strong>这跟上一篇那个"阻塞 I/O 长期占住线程"的坑是同一件事</strong>，只是这次不用去翻线程池参数，直接限并发最省事：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">public</span><span class="w"> </span><span class="n">Result</span><span class="w"> </span><span class="nf">chat</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">q</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">bulkhead</span><span class="p">.</span><span class="na">tryAcquire</span><span class="p">())</span><span class="w"> </span><span class="p">{</span><span class="w">           </span><span class="c1">// Semaphore(llm-max-concurrent)，默认 3</span>
+<span class="w">        </span><span class="n">metrics</span><span class="p">.</span><span class="na">countOutcome</span><span class="p">(</span><span class="s">"rejected"</span><span class="p">);</span><span class="w">   </span><span class="c1">// 只计数，不进延迟分布（第二节那条）</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Result</span><span class="p">(</span><span class="s">"rejected"</span><span class="p">,</span><span class="w"> </span><span class="s">"系统繁忙（超过 LLM 并发上限），请稍后重试。"</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">t0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">nanoTime</span><span class="p">();</span>
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 真调模型 */</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">bulkhead</span><span class="p">.</span><span class="na">release</span><span class="p">();</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>注意是 <code>tryAcquire()</code> <strong>不等待</strong>——不排队。Agent 场景下排队四秒和拒绝的本质一样，但拒绝能立刻给用户一个明确信号，还顺手保住了付费模型的额度。</p>
+<p>k6 打 6/s × 12s = 72 个请求，舱壁上只留 3 个位置：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>总请求</td>
+<td>72</td>
+</tr>
+<tr>
+<td>被秒挡 503</td>
+<td><strong>65 / 72 = 90.3%</strong></td>
+</tr>
+<tr>
+<td>真进模型</td>
+<td>约 7 个</td>
+</tr>
+</tbody>
+</table>
+<p>这 7 个左右完全能从原理复算出来：3 个并发额度、每次往返约 4.7 秒 → 吞吐 ≈ 3 / 4.7 ≈ <strong>0.64 req/s</strong>，12 秒 ≈ <strong>7.6 个</strong>。实测 7 个，对得上。</p>
+<blockquote>
+<p><strong>压测里有个坑</strong>：k6 把 503 计入 <code>http_req_failed</code>，所以那个 <code>rate&lt;0.01</code> 的阈值一定是红的。但这里的 503 是<strong>准入控制在动作</strong>，不是故障。要评估护栏效果，看自定义的 <code>guardrail_rejected</code>，别看 <code>http_req_failed</code>。<strong>否则你会去"修"一个正在正常工作的东西。</strong></p>
+</blockquote>
+<h2 id="60">五、熔断：手写 60 行，只为把它讲清楚</h2>
+<p>生产上该用 resilience4j，我手写了一个最小版 <code>Breaker</code>（CLOSED / OPEN / HALF_OPEN），因为我想让状态机在自己眼皮底下是可解释的：</p>
+<div class="codehilite"><pre><span></span><code>CLOSED    放行，累加连续失败；达到阈值(5) → OPEN
+OPEN      冷却期内一律快速拒绝（不让慢/挂的下游继续吃线程）；冷却到 → HALF_OPEN
+HALF_OPEN 只放一个探针；成功 → CLOSED 复位，失败 → 再 OPEN
+</code></pre></div>
+
+<p><code>allowRequest()</code> / <code>onSuccess()</code> / <code>onFailure()</code> 全 <code>synchronized</code>——demo 里我要的是<strong>简单且正确</strong>，不是高吞吐，这属于有意识的取舍，不是偷懒。</p>
+<p>真实验证（<code>TOOL_TIMEOUT=1000</code>，基址指死端口 59999，连打 20 次）：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>次数</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>真试并失败</td>
+<td>5</td>
+<td><code>miss_fail: 5</code> → 熔断 <code>OPEN</code></td>
+</tr>
+<tr>
+<td>快速拒绝</td>
+<td><strong>16</strong></td>
+<td><code>breaker.rejects: 16</code>，返回 <code>reason: circuit-open</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>这里得停一下：5 + 16 = 21，跟"连打 20 次"对不上。</strong> 因为这两个数是 <code>/snapshot</code> 里的<strong>累计计数器</strong>，不是逐次序列——5 次真试每次都耗满 1 秒超时，而熔断冷却只有 5 秒，所以很可能在我手点还没打完时冷却就到点了，中间会插入探针请求（探针失败会再次 OPEN 并继续累加）。<strong>我当时的快照没留逐次日志，所以这里只报两个计数，不给你画时间线。</strong> 一个对不上的数字标出来，比我顺手圆过去有用。</p>
+<p>价值不在省了那十几次请求，在于<strong>下游挂掉时我不再拿自己的线程去陪葬</strong>：请求秒回，servlet 线程不堆积，模型秒拿到"查不到"。熔断和第三节的降级是一对，单独任一个都不完整——<strong>只降级不熔断，每次请求都要先傻等 1 秒超时；只熔断不降级，熔断打开时模型拿到的是 null，就可能开始编。</strong></p>
+<h2 id="_4">六、压测：先证明"不是我的锅"，再决定优化什么</h2>
+<p>上篇结尾我立了个 flag：固定 VU 的闭环压测有<strong>协同遗漏</strong>——系统变慢时施压速率会自动掉下来，把长尾藏起来。这次一上来就用开环：</p>
+<div class="codehilite"><pre><span></span><code><span class="nx">executor</span><span class="o">:</span><span class="w"> </span><span class="s1">'constant-arrival-rate'</span><span class="p">,</span>
+<span class="nx">rate</span><span class="o">:</span><span class="w"> </span><span class="mf">100</span><span class="p">,</span><span class="w"> </span><span class="nx">timeUnit</span><span class="o">:</span><span class="w"> </span><span class="s1">'1s'</span><span class="p">,</span><span class="w"> </span><span class="nx">duration</span><span class="o">:</span><span class="w"> </span><span class="s1">'20s'</span><span class="p">,</span>
+<span class="nx">preAllocatedVUs</span><span class="o">:</span><span class="w"> </span><span class="mf">100</span><span class="p">,</span><span class="w"> </span><span class="nx">maxVUs</span><span class="o">:</span><span class="w"> </span><span class="mf">200</span><span class="p">,</span>
+</code></pre></div>
+
+<p><strong>而且我故意把 LLM 摘出去</strong>：单独开一个只走"工具 → 下游 HTTP → 降级"的编排端点，不碰模型。原因很简单——模型按 token 付费、单跳四秒多，拿它压测只会压出模型厂商的限流，压不出我自己的系统。</p>
+<p>第一版结果（还没有缓存）：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>请求</td>
+<td>2000，失败 0，checks 100%</td>
+</tr>
+<tr>
+<td>med</td>
+<td><strong>5.29ms</strong></td>
+</tr>
+<tr>
+<td>p95</td>
+<td><strong>762ms</strong></td>
+</tr>
+<tr>
+<td>p99</td>
+<td>1.2s</td>
+</tr>
+<tr>
+<td>阈值 <code>p95&lt;250</code></td>
+<td>🔴 红</td>
+</tr>
+</tbody>
+</table>
+<p><strong>中位数 5 毫秒、p95 七百多毫秒</strong>——这个形状本身就在说话：网关代码不是瓶颈（否则 med 也难看），慢的是<strong>一小撮请求卡在下游</strong>（本机后端服务在 100/s 下变慢）。</p>
+<p>到这里有个很实在的诱惑：把阈值从 250 调到 1000，报告就绿了。<strong>我没干。</strong> 因为这张表真正的价值是它告诉我下一步该动哪儿——<strong>给工具层加缓存、加熔断、加并发上限</strong>，而不是给仪表盘换个颜色。</p>
+<p>加完缓存，同一份脚本、同一个工作集，A/B：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th style="text-align: right;">A：无缓存</th>
+<th style="text-align: right;">B：Caffeine 开</th>
+<th>变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>p95</strong></td>
+<td style="text-align: right;"><strong>836ms</strong></td>
+<td style="text-align: right;"><strong>12.34ms</strong></td>
+<td><strong>↓ 约 98.5%（约 68 倍）</strong></td>
+</tr>
+<tr>
+<td>med</td>
+<td style="text-align: right;">5.2ms</td>
+<td style="text-align: right;">1.9ms</td>
+<td>↓ 63%</td>
+</tr>
+<tr>
+<td>max</td>
+<td style="text-align: right;">1.91s</td>
+<td style="text-align: right;">676ms</td>
+<td>冷启动 / 缓存过期穿透</td>
+</tr>
+<tr>
+<td>失败</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td>一致性没变</td>
+</tr>
+<tr>
+<td>缓存</td>
+<td style="text-align: right;">关闭</td>
+<td style="text-align: right;">hit 1954 / miss_ok 46</td>
+<td><strong>命中率 97.7%</strong></td>
+</tr>
+<tr>
+<td><code>p95&lt;250</code></td>
+<td style="text-align: right;">🔴</td>
+<td style="text-align: right;">🟢</td>
+<td>由红转绿</td>
+</tr>
+</tbody>
+</table>
+<p>68 倍听起来像吹牛，其实特别朴素：<strong>查询结果几乎不变，我却每次都跑一趟后端</strong>。缓存没有让任何一次下游调用变快——它只是把 97.7% 的调用<strong>消灭了</strong>。这跟"优化"是两回事，是"减少工作量"。</p>
+<p>顺手呼应上一篇的结论：<strong>在这台 CPU 紧张的单机上，做减法等收益，加并发不等。</strong></p>
+<h2 id="_5">七、如果继续做，我会排这几件事</h2>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>多轮取中位数 + 归档 k6 summary</strong></td>
+<td>见下面的局限，这是我最想补的一条</td>
+</tr>
+<tr>
+<td><strong>闭环 vs 开环对照</strong></td>
+<td>同一套系统跑两遍，量化协同遗漏到底低估了多少 p95</td>
+</tr>
+<tr>
+<td><strong>缓存加单飞（single-flight）</strong></td>
+<td>过期瞬间会有一波并发一起回源，max 676ms 很可能就是这么来的</td>
+</tr>
+<tr>
+<td><strong>换 resilience4j</strong></td>
+<td>手写的 <code>Breaker</code> 是用来讲机制的，生产要的是被淬炼过的实现</td>
+</tr>
+<tr>
+<td><strong>接 Langfuse</strong></td>
+<td>现在我只知道"慢/成/败"，还不知道"这一轮对话烧了多少、在哪一步跑偏"</td>
+</tr>
+</tbody>
+</table>
+<p>最后一条是<strong>评测</strong>，它比上面所有工程活都更"AI 特有"，也确实给了我一个意外：<strong>只测最终答案是测不出问题的。</strong> 模型完全可以不调工具、凭常识就把"排名第三是谁"蒙对——这一次它蒙对了，下一次它就是蒙错。要抓这个，得评测<strong>调用轨迹</strong>（trajectory：有没有调、参数对不对）。这条线我单独写一篇。</p>
+<h2 id="_6">八、局限（照例先说）</h2>
+<ul>
+<li><strong>每个版本只跑了一轮</strong>（100/s × 20s）。68 倍这个效应量远超单机运行间波动，方向不会翻，但<strong>精确倍数我不打包票</strong>。第二篇那种 ±40% 的跨批次方差在这里同样存在，正确做法是多轮取中位数——已列进第七节。</li>
+<li><strong>原始 k6 summary 我当时没归档到文件</strong>，只留了终端输出。这篇文章里的数字来自我自己的实验记录，第三方无法复算。<strong>下次起所有压测一律 <code>--summary-export</code> 落盘</strong>，这条我现在就记下了。</li>
+<li><strong>命中率是工作集的函数</strong>：5 个城市名、20 秒、2000 请求，是个高度偏斜的热点模型。真实查询分布更平，命中率会更低、收益会更小。<strong>这张表证明的是"缓存能消灭长尾"，不是"你的系统能有 97.7%"。</strong></li>
+<li><strong>环境是笔记本 + Docker 单机</strong>，下游后端和 Agent 服务抢同一批 CPU。所以 A/B 的差异里混着资源争抢，绝对值不代表任何生产容量。</li>
+<li><strong>熔断那组（5 真试 + 16 快拒）不是压测</strong>，是手工连打的功能验证，别把它当吞吐数据读；而且它只有累计计数、没有逐次日志（第五节那段已标出 5+16 对不上连打次数）。</li>
+<li>缓存 TTL、超时、并发上限全是环境变量可调，我报的是当次跑的取值，换参数结论会变。</li>
+</ul>
+<h2 id="_7">写在最后</h2>
+<p>这三篇跑下来，我最大的感触是：<strong>AI 应用工程化这件事，对后端来说几乎没有新东西。</strong></p>
+<p>可观测、超时、舱壁、熔断、缓存、开环压测——每一个都是分布式系统课本里的老词。真正新的只有一点：<strong>链路末端那个东西会自己编话，所以"降级"不只是保系统，还得保住"不胡说"。</strong> 其余部分，就是把后端那点老手艺，搬到一个新场景里再练一遍。</p>
+<p>会做 Agent 的人不一定愿意压测，愿意压测的人不一定碰 Agent。我刚好站在中间。</p>
+<p>八股可以被背，结论只能被跑出来。这是「高并发实测」系列第三篇。上一篇：《高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%》。再上一篇：《别再死背 44 字节了：Redis String 三种编码压测》。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

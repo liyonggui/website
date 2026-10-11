@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景 1 — Lettuce Pipeline 压测问题排查与优化 · 小番茄程序猿</title>
+<meta name="description" content="场景 1 — Lettuce Pipeline 压测问题排查与优化 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景 1 — Lettuce Pipeline 压测问题排查与优化</h1>
+  </div>
+  <article class="prose">
+<h1 id="1-lettuce-pipeline">场景 1 — Lettuce Pipeline 压测问题排查与优化</h1>
+<h2 id="_1">概述</h2>
+<p>使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 batch（batchSize 条 SETEX）、<code>setAutoFlushCommands(false)</code>、<code>flushCommands()</code> + <code>awaitAll()</code>。Redis 保持默认持久化关闭（appendonly no、不开 RDB 快照）以聚焦写入路径的性能。</p>
+<h2 id="_2">压测架构</h2>
+<div class="codehilite"><pre><span></span><code>Worker-1 ── Redis 连接 1 ── [SETEX × batchSize] ── flushCommands ── awaitAll ── 循环
+Worker-2 ── Redis 连接 2 ── [SETEX × batchSize] ── flushCommands ── awaitAll ── 循环
+...
+Worker-N ── Redis 连接 N ── [SETEX × batchSize] ── flushCommands ── awaitAll ── 循环
+</code></pre></div>
+
+<ul>
+<li>每个 Worker 线程独占一条 Redis 连接</li>
+<li><code>setAutoFlushCommands(false)</code> 开启 Pipeline 模式</li>
+<li>批量攒满后一次性 <code>flushCommands()</code> + <code>awaitAll()</code> 等待响应</li>
+</ul>
+<h2 id="_3">七问题排查与修复</h2>
+<h3 id="1redis-cpu-100">问题 1：Redis CPU 100%，硬件天花板</h3>
+<p><strong>现象</strong>：conc=8、batch=500 时 Redis CPU 接近 100%，吞吐约 746k cmds/s（覆盖写场景）。</p>
+<p><strong>根因</strong>：命令执行在 Redis 主线程中完成，这是吞吐的主要瓶颈。Redis 6+ 支持 I/O 线程（io-threads）来减轻网络拷贝/解析开销，但<strong>命令执行本身仍然在主线程中单线程完成</strong>。建议测试是否已开启 io-threads 以评估对网络密集型场景的影响。</p>
+<p><strong>结论</strong>：在本次硬件和测试条件下，单机 Redis 对新 key 的写入吞吐约为 200k–300k cmd/s，实际天花板会随环境与命令类型波动。要突破需水平扩展（分片/集群）或增加实例数量。</p>
+<p><strong>影响</strong>：后续优化以"去除无效开销、避免过载反噬"为目标，而非盲目追求更高并发。</p>
+<hr />
+<h3 id="2pipeline">问题 2：Pipeline 并发过载反噬</h3>
+<p><strong>现象</strong>：conc 从 8 提升到 16，吞吐反而从 746k 降至 468k cmds/s（-37%），延迟从 5ms 飙升至 20.7ms。</p>
+<p><strong>根因</strong>：过多并发 Pipeline 同时冲向 Redis，TCP 缓冲区堆积 + Redis 主线程排队处理不过来的命令，形成恶性循环。</p>
+<p><strong>修复</strong>：引入 <code>Semaphore</code> 反压机制，限制同时 flush 的 Pipeline 数量。<strong>务必使用 try/finally 确保异常安全</strong>——若 <code>awaitAll</code> 抛异常或线程被中断而未 release，将导致令牌泄露。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 新增字段</span>
+<span class="kd">private</span><span class="w"> </span><span class="kd">volatile</span><span class="w"> </span><span class="n">Semaphore</span><span class="w"> </span><span class="n">flushSemaphore</span><span class="p">;</span>
+<span class="c1">// 启动时初始化</span>
+<span class="k">this</span><span class="p">.</span><span class="na">flushSemaphore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Semaphore</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="na">maxInflightFlushes</span><span class="p">);</span>
+
+<span class="c1">// runBatch() 中——注意 try/finally 保证令牌不泄露</span>
+<span class="n">flushSemaphore</span><span class="p">.</span><span class="na">acquire</span><span class="p">();</span><span class="w">            </span><span class="c1">// 拿令牌</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">async</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span><span class="w">           </span><span class="c1">// 执行</span>
+<span class="w">    </span><span class="n">awaitAll</span><span class="p">(</span><span class="n">pipelineTimeoutSec</span><span class="p">);</span><span class="w">    </span><span class="c1">// 等待响应（使用超时参数）</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">flushSemaphore</span><span class="p">.</span><span class="na">release</span><span class="p">();</span><span class="w">        </span><span class="c1">// 无论成功/异常都还令牌</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>反压 vs 排队</strong>：反压是主动控制——拿不到令牌的生产者被阻塞，最多 N 个在排队；普通排队是被动等待，队列无限膨胀。</p>
+<p><strong>效果</strong>（conc=16）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">修复前</th>
+<th style="text-align: left;">修复后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">468k cmds/s</td>
+<td style="text-align: left;">375k cmds/s</td>
+</tr>
+<tr>
+<td style="text-align: left;">延迟</td>
+<td style="text-align: left;">20.7ms</td>
+<td style="text-align: left;">11ms</td>
+</tr>
+</tbody>
+</table>
+<p>牺牲部分吞吐换更低延迟与稳定性，系统稳定性显著提升。</p>
+<p><strong>配置</strong>：<code>app.bench.max-inflight-flushes: 8</code></p>
+<hr />
+<h3 id="3">问题 3：随机数生成器的并发争用</h3>
+<p><strong>现象</strong>：高并发下随机数生成成为瓶颈，conc=16 时吞吐低于预期约 20%。</p>
+<p><strong>根因</strong>：Java 的 <code>SecureRandom</code> 行为依赖于提供者与平台——某些实现使用 <code>/dev/urandom</code>（不阻塞）仍可能存在全局同步锁或初始化开销；另一些实现在初始化时读取熵（耗时），在高并发热路径中产生争用。</p>
+<p><strong>修复</strong>：在高频压测/普通 key 生成场景，用 <code>ThreadLocalRandom.current().nextInt(...)</code> 或每线程单独的非阻塞 PRNG 替代 <code>SecureRandom</code>。<strong>注意</strong>：在需要加密安全性的路径（如 Token 生成、会话 ID）仍应使用 <code>SecureRandom</code>，不应替换。</p>
+<div class="codehilite"><pre><span></span><code><span class="gd">- import java.security.SecureRandom;</span>
+<span class="gi">+ import java.util.concurrent.ThreadLocalRandom;</span>
+
+<span class="gd">- private final SecureRandom random = new SecureRandom();</span>
+<span class="gd">- String key = "bench:" + random.nextInt(keySpace);</span>
+<span class="gi">+ String key = "bench:" + ThreadLocalRandom.current().nextInt(keySpace);</span>
+</code></pre></div>
+
+<p><strong>效果</strong>（conc=16, batch=500, keySpace=10 万）：在本次可重复压测条件下，替换后观察到约 <strong>+20% 吞吐</strong>提升（375k → 452k cmd/s），推断主要因 SecureRandom 的并发开销被消除。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">SecureRandom</th>
+<th style="text-align: left;">ThreadLocalRandom</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">752 bat/s, 375k cmd/s</td>
+<td style="text-align: left;">904 bat/s, 452k cmd/s</td>
+</tr>
+</tbody>
+</table>
+<p>conc=8 时差异不明显（瓶颈在 Redis CPU），conc=16 时才显著。</p>
+<hr />
+<h3 id="4key-setex">问题 4：Key 空间太小，SETEX 退化为覆盖写 — 完整原理详解</h3>
+<p><strong>现象</strong>：<code>keySpace=100,000</code>，conc=8、batch=500 时每秒生成约 425k 个 key，10 万空间 0.24 秒就被写满，后续所有 SETEX 变成覆盖写。</p>
+<p><strong>根因</strong>：覆盖写避免了新对象分配和 dict entry 创建，走的是更快路径。更深层的机制是：SETEX 需要同时写入 <code>db.dict</code>（键空间主字典）和 <code>db.expires</code>（过期字典）两张哈希表；当 expires 字典达到扩容阈值但系统无空闲内存分配新的哈希数组时，expires 写入失败、仅 dict 完成覆盖，导致 SETEX 静默退化为无 TTL 的普通覆盖写。</p>
+<p><strong>修复</strong>：<code>keySpace</code> 从 10 万提升到 5000 万，确保大部分 SETEX 都是真正的新 key 写入。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># application.yml</span>
+<span class="nt">key-space</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50000000</span><span class="w">   </span><span class="c1"># 原值 100000</span>
+</code></pre></div>
+
+<p><strong>效果</strong>（conc=8, batch=500）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">keySpace=10 万</th>
+<th style="text-align: left;">keySpace=5000 万</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">425k cmd/s (假数据)</td>
+<td style="text-align: left;">287k cmd/s (真实)</td>
+</tr>
+<tr>
+<td style="text-align: left;">延迟</td>
+<td style="text-align: left;">~9ms</td>
+<td style="text-align: left;">~17ms</td>
+</tr>
+</tbody>
+</table>
+<p>真实新写入吞吐从 43 万降至 29 万，这才是压测基线。</p>
+<hr />
+<h4 id="41">4.1 底层基础结构与哈希表核心概念</h4>
+<h5 id="411-dbdict-dbexpires">4.1.1 两个核心字典（db.dict / db.expires）</h5>
+<p>每个 Redis 数据库维护两张独立哈希字典：</p>
+<ol>
+<li><strong>dict（键空间主字典）</strong> — 存储全量 <code>key → value</code>，库内所有键（永久键 + 带 TTL 缓存键）都会存在这里。</li>
+<li><strong>expires（过期字典）</strong> — 仅存储<strong>配置了过期时间的 key</strong>，映射关系 <code>key → 过期毫秒时间戳</code>；永久键不会写入该字典。</li>
+</ol>
+<div class="codehilite"><pre><span></span><code>db-&gt;dict (全局键空间)
+  │
+  ├── ht[0]-&gt;table
+  │     ├── bucket[42] → dictEntry → key (SDS: "bench:12345")
+  │     │                   └── val (redisObject → value)
+  │     └── ...
+  └── rehashidx = -1
+
+db-&gt;expires (过期字典)
+  │
+  ├── ht[0]-&gt;table
+  │     └── bucket[42] → dictEntry → key (指向同一 SDS: "bench:12345")
+  │                            └── val (过期时间戳，int64)
+</code></pre></div>
+
+<h5 id="412-size-used">4.1.2 哈希表核心参数：桶数量 size、元素数量 used</h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">参数</th>
+<th style="text-align: left;">定义</th>
+<th style="text-align: left;">dict 初始值</th>
+<th style="text-align: left;">expires 初始值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>size</strong></td>
+<td style="text-align: left;">哈希桶数组长度，固定为 2 的幂</td>
+<td style="text-align: left;">通常为 <strong>4</strong>（具体实现依 Redis 版本而异）</td>
+<td style="text-align: left;">通常为 <strong>4</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>used</strong></td>
+<td style="text-align: left;">哈希表内独立 key 条目的总个数</td>
+<td style="text-align: left;">0（空库）</td>
+<td style="text-align: left;">0（无 TTL key）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>桶（bucket）是数组的每一格，单桶可通过链表挂载多个哈希冲突 entry</li>
+<li>元素数量 used 和是否落在同一个桶无关，每条唯一 key 计数 +1</li>
+</ul>
+<h5 id="413">4.1.3 负载因子与扩容/缩容规则</h5>
+<div class="codehilite"><pre><span></span><code>负载因子 = used / size
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">条件</th>
+<th style="text-align: left;">典型阈值</th>
+<th style="text-align: left;">行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">常态（无 fork）</td>
+<td style="text-align: left;"><code>used / size ≥ 1</code></td>
+<td style="text-align: left;">触发扩容，新 size = 当前 size × 2</td>
+</tr>
+<tr>
+<td style="text-align: left;">存在持久化 fork（COW）时</td>
+<td style="text-align: left;">阈值更保守（如 <code>used / size ≥ 5</code>）</td>
+<td style="text-align: left;">减少内存拷贝开销，避免 COW 放大</td>
+</tr>
+<tr>
+<td style="text-align: left;">大量删除后</td>
+<td style="text-align: left;"><code>used / size &lt; 0.1</code></td>
+<td style="text-align: left;">触发缩容，新 size = 满足 <code>used × 2</code> 的最小 2 次幂</td>
+</tr>
+<tr>
+<td style="text-align: left;">扩容失败</td>
+<td style="text-align: left;">系统无空闲内存分配新哈希数组</td>
+<td style="text-align: left;">哈希桶容量耗尽，无法新增条目</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注：以上阈值与初始 size 均为常见实现下的典型值，具体数值依 Redis 版本可能存在差异。总体行为：当 used/size 超过阈值触发扩容，fork/COW 场景下阈值更保守。</p>
+</blockquote>
+<h5 id="414-setex">4.1.4 SETEX 的命令级原子性与部分失败风险</h5>
+<p>SETEX 等价 <code>SET key value EX seconds</code>，是一个不可中断的单一执行单元（<strong>命令级原子性</strong>）。Redis 在单个命令内不会被其他命令打断：</p>
+<div class="codehilite"><pre><span></span><code>SETEX k 30 v
+  └── ① 写入主字典 dict：覆盖/新建 key 的 value
+  └── ② 写入过期字典 expires：插入/更新 key 的过期时间戳
+</code></pre></div>
+
+<p>但需注意：<strong>Redis 不会回滚</strong>。若 dict 写入成功但 expires 因内存分配失败等原因写入失败，命令仍返回 OK，结果就是"有值无 TTL"的中间状态——这是原子性在资源分配失败时的边界行为，不是常规路径。</p>
+<p>普通 <code>SET key value</code> 仅操作 dict，不修改 expires（且若 key 原有 TTL，执行普通 SET 后 TTL 会被清除）。</p>
+<hr />
+<h4 id="42-key">4.2 "Key 空间太小"的本质：两类内存不足场景</h4>
+<h5 id="a-used_memory-maxmemory">场景 A：全局内存超限 <code>used_memory &gt; maxmemory</code></h5>
+<p>配置 <code>maxmemory</code> 限制 Redis 总内存，写入时内存超标触发淘汰策略清理键。这是<strong>最常见</strong>的认知。</p>
+<h5 id="b">场景 B：字典哈希表扩容失败（核心诱因之一）</h5>
+<p><strong>dict、expires 任意一个字典 <code>used ≥ size</code> 本应扩容，但系统无空闲内存分配新哈希数组，哈希桶容量耗尽，无法新增条目。</strong> SETEX 退化覆盖是一个<strong>多因素问题</strong>：dict/expires 任一扩容失败、全局内存不足、maxmemory 限制与淘汰策略交互、写入速率等共同作用。expires 字典扩容失败是其中一个典型风险路径——当 expires 无法新增 TTL 元数据时，覆盖写仍能完成但 TTL 丢失。应把此作为多因素问题来诊断，而非单点归因。</p>
+<hr />
+<h4 id="43-expires-setex">4.3 核心现象：expires 字典扩容失败 → SETEX 退化为普通覆盖写</h4>
+<h5 id="431-setex">4.3.1 SETEX 需要两份哈希内存</h5>
+<p>执行 <code>SETEX k 30 v</code> 必须同时占用两个字典的哈希空间：</p>
+<ol>
+<li><strong>dict</strong>：更新 key-value，占用 dict 哈希条目</li>
+<li><strong>expires</strong>：注册 TTL，额外占用 expires 哈希条目</li>
+</ol>
+<p>当内存仅能支撑 dict 写入，但不足以给 expires 分配新哈希节点、无法完成扩容时：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">步骤</th>
+<th style="text-align: left;">结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">主字典 dict 写入</td>
+<td style="text-align: left;"><strong>正常执行</strong>，直接覆盖原有 key 的 value</td>
+</tr>
+<tr>
+<td style="text-align: left;">expires 字典插入</td>
+<td style="text-align: left;"><strong>静默失败</strong>，该 key 不会注册过期时间</td>
+</tr>
+</tbody>
+</table>
+<h5 id="432">4.3.2 业务表现（退化特征）</h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: left;">预期</th>
+<th style="text-align: left;">退化后实际</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>SETEX k 30 v</code></td>
+<td style="text-align: left;">返回 OK + TTL=30s</td>
+<td style="text-align: left;">返回 <strong>OK</strong>（无任何报错）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET k</code></td>
+<td style="text-align: left;">返回 "v" + TTL 滴答中</td>
+<td style="text-align: left;">返回 "v" ✅</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>TTL k</code></td>
+<td style="text-align: left;">返回 ~30</td>
+<td style="text-align: left;">返回 <strong>-1</strong>（永久键，永不过期）</td>
+</tr>
+<tr>
+<td style="text-align: left;">到期后 GET</td>
+<td style="text-align: left;">返回 nil</td>
+<td style="text-align: left;">返回 <strong>"v"</strong>（数据永驻）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键特征</strong>：SETEX 返回 OK，无任何 OOM 错误，但 TTL 已经丢失——这是静默故障。</p>
+<h5 id="433-redis">4.3.3 Redis 静默失败的设计逻辑</h5>
+<p>Redis 写入优先级：<strong>主数据存储 &gt; TTL 元数据</strong>。</p>
+<ul>
+<li>dict 是核心存储，分配内存优先保障</li>
+<li>expires 仅为辅助过期元数据，写入失败不会中断命令、不会抛出 OOM</li>
+<li><strong>只有 dict 完全无法分配内存时</strong>，才会抛出 <code>OOM command not allowed when used memory &gt; 'maxmemory'</code></li>
+</ul>
+<h5 id="434-noeviction-oom">4.3.4 区分：noeviction 全局 OOM（与退化覆盖不是同一问题）</h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">对比维度</th>
+<th style="text-align: left;">退化覆盖（expires 扩容失败）</th>
+<th style="text-align: left;">全局 OOM（noeviction）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">dict 写入</td>
+<td style="text-align: left;">✅ 正常</td>
+<td style="text-align: left;">❌ 报错 <code>OOM command not allowed</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">expires 写入</td>
+<td style="text-align: left;">❌ 静默失败</td>
+<td style="text-align: left;">❌ 报错</td>
+</tr>
+<tr>
+<td style="text-align: left;">SETEX 返回</td>
+<td style="text-align: left;"><code>OK</code></td>
+<td style="text-align: left;"><code>-OOM</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">写入是否可感知</td>
+<td style="text-align: left;">不可感知（静默）</td>
+<td style="text-align: left;">可感知（错误返回）</td>
+</tr>
+<tr>
+<td style="text-align: left;">触发条件</td>
+<td style="text-align: left;">expires 哈希表扩容失败</td>
+<td style="text-align: left;">used_memory &gt; maxmemory</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h4 id="44-volatile-lru">4.4 volatile-lru 策略下的恶性循环（高频生产故障）</h4>
+<p>缓存常用配置 <code>maxmemory-policy volatile-lru</code>，淘汰规则：<strong>只清理带 TTL 的键（存在过期字典），永久键绝不清理</strong>。</p>
+<p>SETEX 退化后形成死循环：</p>
+<div class="codehilite"><pre><span></span><code>    ① SETEX 丢失 TTL，新增缓存变为永久键，不进入 expires 字典
+                    ↓
+    ② 内存持续上涨，触发 LRU 淘汰逻辑
+                    ↓
+    ③ volatile-lru 只清理 expires 内的旧 TTL key
+       永久键持续堆积，永远不被清理
+                    ↓
+    ④ expires 内键越来越少，TTL 机制近乎失效
+       后续所有 SETEX 都持续丢失过期时间
+                    ↓
+    ⑤ 永久键无限堆积，内存打满
+       Redis OOM → 被系统 kill / 不可写
+</code></pre></div>
+
+<p><strong>这个死循环一旦启动就不可逆转</strong>，因为后续的 SETEX 全部继续退化，全新的 TTL key 无法进入 expires 字典，volatile-lru 淘汰的池子越来越小。</p>
+<hr />
+<h4 id="45-setex-setexpire">4.5 SETEX 与 SET+EXPIRE 对比（退化风险差异）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;"><code>SETEX k 30 v</code></th>
+<th style="text-align: left;"><code>SET k v</code> + <code>EXPIRE k 30</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">原子性</td>
+<td style="text-align: left;">原子绑定，两步同时完成或同时失败</td>
+<td style="text-align: left;">两步独立，中间可能有其他写入</td>
+</tr>
+<tr>
+<td style="text-align: left;">expires 写入失败</td>
+<td style="text-align: left;"><strong>无返回标识</strong>，静默丢失 TTL</td>
+<td style="text-align: left;">EXPIRE 返回 <strong>0</strong>，业务可捕获</td>
+</tr>
+<tr>
+<td style="text-align: left;">可监控性</td>
+<td style="text-align: left;">❌ 不可监控</td>
+<td style="text-align: left;">✅ 可监控 EXPIRE 返回值并告警</td>
+</tr>
+<tr>
+<td style="text-align: left;">退化风险</td>
+<td style="text-align: left;"><strong>高</strong>（静默）</td>
+<td style="text-align: left;"><strong>低</strong>（可感知 + 可重试）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h4 id="46">4.6 完整解决方案</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">原理</th>
+<th style="text-align: left;">优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>更换淘汰策略为 allkeys-lru</strong></td>
+<td style="text-align: left;">淘汰时不区分是否有 TTL，统一清理最少使用的键；即使 SETEX 丢失 TTL 变成永久键，也会被正常淘汰，杜绝内存泄漏</td>
+<td style="text-align: left;">⭐⭐⭐ 强烈建议</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>预留哈希扩容内存余量</strong></td>
+<td style="text-align: left;">expires 字典独立占用哈希内存，业务内存规划时预留 <strong>20% 以上空闲内存</strong>，避免 dict/expires 达到负载阈值后无法扩容</td>
+<td style="text-align: left;">⭐⭐⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>拆分 SET + EXPIRE 并监控</strong></td>
+<td style="text-align: left;">用 <code>SET key value</code> + <code>EXPIRE key 30</code> 替代 SETEX，检查 EXPIRE 返回值：返回 0 时告警"expires 字典内存不足"</td>
+<td style="text-align: left;">⭐⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>增加 NX 参数避免无效覆盖</strong></td>
+<td style="text-align: left;"><code>SET key value EX 30 NX</code>，key 已存在时直接放弃写入，减少无意义的 TTL 覆盖丢失</td>
+<td style="text-align: left;">⭐⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>冷热数据实例拆分</strong></td>
+<td style="text-align: left;">短期高频缓存独立部署 Redis 实例，长期持久键拆分至其他节点，降低单实例 expires 字典总条目，减少哈希扩容压力</td>
+<td style="text-align: left;">⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>扩大 keySpace（压测场景）</strong></td>
+<td style="text-align: left;">keySpace 从 10 万 → 5000 万，确保压测期间覆盖写占比 &lt; 1%，测得真实新写入成本</td>
+<td style="text-align: left;">⭐⭐</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h4 id="47">4.7 极简总结</h4>
+<ol>
+<li>主键空间 dict、过期字典 expires <strong>初始哈希桶数量通常为 4</strong>（依版本而异），元素 used ≥ 桶 size 时触发扩容（扩容为 2×size）</li>
+<li>SETEX 需要<strong>同时写入 dict 与 expires 两张字典</strong>；当内存不足导致 expires 无法扩容、新增 TTL 记录失败时，仅 dict 完成数据覆盖，<strong>TTL 直接丢失且无报错</strong></li>
+<li>该现象称为 <strong>SETEX 退化为覆盖写</strong>，搭配 <code>volatile-lru</code> 策略会引发<strong>永久键堆积 → 内存泄漏 → OOM</strong> 的恶性循环</li>
+<li><strong>最优生产方案</strong>：① 使用 <code>allkeys-lru</code> 淘汰策略 ② 预留 20%+ 内存给字典扩容 ③ 关键缓存改用 <code>SET + EXPIRE</code> 并监控 EXPIRE 返回值</li>
+<li>dict 扩容失败<strong>不会排队</strong>，Redis 单线程即时处理、即时返回结果，无命令缓冲队列</li>
+<li>仅哈希桶不够、还能分配 key 节点：写入正常执行，SETEX 会降级丢失 TTL，返回 OK（退化覆盖）</li>
+<li>完全无内存分配任何节点：写命令直接抛出 OOM 错误，整条 key 写入失败</li>
+<li>扩容失败只是放弃新建更大哈希表，靠链表承载更多 key，仅查询性能下降，不会阻断写入流程</li>
+</ol>
+<hr />
+<h3 id="5aof-aof">问题 5：AOF 刷盘影响（仅在开启 AOF 时触发）</h3>
+<p><strong>状态</strong>：Redis 默认配置 AOF=no，此问题不在默认场景触发。</p>
+<p><strong>测试验证</strong>：手动开启 <code>appendonly yes --appendfsync everysec</code> 后压测，吞吐降至 199–479k 范围，延迟增至 16–29ms。原因是 <code>appendfsync everysec</code> 在主线程触发 fsync，若 fsync 触发时有大量数据或存储延迟，会出现间歇性阻塞。该行为也与底层存储（磁盘类型、文件系统、IO 调度）相关，生产环境中常配合更快的存储（SSD/RAID）或调整 fsync 策略来缓解。</p>
+<p><strong>诊断补充</strong>：排查 AOF 导致的抖动，应检测以下指标：
+- <strong>Redis 侧</strong>：<code>aof_current_size</code>、<code>aof_base_size</code>、<code>aof_last_rewrite_time_sec</code>、<code>aof_delayed_fsync</code>
+- <strong>系统侧</strong>：fsync 延迟分布（<code>iostat</code>/<code>blktrace</code>）、磁盘队列长度、存储 IOPS
+- <strong>分析方法</strong>：在磁盘慢时单独测量 fsync 的耗时分布（可用 <code>strace -T -e fsync</code> 采样），确认阻塞根因</p>
+<p><strong>结论</strong>：不适用默认配置场景，已标记留档。</p>
+<hr />
+<h3 id="6pipeline">问题 6：Pipeline 超时配置有效性</h3>
+<p><strong>现象</strong>：原 <code>pipeline-timeout: 5</code>（5 秒），但实际 Pipeline 延迟仅 10–20ms，超时阈值是正常值的 250–500 倍，完全不会触发，形同虚设。</p>
+<p><strong>修复</strong>：超时从 5 秒降至 1 秒（仍是正常延迟的 50 倍，留足余量）。同时明确 <code>awaitAll</code> 应传入 <code>pipelineTimeoutSec</code> 参数，并对超时异常/结果进行统计与处理。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># application.yml</span>
+<span class="nt">pipeline-timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">   </span><span class="c1"># 原值 5</span>
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code><span class="nd">@Value</span><span class="p">(</span><span class="s">"${app.bench.pipeline-timeout:1}"</span><span class="p">)</span><span class="w">  </span><span class="c1">// 原默认值 5</span>
+<span class="kd">private</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">pipelineTimeoutSec</span><span class="p">;</span>
+
+<span class="c1">// awaitAll 使用超时参数</span>
+<span class="kt">boolean</span><span class="w"> </span><span class="n">allDone</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">async</span><span class="p">.</span><span class="na">awaitAll</span><span class="p">(</span><span class="n">pipelineTimeoutSec</span><span class="p">,</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">SECONDS</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">allDone</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 超时处理：计数、日志、或丢弃</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>当 Redis 真正卡顿（如网络故障、内存淘汰阻塞）时，<code>awaitAll</code> 会在 1 秒后超时并记入 error 计数，起到应有的保护作用。</p>
+<hr />
+<h3 id="7stop-semaphore">问题 7：stop() 的优雅关闭与 Semaphore 响应性</h3>
+<p><strong>现象</strong>：<code>executor.shutdownNow()</code> 立即中断所有 Worker 线程，正在 flush 的 Pipeline 被丢弃，连接上残留未读取的响应，下次复用时可能协议错乱。</p>
+<p><strong>修复</strong>：采用两阶段关闭模式，并将 <code>semaphore.acquire()</code> 改为 <code>tryAcquire(timeout)</code> 轮询以快速响应 stop 信号。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 阶段 1: 优雅关闭</span>
+<span class="n">executor</span><span class="p">.</span><span class="na">shutdown</span><span class="p">();</span>
+<span class="kt">boolean</span><span class="w"> </span><span class="n">terminated</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">executor</span><span class="p">.</span><span class="na">awaitTermination</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">SECONDS</span><span class="p">);</span>
+
+<span class="c1">// 阶段 2: 超时才强制中断</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">terminated</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">executor</span><span class="p">.</span><span class="na">shutdownNow</span><span class="p">();</span>
+<span class="w">    </span><span class="n">executor</span><span class="p">.</span><span class="na">awaitTermination</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">SECONDS</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>semaphore acquire 改造</strong>：<code>acquire()</code>（永久阻塞）改为 <code>tryAcquire(200ms)</code> 轮询，使 Worker 能在 200ms 内响应 stop 信号。<strong>实现要点</strong>：
+- <code>tryAcquire</code> 成功时才需要 release，未拿到令牌切勿 release
+- 必须正确处理 <code>InterruptedException</code>，并恢复线程中断状态
+- 示例代码：</p>
+<div class="codehilite"><pre><span></span><code><span class="kt">boolean</span><span class="w"> </span><span class="n">acquired</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">running</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="n">acquired</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">acquired</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">flushSemaphore</span><span class="p">.</span><span class="na">tryAcquire</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">MILLISECONDS</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">InterruptedException</span><span class="w"> </span><span class="n">ie</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">Thread</span><span class="p">.</span><span class="na">currentThread</span><span class="p">().</span><span class="na">interrupt</span><span class="p">();</span><span class="w">  </span><span class="c1">// 恢复中断状态</span>
+<span class="w">            </span><span class="k">break</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">acquired</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// stop 已调用或在等待中被中断——放弃当前批次，令牌未获取，无需 release</span>
+<span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="c1">// 已拿到令牌，执行 flush</span>
+<span class="w">    </span><span class="n">async</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span>
+<span class="w">    </span><span class="n">awaitAll</span><span class="p">(</span><span class="n">pipelineTimeoutSec</span><span class="p">);</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">acquired</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">flushSemaphore</span><span class="p">.</span><span class="na">release</span><span class="p">();</span><span class="w">  </span><span class="c1">// 确保释放令牌</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>效果</strong>：
+- 正常停止：Worker 完成当前批次后自然退出，连接干净关闭
+- 异常卡顿：5 秒后 <code>shutdownNow()</code> 兜底，不会死等</p>
+<hr />
+<h3 id="8">问题 8（实测）：管道混合多类型命令的退化与优化</h3>
+<h4 id="81">8.1 测试设计</h4>
+<p>通过 <code>MixedCommandBenchService</code> 对 5 种混合度进行逐一压测，每次采样 10 秒（预热 10 秒），并发 8 线程×batchSize=100，keySpace=500,000。命令分布按百分比加权（各类型各自 100 份），每轮前执行 <code>FLUSHDB</code> 清空数据：</p>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th style="text-align: left;">命令组合</th>
+<th style="text-align: left;">分布</th>
+<th style="text-align: left;">特殊配置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基线</td>
+<td style="text-align: left;">SET（单一）</td>
+<td style="text-align: left;">SET=100%</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td>2 种</td>
+<td style="text-align: left;">SETEX + HSET</td>
+<td style="text-align: left;">各 50%</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td>3 种</td>
+<td style="text-align: left;">SETEX + HSET + ZADD</td>
+<td style="text-align: left;">各 33.3%</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td>5 种</td>
+<td style="text-align: left;">SETEX + HSET + ZADD + DEL + EXPIRE</td>
+<td style="text-align: left;">各 20%</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td>3种+ZADD×10</td>
+<td style="text-align: left;">SETEX + HSET + ZADD</td>
+<td style="text-align: left;">各 33.3%</td>
+<td style="text-align: left;"><strong>zaddFanOut=10</strong>（每条 ZADD 携带 10 个成员）</td>
+</tr>
+</tbody>
+</table>
+<p>客户端实现：<code>setAutoFlushCommands(false)</code> + 每批次 100 条命令堆积 → <code>flushCommands()</code> + <code>LettuceFutures.awaitAll()</code>，每条连接天然串行，无额外信号量。</p>
+<h4 id="82">8.2 实测数据（优化后）</h4>
+<p><strong>测试环境</strong>：Windows Docker Desktop，Redis 7，单实例，默认持久化关闭。测试前执行 <code>slowlog reset</code>，每轮采样期间记录 slowlog 增量。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>cmds/s</th>
+<th>p50</th>
+<th>p99</th>
+<th>退化%</th>
+<th>slowlogΔ</th>
+<th style="text-align: left;">关键分析</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基线（SET 100%）</td>
+<td><strong>332,825</strong></td>
+<td>2.04ms</td>
+<td>8.50ms</td>
+<td>—</td>
+<td>2</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td>2 种（SETEX+HSET）</td>
+<td><strong>257,856</strong></td>
+<td>2.80ms</td>
+<td>8.70ms</td>
+<td>-22.5%</td>
+<td>2</td>
+<td style="text-align: left;">SETEX 多写 expires 字典 + HSET 操作 hash table</td>
+</tr>
+<tr>
+<td>3 种（+ZADD）</td>
+<td><strong>240,706</strong></td>
+<td>3.03ms</td>
+<td>8.03ms</td>
+<td>-27.7%</td>
+<td>4</td>
+<td style="text-align: left;">ZADD 跳表插入 O(logN) 拖慢</td>
+</tr>
+<tr>
+<td>5 种（大杂烩）</td>
+<td><strong>268,057</strong></td>
+<td>2.69ms</td>
+<td>8.53ms</td>
+<td>-19.5%</td>
+<td>6</td>
+<td style="text-align: left;">ZADD 仅 20% &lt; 33%，退化反降</td>
+</tr>
+<tr>
+<td><strong>3种+ZADD×10</strong></td>
+<td><strong>81,678</strong></td>
+<td>9.41ms</td>
+<td>22.87ms</td>
+<td>—</td>
+<td>5</td>
+<td style="text-align: left;">每条 ZADD 插入 10 成员，P99 飙升 2.85 倍</td>
+</tr>
+</tbody>
+</table>
+<h4 id="83">8.3 关键发现</h4>
+<p><strong>发现 1：退化不由命令种类数量决定，由"昂贵命令占比"决定</strong></p>
+<p>5 种命令（大杂烩）的吞吐（268K）反比 3 种（240K）高 12%——因为 5 种场景 ZADD 占比仅 20%，3 种场景 ZADD 占 33%。ZADD 的跳表插入（O(logN)）远贵于 SETEX 的哈希表操作（O(1)），所以 ZADD 占比越小退化越轻。</p>
+<p><strong>发现 2：ZADD 是退化第一大元凶，且无法在客户端彻底绕过</strong></p>
+<p>ZADD 每一条命令都涉及 skiplist 的层高随机化 + 多级指针插入，比 SET/HSET 的纯哈希操作贵 3–5 倍。这是 Redis 单线程模型的天然瓶颈，客户端只能减轻外围开销（命令解析/分发/编码），<strong>跳表操作本身无法加速</strong>。</p>
+<p><strong>发现 3：ZADD 多元素打包 = 吞吐换延迟，场景取舍</strong></p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th style="text-align: left;">正常 ZADD（1 member）</th>
+<th style="text-align: left;">ZADD×10 打包</th>
+<th style="text-align: left;">对比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>名义吞吐 (cmds/s)</td>
+<td style="text-align: left;">240,706</td>
+<td style="text-align: left;">81,678</td>
+<td style="text-align: left;">-66%</td>
+</tr>
+<tr>
+<td>等效写入速率</td>
+<td style="text-align: left;">240K 次/秒</td>
+<td style="text-align: left;">~331K 次/秒</td>
+<td style="text-align: left;"><strong>+38%</strong></td>
+</tr>
+<tr>
+<td>P50 延迟</td>
+<td style="text-align: left;">3.03ms</td>
+<td style="text-align: left;">9.41ms</td>
+<td style="text-align: left;"><strong>+211%</strong></td>
+</tr>
+<tr>
+<td>P99 延迟</td>
+<td style="text-align: left;">8.03ms</td>
+<td style="text-align: left;">22.87ms</td>
+<td style="text-align: left;"><strong>+185%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>等效写入速率计算：Round 3 的 34% ZADD×1 + 66% 其他×1 = 1.0x；Round 5 的 34% ZADD×10 + 66% 其他×1 = 4.06x。<strong>81,678 × 4.06 ≈ 331,632</strong>，比 240,706 提高 38%。</p>
+<p>代价是 P50 从 3ms → 9.4ms，P99 从 8ms → 22.9ms。<strong>适用场景</strong>：批量离线导入、数据迁移（吞吐优先）。<strong>不适用</strong>：在线服务（尾延迟不可接受）。</p>
+<p><strong>发现 4：DEL/EXPIRE 的开销被低估——仍有 String 拼接在热路径中</strong></p>
+<p>DEL 和 EXPIRE 的 key 仍是 <code>"mc:del:" + rng.nextInt(200_000)</code> 的方式——<strong>这是当前热路径中仅存的 String 拼接点</strong>，每批 100 条中 20 条在做字符串分配。其他命令（SET/SETEX/HSET/ZADD）的 key 已全部预计算。</p>
+<h4 id="84">8.4 退化根因（服务端视角）</h4>
+<h4 id="84_1">8.4 退化根因（服务端视角）</h4>
+<div class="codehilite"><pre><span></span><code>单一 SET Pipeline:
+  主线程: [RESP 解析] → [SET 路径: dict entry 写入] → [RESP 编码] → 循环
+   - 分支预测命中率极高
+   - 所有命令同一条执行路径
+
+混合 Pipeline（含 ZADD）:
+  主线程: [解析] → [SETEX: dict+expires] → [解析] → [HSET: hash table]
+         → [解析] → [ZADD: skiplist O(logN)] → [解析] → [DEL: 多结构释放]
+         → [解析] → [EXPIRE: expires 更新]
+   - 每次解析走到不同的命令实现函数
+   - CPU 指令缓存频繁 miss（Ice Lake 约 32KB L1-I，5 种不同命令路径早已溢出）
+   - 不同数据结构的内存分配粒度不同，碎片化更重
+</code></pre></div>
+
+<p><strong>服务端代价排序（由轻到重）</strong>：</p>
+<div class="codehilite"><pre><span></span><code>EXPIRE ≈ DEL（元数据更新）
+  &lt; SET（纯 dict 字符串写入）
+  &lt; SETEX（dict + expires 双字典写入）
+  &lt; HSET（hash table 插入）
+  &lt; ZADD（skiplist 多层插入，O(logN)）  ← 最贵
+</code></pre></div>
+
+<h4 id="85">8.5 客户端优化详解</h4>
+<p><strong>优化 1：移除冗余 Semaphore</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">优化前</th>
+<th style="text-align: left;">优化后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>flushSemaphore</code> 限制 8 个并发 flush</td>
+<td style="text-align: left;">直接移除，无需信号量</td>
+</tr>
+<tr>
+<td style="text-align: left;">4 线程争夺 8 许可的 CAS 操作</td>
+<td style="text-align: left;"><code>autoFlush=false</code> 已使每条连接天然串行</td>
+</tr>
+<tr>
+<td style="text-align: left;">无实际背压作用，纯额外开销</td>
+<td style="text-align: left;">零额外同步开销</td>
+</tr>
+</tbody>
+</table>
+<p><code>setAutoFlushCommands(false)</code> + <code>flushCommands</code> + <code>awaitAll</code> 本身就是串行屏障——同一连接上不可能有两个未完成的 flush。Semaphore 只是增加了原子操作的缓存行争用。</p>
+<p><strong>优化 2：预计算 key 池</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ❌ 优化前：每条命令都 String 拼接 → GC 压力</span>
+<span class="n">String</span><span class="w"> </span><span class="n">key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"mc:str:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">rng</span><span class="p">.</span><span class="na">nextInt</span><span class="p">(</span><span class="n">keySpace</span><span class="p">);</span>
+
+<span class="c1">// ✅ 优化后：启动时预生成 500K×3 个 key 数组，热循环直接索引</span>
+<span class="n">String</span><span class="o">[]</span><span class="w"> </span><span class="n">strKeys</span><span class="p">;</span><span class="w">   </span><span class="c1">// "mc:str:0" ... "mc:str:499999"</span>
+<span class="n">String</span><span class="o">[]</span><span class="w"> </span><span class="n">hashKeys</span><span class="p">;</span><span class="w">  </span><span class="c1">// "mc:hash:0" ... "mc:hash:499999"</span>
+<span class="n">String</span><span class="o">[]</span><span class="w"> </span><span class="n">zsetKeys</span><span class="p">;</span><span class="w">  </span><span class="c1">// "mc:zset:0" ... "mc:zset:499999"</span>
+<span class="c1">// 热循环: String key = strKeys[rng.nextInt(keySpace)];  // 零分配</span>
+</code></pre></div>
+
+<p><strong>优化 3：int tableswitch 代替 String switch</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ❌ 优化前：String switch → JIT 编译为 hash 查表</span>
+<span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  </span><span class="c1">// cmd 是 String</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">"SET"</span><span class="p">:</span><span class="w">   </span><span class="p">...</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">"HSET"</span><span class="p">:</span><span class="w">  </span><span class="p">...</span>
+<span class="p">}</span>
+
+<span class="c1">// ✅ 优化后：int switch → JIT 编译为 tableswitch 跳转表（O(1)）</span>
+<span class="kt">int</span><span class="o">[]</span><span class="w"> </span><span class="n">cmdTypePool</span><span class="p">;</span><span class="w">  </span><span class="c1">// int[100] = {CMD_SETEX × 50, CMD_HSET × 50}</span>
+<span class="c1">// 热循环:</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">typeId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cmdTypePool</span><span class="o">[</span><span class="n">rng</span><span class="p">.</span><span class="na">nextInt</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">]</span><span class="p">;</span><span class="w">  </span><span class="c1">// 数组直接索引</span>
+<span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">typeId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  </span><span class="c1">// int → tableswitch 指令，无 hash 计算</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">CMD_SET</span><span class="p">:</span><span class="w">   </span><span class="p">...</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">CMD_HSET</span><span class="p">:</span><span class="w">  </span><span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>优化 4：ZADD 多元素打包（fanOut）— 场景取舍型优化</strong></p>
+<p>每条 ZADD 命令原生支持多成员：<code>ZADD key score1 m1 score2 m2 ...</code>。将 N 个成员打包进一条 ZADD 命令，均摊命令解析/分发/响应编码开销，代价是单次延迟升高。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// Lombok/Lettuce: async.zadd(key, double score, Object... scoreMemberPairs)</span>
+<span class="c1">// ❌ 原始：10 条 ZADD 命令 = 10 次 RESP 解析 + 10 次命令分发 + 10 次 RESP 编码</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">async</span><span class="p">.</span><span class="na">zadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">score</span><span class="p">,</span><span class="w"> </span><span class="n">member</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// ✅ 打包：1 条 ZADD 命令 = 1 次 RESP 解析 + 1 次命令分发 + 1 次 RESP 编码</span>
+<span class="c1">//   跳表插入仍是 10 次（不可避免），但外围开销降至 1/10</span>
+<span class="n">Object</span><span class="o">[]</span><span class="w"> </span><span class="n">pairs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Object</span><span class="o">[</span><span class="mi">20</span><span class="o">]</span><span class="p">;</span><span class="w">  </span><span class="c1">// 10 × (score, member)</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w"> </span><span class="n">j</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">pairs</span><span class="o">[</span><span class="n">j</span><span class="o">*</span><span class="mi">2</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">score</span><span class="p">;</span><span class="w"> </span><span class="n">pairs</span><span class="o">[</span><span class="n">j</span><span class="o">*</span><span class="mi">2</span><span class="o">+</span><span class="mi">1</span><span class="o">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">member</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="n">async</span><span class="p">.</span><span class="na">zadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">pairs</span><span class="p">);</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">对比维度</th>
+<th style="text-align: left;">fanOut=1</th>
+<th style="text-align: left;">fanOut=10</th>
+<th style="text-align: left;">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">等效吞吐</td>
+<td style="text-align: left;">241K/s</td>
+<td style="text-align: left;"><strong>332K/s (+38%)</strong></td>
+<td style="text-align: left;">批导入/数据迁移</td>
+</tr>
+<tr>
+<td style="text-align: left;">P50 延迟</td>
+<td style="text-align: left;">3.0ms</td>
+<td style="text-align: left;">9.4ms (+211%)</td>
+<td style="text-align: left;"><strong>在线服务不可用</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">P99 延迟</td>
+<td style="text-align: left;">8.0ms</td>
+<td style="text-align: left;">22.9ms (+185%)</td>
+<td style="text-align: left;">离线场景可接受</td>
+</tr>
+<tr>
+<td style="text-align: left;">代码复杂度</td>
+<td style="text-align: left;">低</td>
+<td style="text-align: left;">中（预分配 Object[]）</td>
+<td style="text-align: left;">—</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>启用方式：配置文件 <code>app.mixed-bench.zadd-fanout: 10</code>，sweep 第 5 轮自动开启。</p>
+</blockquote>
+<p><strong>结论</strong>：ZADD 多元素打包只在<strong>批量导入/离线同步</strong>场景有效；在线服务<strong>不可用</strong>（P99 恶化 3 倍）。</p>
+<h4 id="86-redis">8.6 Redis 服务端优化思路（未实测）</h4>
+<p>以上全部优化在客户端层面已到极限。剩余的退化全部在 Redis 服务端。以下服务端优化思路可进一步压榨吞吐：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">思路</th>
+<th style="text-align: left;">原理</th>
+<th style="text-align: left;">预期效果</th>
+<th style="text-align: left;">实施难度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>zset 使用 ziplist/listpack 编码</strong></td>
+<td style="text-align: left;">Redis 对小 zset 默认用紧凑数组（ziplist/listpack）代替 skiplist，插入 O(N) 但 N 小时极快。配置：<code>zset-max-ziplist-entries 128</code></td>
+<td style="text-align: left;">ZADD 提速 2-5×（key space 内每个 zset 成员数小）</td>
+<td style="text-align: left;">⭐（改配置）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>hash 使用 ziplist/listpack</strong></td>
+<td style="text-align: left;">同上，小 hash 用数组代替哈希表。配置：<code>hash-max-ziplist-entries 512</code></td>
+<td style="text-align: left;">HSET 轻微提速</td>
+<td style="text-align: left;">⭐（改配置）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>启用 Redis 6+ io-threads</strong></td>
+<td style="text-align: left;">将网络 I/O（读 socket、RESP 解析、写 socket）卸载到多线程，主线程只做命令执行</td>
+<td style="text-align: left;">混合命令场景下 RESP 解析开销被多线程分摊，预估 +10-20%</td>
+<td style="text-align: left;">⭐⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>升级 Redis 7.4+ 的延迟优化</strong></td>
+<td style="text-align: left;">Redis 7 对 ziplist 替换为 listpack、多项主线程延迟优化、增量式过期删除等</td>
+<td style="text-align: left;">尾部延迟显著改善</td>
+<td style="text-align: left;">⭐⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>UNLINK 替代 DEL</strong></td>
+<td style="text-align: left;">DEL 是同步释放内存在主线程，UNLINK 是异步释放，回收工作交给后台线程</td>
+<td style="text-align: left;">DEL 路径的阻塞彻底消除</td>
+<td style="text-align: left;">⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>CPU 绑定 + 更高主频</strong></td>
+<td style="text-align: left;">Redis 单线程绑定到特定核，避免上下文切换；换高主频 CPU</td>
+<td style="text-align: left;">线性提升，主频翻倍→吞吐翻倍</td>
+<td style="text-align: left;">⭐⭐⭐（硬件）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最有性价比的组合</strong>（改配置即可，无需改代码）：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># redis.conf</span>
+zset-max-ziplist-entries<span class="w"> </span><span class="m">128</span><span class="w">      </span><span class="c1"># 小 zset 用 listpack，避免 skiplist 开销</span>
+zset-max-ziplist-value<span class="w"> </span><span class="m">64</span>
+hash-max-ziplist-entries<span class="w"> </span><span class="m">512</span><span class="w">      </span><span class="c1"># 小 hash 用 listpack</span>
+hash-max-ziplist-value<span class="w"> </span><span class="m">64</span>
+io-threads<span class="w"> </span><span class="m">4</span><span class="w">                      </span><span class="c1"># Redis 6+，网络 I/O 多线程</span>
+io-threads-do-reads<span class="w"> </span>yes
+</code></pre></div>
+
+<h4 id="87">8.7 生产建议</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">优先级</th>
+<th>方案</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td><strong>按命令类型分拆 Pipeline</strong></td>
+<td>避免混合——SET 批、HSET 批、ZADD 批各走各的管线，JIT 分支预测可命中</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td><strong>控制 ZADD 占比</strong></td>
+<td>如果业务需要 ZADD，限制其 Pipeline 占比 ≤ 20%，避免拖垮整批</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td><strong>必要时升级硬件</strong></td>
+<td>Redis 单线程到 CPU 天花板后，加核无效，换更高主频或启用 io-threads（Redis 6+）</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td><strong>slowlog 持续监控</strong></td>
+<td>采集 <code>SLOWLOG LEN</code> 增量，按命令类型分桶，精确定位哪种命令在拖慢</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ✅ 推荐：同类型一批</span>
+<span class="n">pipeline1</span><span class="p">.</span><span class="na">setex</span><span class="p">(</span><span class="s">"k1"</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="s">"v1"</span><span class="p">).</span><span class="na">setex</span><span class="p">(</span><span class="s">"k2"</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="s">"v2"</span><span class="p">);</span><span class="w">   </span><span class="c1">// 纯 SETEX 批</span>
+<span class="n">pipeline2</span><span class="p">.</span><span class="na">hset</span><span class="p">(</span><span class="s">"hk"</span><span class="p">,</span><span class="w"> </span><span class="s">"f1"</span><span class="p">,</span><span class="w"> </span><span class="s">"v1"</span><span class="p">).</span><span class="na">hset</span><span class="p">(</span><span class="s">"hk"</span><span class="p">,</span><span class="w"> </span><span class="s">"f2"</span><span class="p">,</span><span class="w"> </span><span class="s">"v2"</span><span class="p">);</span><span class="w"> </span><span class="c1">// 纯 HSET 批</span>
+<span class="n">pipeline3</span><span class="p">.</span><span class="na">zadd</span><span class="p">(</span><span class="s">"zk"</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="s">"m1"</span><span class="p">).</span><span class="na">zadd</span><span class="p">(</span><span class="s">"zk"</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span><span class="w"> </span><span class="s">"m2"</span><span class="p">);</span><span class="w">   </span><span class="c1">// 纯 ZADD 批</span>
+<span class="n">pipeline3</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span>
+
+<span class="c1">// ❌ 不推荐：大杂烩</span>
+<span class="n">pipeline</span><span class="p">.</span><span class="na">setex</span><span class="p">(</span><span class="s">"k1"</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="s">"v1"</span><span class="p">)</span>
+<span class="w">       </span><span class="p">.</span><span class="na">hset</span><span class="p">(</span><span class="s">"hk"</span><span class="p">,</span><span class="w"> </span><span class="s">"f1"</span><span class="p">,</span><span class="w"> </span><span class="s">"v1"</span><span class="p">)</span>
+<span class="w">       </span><span class="p">.</span><span class="na">zadd</span><span class="p">(</span><span class="s">"zk"</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="s">"m1"</span><span class="p">)</span>
+<span class="w">       </span><span class="p">.</span><span class="na">del</span><span class="p">(</span><span class="s">"k2"</span><span class="p">)</span>
+<span class="w">       </span><span class="p">.</span><span class="na">expire</span><span class="p">(</span><span class="s">"k3"</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="p">);</span>
+<span class="n">pipeline</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span>
+</code></pre></div>
+
+<h4 id="88-rounds-1-5">8.8 小结（Rounds 1-5）</h4>
+<div class="codehilite"><pre><span></span><code>实测结论（5 轮 sweep）:
+  1. 混合命令退化确实存在，但主因不是"切换开销"，而是各命令的固有服务端成本
+  2. ZADD（skiplist O(logN)）是退化第一大元凶，占比决定退化程度
+  3. ZADD 多元素打包（fanOut=10）能提升等效吞吐 38%，但 P99 恶化 185%，仅适用离线场景
+  4. 客户端优化（去反压、零分配、int switch、key 池、fanOut）已到极限
+  5. 剩余优化的唯一出路在 Redis 服务端：ziplist/listpack、io-threads、UNLINK
+  6. 生产建议：按命令类型分拆 Pipeline，ZADD 单独成批、控制占比
+</code></pre></div>
+
+<hr />
+<h3 id="89zset-rounds-6-9">问题 8.9：ZSet 排行榜专项测试（Rounds 6-9）</h3>
+<h4 id="891">8.9.1 测试动机</h4>
+<p>前 5 轮已确认 ZADD（skiplist O(logN)）是混合 Pipeline 的退化第一大元凶。但 Redis ZSet 有两种内部编码：</p>
+<ul>
+<li><strong>listpack</strong>（紧凑数组）：member 数 &lt; <code>zset-max-ziplist-entries</code>（默认 128）时使用，内存小、O(N) 但 N 小时极快</li>
+<li><strong>skiplist</strong>（跳跃表）：member 数 ≥ 128 时自动转换，<strong>不可回退</strong>，内存翻倍、O(logN) 插入</li>
+</ul>
+<p>这引出三个关键问题：
+1. ZSet 分片能否避免 listpack→skiplist 退化？
+2. 排行榜 Top-N 裁剪（Lua 原子判定）能比 Raw ZADD 更快吗？
+3. 高并发下分片是否有优势？</p>
+<h4 id="892-rounds-6-7-raw-zadd-key-vs-16-64">8.9.2 Rounds 6-7: Raw ZADD 单key vs 16分片（高并发 64 连接）</h4>
+<p><strong>测试配置</strong>：batchSize=200, concurrency=64, warmup=15s + sample=15s。Round 6 先 <code>prePopulateZset</code> 插入 500K member 强制触发 skiplist，Round 7 先 <code>prePopulateZsetShards(16片, 每片50)</code> 保持初始 listpack。</p>
+<table>
+<thead>
+<tr>
+<th>Round</th>
+<th>场景</th>
+<th>cmds/s</th>
+<th>avg</th>
+<th>p50</th>
+<th>p99</th>
+<th>slowlogΔ</th>
+<th>退化%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>基线 SET</td>
+<td>193,795</td>
+<td>67.9ms</td>
+<td>60.4ms</td>
+<td>161.1ms</td>
+<td>29</td>
+<td>—</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Raw ZADD 单key (500K prefill→skiplist)</strong></td>
+<td><strong>168,851</strong></td>
+<td>78.6ms</td>
+<td>71.6ms</td>
+<td>194.7ms</td>
+<td>0</td>
+<td>12.9%</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Raw ZADD 16分片 (50/片→listpack)</td>
+<td><strong>177,727</strong></td>
+<td>73.8ms</td>
+<td>67.9ms</td>
+<td>153.2ms</td>
+<td>0</td>
+<td>8.3%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键发现：高并发下分片仅领先 5%，近乎无差。</strong></p>
+<p>16 分片的 listpack 在 64 连接 × 200 batch 的高压下，<strong>0.16 秒内就全部突破 128 阈值转为 skiplist</strong>：</p>
+<div class="codehilite"><pre><span></span><code>单 shard 写入速率 = (200 batch × 64 conn) / 16 shard ≈ 800 ZADD/s/shard
+128 阈值突破时间 = 128 / 800 ≈ 0.16 秒
+</code></pre></div>
+
+<p>分片的路由开销（<code>shardIndex()</code> 哈希计算 + <code>shardKey()</code> 字符串拼接）在热路径上成了纯负收益——listpack 没享受到，路由开销照付不误。</p>
+<h4 id="893-c8-vs-c64">8.9.3 并发数对比：c=8 vs c=64</h4>
+<table>
+<thead>
+<tr>
+<th>Round</th>
+<th>场景</th>
+<th>c=8 cmds/s</th>
+<th>c=64 cmds/s</th>
+<th>变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>基线 SET</td>
+<td>332,825</td>
+<td>193,795</td>
+<td>-42% (过载反噬)</td>
+</tr>
+<tr>
+<td>6</td>
+<td>ZADD 单key</td>
+<td>186K</td>
+<td>168,851</td>
+<td>-9%</td>
+</tr>
+<tr>
+<td>7</td>
+<td>ZADD 16分片</td>
+<td>217K</td>
+<td>177,727</td>
+<td>-18%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>c=8 时分片有 +16.5% 优势（217K vs 186K），c=64 时优势消失（177K vs 169K）。</strong> 低并发下分片的路由开销被 listpack 的优势盖过；高并发下全部秒转 skiplist，路由开销凸显。</p>
+<h4 id="894-rounds-8-9-top-n-lua-vs-pipeline">8.9.4 Rounds 8-9: 排行榜 Top-N 裁剪对比（Lua vs Pipeline）</h4>
+<p>Round 8/9 的目标是模拟生产排行榜：<strong>ZSet member 数永远 ≤ N，member 数稳定后编码永不退化</strong>。对比了两种实现：</p>
+<p><strong>方案 A（已废弃）：Lua 原子判定</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 每次执行 2~4 个命令 + Lua VM + ~250B 脚本体</span>
+<span class="kd">local</span><span class="w"> </span><span class="nv">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZCARD'</span><span class="p">,</span><span class="w"> </span><span class="nv">k</span><span class="p">)</span>
+<span class="kr">if</span><span class="w"> </span><span class="nv">c</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nv">n</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZADD'</span><span class="p">,</span><span class="w"> </span><span class="nv">k</span><span class="p">,</span><span class="w"> </span><span class="nv">s</span><span class="p">,</span><span class="w"> </span><span class="nv">m</span><span class="p">);</span><span class="w"> </span><span class="kr">return</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="kr">end</span>
+<span class="kd">local</span><span class="w"> </span><span class="nv">mn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZRANGE'</span><span class="p">,</span><span class="w"> </span><span class="nv">k</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s1">'WITHSCORES'</span><span class="p">)</span>
+<span class="kr">if</span><span class="w"> </span><span class="nv">s</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nv">mn</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZADD'</span><span class="p">,</span><span class="w"> </span><span class="nv">k</span><span class="p">,</span><span class="w"> </span><span class="nv">s</span><span class="p">,</span><span class="w"> </span><span class="nv">m</span><span class="p">);</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'ZREM'</span><span class="p">,</span><span class="w"> </span><span class="nv">k</span><span class="p">,</span><span class="w"> </span><span class="nv">mn</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span><span class="w"> </span><span class="kr">return</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="kr">end</span>
+<span class="kr">return</span><span class="w"> </span><span class="mi">0</span>
+</code></pre></div>
+
+<p><strong>方案 B（推荐）：Pipeline ZADD + ZREMRANGEBYRANK</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 2 个命令，零脚本开销</span>
+<span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">zadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">score</span><span class="p">,</span><span class="w"> </span><span class="n">member</span><span class="p">));</span>
+<span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">zremrangebyrank</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="p">(</span><span class="n">maxSize</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)));</span>
+</code></pre></div>
+
+<p><strong>实测结果（c=64, batch=200, warmup=15s, sample=15s）：</strong></p>
+<table>
+<thead>
+<tr>
+<th>Round</th>
+<th>场景</th>
+<th>方式</th>
+<th>cmds/s</th>
+<th>avg</th>
+<th>p50</th>
+<th>p99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>—</td>
+<td>Top-100</td>
+<td><strong>Lua</strong> (前次)</td>
+<td>93,104</td>
+<td>139ms</td>
+<td>131ms</td>
+<td>254ms</td>
+</tr>
+<tr>
+<td><strong>8</strong></td>
+<td><strong>Top-100</strong></td>
+<td><strong>Pipeline</strong></td>
+<td><strong>104,405</strong></td>
+<td>126.2ms</td>
+<td>115.5ms</td>
+<td>291.8ms</td>
+</tr>
+<tr>
+<td>—</td>
+<td>Top-1000</td>
+<td><strong>Lua</strong> (前次)</td>
+<td>59,688</td>
+<td>217ms</td>
+<td>202ms</td>
+<td>396ms</td>
+</tr>
+<tr>
+<td><strong>9</strong></td>
+<td><strong>Top-1000</strong></td>
+<td><strong>Pipeline</strong></td>
+<td><strong>138,225</strong></td>
+<td>94.7ms</td>
+<td>89.2ms</td>
+<td>198.6ms</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>Lua→Pipeline 提升</th>
+<th>关键原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top-100</td>
+<td><strong>+12%</strong></td>
+<td>去掉 Lua VM + 脚本体开销</td>
+</tr>
+<tr>
+<td>Top-1000</td>
+<td><strong>+132%</strong></td>
+<td>同上 + ZREMRANGEBYRANK 触发频率更低（删除频率 = 1/990 vs 1/1）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>反直觉发现：Top-1000 (138K) 比 Top-100 (104K) 快 32%。</strong></p>
+<p>因为 <code>ZREMRANGEBYRANK</code> 的触发频率完全不同：
+- Top-100：每达到 100 条后，<strong>每次 ZADD 都需 ZREMRANGEBYRANK 删除溢出</strong>
+- Top-1000：每达到 1000 条后，990 次 ZADD 后才触发一次清理</p>
+<p><code>ZREMRANGEBYRANK</code> 本身有 O(log N) 的定位开销，高频触发时开销不容忽视。</p>
+<h4 id="895-zset">8.9.5 ZSet 分片机制详解</h4>
+<p><strong>分片原理</strong>：将一个大 ZSet 按 member hash 路由到 N 个分片，每个分片独立保持 listpack 编码（&lt; 128 member）。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 分片路由（ZSetShardingUtils）</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">member</span><span class="p">.</span><span class="na">hashCode</span><span class="p">();</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">hash</span><span class="w"> </span><span class="o">^</span><span class="w"> </span><span class="p">(</span><span class="n">hash</span><span class="w"> </span><span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="mi">16</span><span class="p">))</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">Integer</span><span class="p">.</span><span class="na">MAX_VALUE</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">16</span><span class="p">;</span>
+<span class="n">String</span><span class="w"> </span><span class="n">key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">baseKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":s"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">shardIdx</span><span class="p">;</span><span class="w"> </span><span class="c1">// 例: mc:zset:shard:s5</span>
+</code></pre></div>
+
+<p><strong>热路径每轮 ZADD 的额外开销</strong>：</p>
+<div class="codehilite"><pre><span></span><code>rng.nextInt() → member 查表 → hashCode() → 位混合 → 取模 → String 拼接
+</code></pre></div>
+
+<p>6 步操作，全是 CPU 开销，全在 JVM 堆上。</p>
+<p><strong>分片有效的 3 个必要条件（缺一不可）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>条件</th>
+<th>含义</th>
+<th>不满足的后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>写入速度 &lt; 阈值/秒</td>
+<td>单分片写入速率 &lt; (128 ÷ 采样周期)</td>
+<td>秒级突破 listpack 阈值</td>
+</tr>
+<tr>
+<td>读多写少</td>
+<td>写入量远小于读取量</td>
+<td>分片路由开销 &gt; listpack 收益</td>
+</tr>
+<tr>
+<td>固定容量</td>
+<td>配合 <code>ZREMRANGEBYRANK</code> 或 TTL 兜底</td>
+<td>member 无限增长必然 skiplist</td>
+</tr>
+</tbody>
+</table>
+<p><strong>本例中全不满足</strong>：高写入速率 + 全量写入 + 无容量限制 → 分片纯粹增加 CPU 开销。</p>
+<h4 id="896">8.9.6 生产排行榜最佳实践</h4>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>命令数/次</th>
+<th>吞吐 (c=64)</th>
+<th>延迟</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Raw ZADD（无界）</strong></td>
+<td>1</td>
+<td><strong>168K/s</strong></td>
+<td>78.6ms avg</td>
+<td>全量写入，不需裁剪</td>
+</tr>
+<tr>
+<td>Pipeline ZADD+ZREMRANGEBYRANK</td>
+<td>2</td>
+<td>104~138K/s</td>
+<td>95~126ms</td>
+<td>需要实时 Top-N 裁剪</td>
+</tr>
+<tr>
+<td>Lua 原子判定</td>
+<td>2~4 + 脚本</td>
+<td>60~93K/s</td>
+<td>139~217ms</td>
+<td>❌ 已淘汰</td>
+</tr>
+<tr>
+<td>ZADD 分片（16分片）</td>
+<td>1 + 路由</td>
+<td>177K/s</td>
+<td>73.8ms</td>
+<td>❌ 高写入下无效</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最终推荐方案：2 层架构</strong></p>
+<div class="codehilite"><pre><span></span><code>实时层: Raw ZADD（1 命令，168K/s，不做裁剪）
+         └── 接受短暂超过 N，容忍度 P99&lt;200ms
+
+异步层: 定时 ZREMRANGEBYRANK（每 5s 一次，裁剪到 Top N）
+         └── 排行榜查询时已经是最新 Top N
+</code></pre></div>
+
+<p><strong>为什么不是 Pipeline ZADD+ZREMRANGEBYRANK？</strong> 每秒 2 次 ZREMRANGEBYRANK × 105K qps = 不可忽略的 O(log N) 开销。而 5 秒 1 次的异步裁剪零成本。</p>
+<p><strong>为什么不分片？</strong> 高吞吐写入场景下，分片的路由 CPU 开销 &gt; listpack 收益。直接让 Redis 用 skiplist + 异步裁剪即可。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ✅ 生产最优：Raw ZADD 实时 + 定时裁剪</span>
+<span class="c1">// --- 实时写入 ---</span>
+<span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">zadd</span><span class="p">(</span><span class="s">"leaderboard"</span><span class="p">,</span><span class="w"> </span><span class="n">score</span><span class="p">,</span><span class="w"> </span><span class="n">member</span><span class="p">));</span>
+
+<span class="c1">// --- 定时任务（每 5s，ScheduledExecutorService）---</span>
+<span class="n">redis</span><span class="p">.</span><span class="na">zremrangebyrank</span><span class="p">(</span><span class="s">"leaderboard"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="p">(</span><span class="n">TOP_N</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
+</code></pre></div>
+
+<h4 id="897-zset">8.9.7 ZSet 专项测试结论</h4>
+<div class="codehilite"><pre><span></span><code>实测结论（Rounds 6-9, c=64）:
+  1. 分片在高吞吐写入下无效——0.16 秒突破 128 阈值，路由开销成纯负收益
+  2. Pipeline ZADD+ZREMRANGEBYRANK 比 Lua EVAL 快 12%-132%，零脚本开销是关键
+  3. Top-1000 (138K) 比 Top-100 (104K) 快 32%——ZREMRANGEBYRANK 触发频率是主因
+  4. 生产最佳方案: Raw ZADD 实时写 + 定时 ZREMRANGEBYRANK 异步裁剪
+  5. ZSet 分片只适合读多写少、固定容量的场景（如固定 Top 100 预计算排行榜）
+</code></pre></div>
+
+<hr />
+<h2 id="_4">最终压测数据</h2>
+<h3 id="setex">单一命令类型（SETEX 基线）</h3>
+<p><strong>测试参数</strong>：batchSize=500, concurrency=8, keySpace=5000 万, Redis 默认持久化关闭</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">优化前</th>
+<th style="text-align: left;">优化后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">435k cmds/s (假数据)</td>
+<td style="text-align: left;"><strong>~287k cmds/s</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">平均延迟</td>
+<td style="text-align: left;">~9ms (假数据)</td>
+<td style="text-align: left;">~17ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">覆盖写占比</td>
+<td style="text-align: left;">&gt;95%</td>
+<td style="text-align: left;">&lt;1%</td>
+</tr>
+<tr>
+<td style="text-align: left;">并发反噬</td>
+<td style="text-align: left;">conc=16 时-37%</td>
+<td style="text-align: left;">已通过反压显著缓解</td>
+</tr>
+<tr>
+<td style="text-align: left;">随机数锁争用</td>
+<td style="text-align: left;">有</td>
+<td style="text-align: left;">修复后无明显争用</td>
+</tr>
+<tr>
+<td style="text-align: left;">优雅关闭</td>
+<td style="text-align: left;">否 (暴力中断)</td>
+<td style="text-align: left;">是 (两阶段)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Pipeline 超时</td>
+<td style="text-align: left;">形同虚设</td>
+<td style="text-align: left;">1s 有效保护</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8concurrency8">混合命令类型（问题 8，实测值，concurrency=8）</h3>
+<p><strong>测试参数</strong>：batchSize=100, concurrency=8, keySpace=500,000, Redis 默认持久化关闭，预热 10s + 采样 10s。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>cmds/s</th>
+<th>p50</th>
+<th>p99</th>
+<th>退化%</th>
+<th>slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 种（基线 SET）</td>
+<td>332,825</td>
+<td>2.04ms</td>
+<td>8.50ms</td>
+<td>—</td>
+<td>2</td>
+</tr>
+<tr>
+<td>2 种（SETEX+HSET）</td>
+<td>257,856</td>
+<td>2.80ms</td>
+<td>8.70ms</td>
+<td>-22.5%</td>
+<td>2</td>
+</tr>
+<tr>
+<td>3 种（+ZADD）</td>
+<td>240,706</td>
+<td>3.03ms</td>
+<td>8.03ms</td>
+<td>-27.7%</td>
+<td>4</td>
+</tr>
+<tr>
+<td>5 种（大杂烩）</td>
+<td>268,057</td>
+<td>2.69ms</td>
+<td>8.53ms</td>
+<td>-19.5%</td>
+<td>6</td>
+</tr>
+<tr>
+<td>3种+ZADD×10</td>
+<td>81,678</td>
+<td>9.41ms</td>
+<td>22.87ms</td>
+<td>—</td>
+<td>5</td>
+</tr>
+<tr>
+<td>ZADD 单key (500K→skiplist)</td>
+<td>186K</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>ZADD 16分片 (50/片)</td>
+<td>217K</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>说明</strong>：第 5 轮 <code>3种+ZADD×10</code> 的 cmds/s 仅 81K，是因为每条 ZADD 携带 10 个成员（命令数被低估）。等效写入速率 ≈ 81K × 4.06 = <strong>332K 次/秒</strong>，比第 3 轮（241K）等效提升 38%。但 P50 从 3ms → 9.4ms、P99 从 8ms → 22.9ms，仅适用离线场景。</p>
+</blockquote>
+<h3 id="zset-rounds-6-9concurrency64">混合命令 — ZSet 专项（Rounds 6-9，concurrency=64）</h3>
+<p><strong>测试参数</strong>：batchSize=200, concurrency=64, keySpace=500,000, warmup=15s + sample=15s。</p>
+<table>
+<thead>
+<tr>
+<th>Round</th>
+<th>场景</th>
+<th>cmds/s</th>
+<th>avg</th>
+<th>p50</th>
+<th>p99</th>
+<th>退化%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>基线 SET</td>
+<td>193,795</td>
+<td>67.9ms</td>
+<td>60.4ms</td>
+<td>161.1ms</td>
+<td>—</td>
+</tr>
+<tr>
+<td>5</td>
+<td>3种+ZADD×10打包</td>
+<td>51,031</td>
+<td>260.5ms</td>
+<td>238.8ms</td>
+<td>557.8ms</td>
+<td>73.7%</td>
+</tr>
+<tr>
+<td><strong>6</strong></td>
+<td><strong>Raw ZADD 单key (500K→skiplist)</strong></td>
+<td><strong>168,851</strong></td>
+<td>78.6ms</td>
+<td>71.6ms</td>
+<td>194.7ms</td>
+<td>12.9%</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Raw ZADD 16分片 (50/片→listpack)</td>
+<td><strong>177,727</strong></td>
+<td>73.8ms</td>
+<td>67.9ms</td>
+<td>153.2ms</td>
+<td>8.3%</td>
+</tr>
+<tr>
+<td><strong>8</strong></td>
+<td><strong>Pipeline Top-100</strong></td>
+<td><strong>104,405</strong></td>
+<td>126.2ms</td>
+<td>115.5ms</td>
+<td>291.8ms</td>
+<td>46.1%</td>
+</tr>
+<tr>
+<td><strong>9</strong></td>
+<td><strong>Pipeline Top-1000</strong></td>
+<td><strong>138,225</strong></td>
+<td>94.7ms</td>
+<td>89.2ms</td>
+<td>198.6ms</td>
+<td>28.7%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lua vs Pipeline 对比：</strong></p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>Lua EVAL</th>
+<th>Pipeline ZADD+ZREMRANGEBYRANK</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top-100</td>
+<td>93,104</td>
+<td><strong>104,405</strong></td>
+<td><strong>+12%</strong></td>
+</tr>
+<tr>
+<td>Top-1000</td>
+<td>59,688</td>
+<td><strong>138,225</strong></td>
+<td><strong>+132%</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>说明</strong>：第 5 轮 <code>3种+ZADD×10</code> 的 cmds/s 仅 81K，是因为每条 ZADD 携带 10 个成员（命令数被低估）。等效写入速率 ≈ 81K × 4.06 = <strong>332K 次/秒</strong>，比第 3 轮（241K）等效提升 38%。但 P50 从 3ms → 9.4ms、P99 从 8ms → 22.9ms，仅适用离线场景。</p>
+<p><strong>精度说明</strong>：以上数据为单次压测结果，多次运行存在波动，实际值可能随系统负载、JIT 预热等因素偏离。强烈建议补充 p50/p95/p99 尾部延迟分布、标准差及多次运行的置信区间，以便更全面评估系统行为。</p>
+</blockquote>
+<hr />
+<h2 id="_5">核心结论</h2>
+<ol>
+<li>
+<p><strong>Pipeline 并非并发越大越好</strong>：超过 Redis 主线程处理能力时会导致吞吐/延迟反向恶化；引入客户端反压（限并发 flush）是有效且必要的手段。</p>
+</li>
+<li>
+<p><strong>Key 空间大小决定"是否在测新写入成本"</strong>：覆盖写会掩盖真实写入开销——覆盖写避免了新对象分配和 dict entry 创建，走的是更快路径。应保证 key 空间足够大以避免大部分操作退化为覆盖写。</p>
+</li>
+<li>
+<p><strong>SecureRandom 不适合压测热路径</strong>：<code>SecureRandom</code> 的实现可能包含全局同步锁或耗时初始化（依赖平台/提供者），<code>ThreadLocalRandom</code> 更适合高并发场景。</p>
+</li>
+<li>
+<p><strong>两阶段关闭是必须的</strong>：先优雅等待，再在超时后强制中断，确保连接和协议完整性。同时保证 Semaphore 的 tryAcquire/release 配对正确，防止令牌泄露。</p>
+</li>
+<li>
+<p><strong>单机 Redis 在本次硬件和测试条件下，对新 key 写入的吞吐约为 200k–300k cmd/s</strong>；实际天花板会随硬件、命令类型、数据集大小和环境波动，非绝对值。要想线性提升吞吐，应考虑分片/集群或增加实例。</p>
+</li>
+<li>
+<p><strong>混合命令退化由"昂贵命令占比"决定，非种类数量</strong>：ZADD（跳表 O(logN)）是退化第一大元凶——5 种命令（ZADD 20%）反比 3 种（ZADD 33%）快 12%。客户端优化（去反压、预计算 key 池、int switch）已到极限；ZADD 多元素打包（fanOut）能以吞吐换延迟（等效 +38% 但 P99 ×3），仅适用离线场景。</p>
+</li>
+<li>
+<p><strong>进一步优化只能走 Redis 服务端</strong>：启用 ziplist/listpack 编码（小 zset/hash 用紧凑数组替代 skiplist/哈希表）、Redis 6+ io-threads（网络 I/O 多线程）、UNLINK 替代 DEL（异步释放内存）。这些改配置即可生效，无需改客户端代码。</p>
+</li>
+<li>
+<p><strong>ZSet 分片在高吞吐写入下无效</strong>：64 并发下 16 分片 0.16 秒全部突破 listpack 阈值转为 skiplist，路由开销（hash→取模→字符串拼接）成纯负收益。分片仅适合读多写少、固定容量的场景。</p>
+</li>
+<li>
+<p><strong>排行榜 Top-N 裁剪：Pipeline 完胜 Lua</strong>：Pipeline ZADD+ZREMRANGEBYRANK 比 Lua EVAL 快 12%~132%，零脚本开销是关键。Top-1000 (138K) 比 Top-100 (104K) 快 32%，因为 ZREMRANGEBYRANK 触发频率低 990 倍。</p>
+</li>
+<li>
+<p><strong>生产最优方案：Raw ZADD + 异步定时裁剪</strong>：实时写入用 1 命令 Raw ZADD（168K/s），定时 5s 执行 1 次 <code>ZREMRANGEBYRANK</code> 裁剪到 Top N，零额外开销。Pipeline 实时裁剪（2 命令）的 35% 性能代价换来的原子性，在容忍短暂超过 N 的排行榜场景下不划算。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_6">补充建议（便于复现、诊断与安全）</h2>
+<h3 id="1">1. 更全面的压测指标</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">客户端延迟</td>
+<td style="text-align: left;">p50 / p95 / p99 延迟、每秒超时/错误数、flush 等待时间分布</td>
+<td style="text-align: left;">客户端侧统计</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 服务端</td>
+<td style="text-align: left;"><code>instantaneous_ops_per_sec</code>、<code>blocked_clients</code>、<code>connected_clients</code></td>
+<td style="text-align: left;"><code>INFO stats</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis CPU</td>
+<td style="text-align: left;"><code>used_cpu_sys</code>、<code>used_cpu_user</code></td>
+<td style="text-align: left;"><code>INFO cpu</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 内存</td>
+<td style="text-align: left;"><code>used_memory</code>、<code>used_memory_rss</code>、<code>mem_fragmentation_ratio</code>、<code>evicted_keys</code></td>
+<td style="text-align: left;"><code>INFO memory</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 持久化</td>
+<td style="text-align: left;"><code>aof_current_size</code>、<code>aof_base_size</code></td>
+<td style="text-align: left;"><code>INFO persistence</code></td>
+</tr>
+</tbody>
+</table>
+<p>持续采集上述指标，便于事后分析瓶颈根因。</p>
+<h3 id="2">2. 可复现性</h3>
+<p>在报告中应明确以下测试环境信息：</p>
+<ul>
+<li><strong>硬件规格</strong>：CPU 型号/核心数、内存容量、存储类型（SSD/HDD）</li>
+<li><strong>网络条件</strong>：是否本机运行 Redis（同机 loopback）或跨机，网络延迟与带宽</li>
+<li><strong>软件版本</strong>：Linux 内核版本、JVM 版本与 GC 配置、Lettuce 版本、Redis 版本</li>
+<li><strong>连接方式</strong>：连接池配置、是否复用连接、SSL/TLS 与否</li>
+</ul>
+<h3 id="3_1">3. 代码安全性清单</h3>
+<ul>
+<li>[ ] <code>Semaphore.acquire()</code> / <code>tryAcquire()</code> 成功后必须在 <code>finally</code> 中 <code>release()</code></li>
+<li>[ ] <code>tryAcquire</code> 返回 <code>false</code> 时切勿 <code>release()</code>（未持有令牌）</li>
+<li>[ ] <code>tryAcquire</code> 循环中必须处理 <code>InterruptedException</code>，捕获后调用 <code>Thread.currentThread().interrupt()</code> 恢复中断状态并跳出循环</li>
+<li>[ ] <code>awaitAll</code> 应传入 <code>pipelineTimeoutSec</code>，并对超时结果计数/日志</li>
+<li>[ ] <code>TryAcquire</code> 循环中 return 前确认是否持有令牌</li>
+</ul>
+<h3 id="4">4. 进一步优化方向</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方向</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">batchSize 权衡测试</td>
+<td style="text-align: left;">较大 batch 提高吞吐但加大端到端延迟和突发压力，需要在不同 batchSize（100/500/1000）下测试</td>
+</tr>
+<tr>
+<td style="text-align: left;">多连接模式</td>
+<td style="text-align: left;">每 worker 仍可保持单连接，但可测试更多小批次并发以平衡网络/CPU</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 6+ io-threads</td>
+<td style="text-align: left;">若使用 Redis 6+，测试开启 <code>io-threads</code> 对网络密集场景的影响（注意主线程仍单核处理命令）</td>
+</tr>
+<tr>
+<td style="text-align: left;">交叉验证</td>
+<td style="text-align: left;">使用 <code>memtier_benchmark</code> 或 <code>redis-benchmark</code> 对比结果，校验自研工具的测试结论是否一致</td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF/持久化专项测试</td>
+<td style="text-align: left;">在单独场景下执行 AOF 持久化测试，记录磁盘 I/O 延迟与 fsync 时长</td>
+</tr>
+<tr>
+<td style="text-align: left;">混合命令类型 Pipeline</td>
+<td style="text-align: left;">Pipeline 中混入不同类型命令——<strong>已实测</strong>，详见问题 8。结论：退化由 ZADD 占比主导，建议按类型分拆；ZADD 多元素打包可吞吐换延迟</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>ZSet 排行榜 Top-N 裁剪</strong></td>
+<td style="text-align: left;"><strong>已实测</strong>（Rounds 6-9），详见 8.9。结论：Pipeline ZADD+ZREMRANGEBYRANK 完胜 Lua EVAL（+12%~132%）；最佳方案为 Raw ZADD + 异步定时裁剪</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>ZSet 分片</strong></td>
+<td style="text-align: left;"><strong>已实测</strong>。高吞吐写入下 0.16 秒突破 listpack 阈值，路由开销成纯负收益。仅读多写少 + 固定容量场景可用</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>UNLINK 替代 DEL</strong></td>
+<td style="text-align: left;">DEL 在主线程同步释放内存，UNLINK 异步交由后台线程回收——DEL 占比高时有显著收益</td>
+</tr>
+</tbody>
+</table>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MySQL 连接层参数详细辨析 · 小番茄程序猿</title>
+<meta name="description" content="MySQL 连接层参数详细辨析 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>MySQL 连接层参数详细辨析</h1>
+  </div>
+  <article class="prose">
+<h1 id="mysql">MySQL 连接层参数详细辨析</h1>
+<blockquote>
+<p>基于 MySQL 5.7/8.0，线程缓存 <code>thread_cache_size</code> 参数，<strong>区分：连接、会话、线程、事务</strong>。
+重要前提：MySQL 一个 TCP 连接 ≈ 一个会话(session)；一个会话绑定一个服务线程（1:1 模型），8.0 默认没有线程池（企业版才有线程池插件）。</p>
+</blockquote>
+<hr />
+<h2 id="1-threads_connected">1. Threads_connected</h2>
+<blockquote>
+<p><strong>当前已经建立成功的 TCP 连接总数，会话数。</strong>
+✅ <strong>只要 TCP 连接连上 MySQL 就算，不管有没有执行 SQL、有没有开启事务、有没有休眠 sleep。</strong></p>
+</blockquote>
+<ul>
+<li>连接上来，sleep 休眠，没执行任何事务：<strong>算入 Threads_connected</strong>。</li>
+<li>正在跑事务：算。</li>
+<li>空闲长连接，挂在那里啥也不干：也算。</li>
+<li>仅仅尝试连接但是连接失败：<strong>不算</strong>（连接没建立成功）。</li>
+</ul>
+<blockquote>
+<p>❗误区：<strong>不是正在执行事务的连接数</strong>。
+想看正在运行的 SQL/事务，看：
+<code>show processlist;</code> Command=Query；或者 <code>information_schema.innodb_trx</code>（真正活跃事务）。
+Threads_connected = 活跃执行 + 空闲 sleep 长连接总和。</p>
+</blockquote>
+<hr />
+<h2 id="2-threads_created">2. Threads_created</h2>
+<blockquote>
+<p><strong>MySQL 已经创建出来的服务线程总累计数（全局累加，不会归零）。</strong></p>
+</blockquote>
+<h3 id="1">问题1：临时连接执行完断开，算不算？</h3>
+<p>算。流程（开启 <code>thread_cache_size&gt;0</code> 线程缓存）：</p>
+<ol>
+<li>客户端短连接：连接 MySQL → MySQL <strong>新建线程</strong> → Threads_created +1。</li>
+<li>SQL 执行完毕，客户端 close 断开连接。</li>
+<li>如果线程缓存还有空位，线程不销毁，放入<strong>线程缓存池</strong>待命。</li>
+<li>如果缓存池满，直接销毁这个线程。</li>
+</ol>
+<blockquote>
+<p>👉 <strong>每一次真正新建一个操作系统线程，Threads_created 才 +1；从缓存里拿复用线程，不会 +1。</strong></p>
+</blockquote>
+<h3 id="2">问题2：长连接是固定数值吗？</h3>
+<p><strong>不是固定。</strong></p>
+<ul>
+<li>长连接：客户端保持 TCP 不断，会话一直存在。</li>
+<li>如果长连接复用缓存线程：不会新增 Threads_created。</li>
+<li>如果重启、重连，就会新建线程，Threads_created 继续上涨。</li>
+</ul>
+<blockquote>
+<p>Threads_created 是<strong>累计计数器，只增不减</strong>，不能看瞬时，要看<strong>上涨速率</strong>。
+上涨很快：代表大量短连接，频繁创建销毁线程。</p>
+</blockquote>
+<hr />
+<h2 id="3-aborted_connects">3. Aborted_connects</h2>
+<blockquote>
+<p><strong>尝试连接 MySQL，但是连接建立阶段就失败</strong>的累计次数。
+👉 <strong>是 TCP 握手、认证阶段失败，会话根本没创建成功！</strong></p>
+</blockquote>
+<p>触发场景：</p>
+<ol>
+<li>密码错误。</li>
+<li>不存在的账号。</li>
+<li>IP 不允许访问（授权 host 不匹配）。</li>
+<li>达到 max_connections 最大连接数，MySQL 直接拒绝新连接。</li>
+<li>网络问题，三次握手还没完成就中断。</li>
+</ol>
+<p>✅ <strong>MySQL 拒绝连接 → Aborted_connects +1</strong>
+❌ 客户端连上之后，业务执行中主动断开，<strong>不会增加这个指标</strong>。</p>
+<blockquote>
+<p>一句话：<strong>还没登录成功就挂了 → Aborted_connects</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="4-aborted_clients">4. Aborted_clients</h2>
+<blockquote>
+<p><strong>连接已经建立登录成功，会话存在，后续异常断开，累计计数 +1。</strong>
+已经登录成功之后的断开。</p>
+</blockquote>
+<p>触发场景：</p>
+<ol>
+<li>客户端程序异常崩溃、kill 进程，没执行 close，TCP 粗暴断开。</li>
+<li><strong>wait_timeout / interactive_timeout 超时，MySQL 服务端主动关闭空闲会话（这个会算 Aborted_clients！）</strong>。</li>
+<li>网络抖动，中间代理断开连接。</li>
+<li>客户端执行完直接退出，没有正常关闭 mysql 会话。</li>
+</ol>
+<blockquote>
+<p>❗误区纠正：
+不单单只是客户端主动断开；<strong>MySQL 服务端因超时主动踢掉空闲 sleep 连接，也会 Aborted_clients +1</strong>。</p>
+</blockquote>
+<h3 id="aborted">区分两个 Aborted</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>阶段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Aborted_connects</td>
+<td>连接认证阶段，登录失败</td>
+<td>还没连上 MySQL，被拒绝/密码错</td>
+</tr>
+<tr>
+<td>Aborted_clients</td>
+<td>连接登录成功之后</td>
+<td>会话已经建立，中途异常断开（客户端崩、服务端超时踢、网络断）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-thread_cache_hits">5. Thread_cache_hits</h2>
+<blockquote>
+<p><strong>线程缓存命中次数，累计值。</strong>
+MySQL 的<strong>线程缓存池（Thread Cache），缓存的是服务线程（操作系统线程），不是缓存连接，不是缓存会话。</strong>
+参数 <code>thread_cache_size=N</code>：最多保留 N 个空闲 OS 线程放在缓存。</p>
+</blockquote>
+<p>完整流程：</p>
+<ol>
+<li>新客户端 TCP 连接进来。</li>
+<li>如果线程缓存池里面有空闲线程：直接拿缓存好的 OS 线程来服务这个新连接 → <strong>Thread_cache_hits += 1，Threads_created 不会增加</strong>。</li>
+<li>如果缓存池没有空闲线程：操作系统新建线程 → Threads_created += 1；连接结束后，如果缓存池没满，线程放回缓存。</li>
+</ol>
+<blockquote>
+<p>Thread Cache 缓存的是<strong>OS 工作线程对象</strong>，避免频繁 pthread_create/pthread_destroy，减少 CPU 开销。</p>
+</blockquote>
+<p>⚠️ 注意：</p>
+<ul>
+<li>缓存的是<strong>线程，不是 TCP 连接</strong>！TCP 连接断开，线程留在缓存等待下一个新 TCP 连接复用。</li>
+<li>MySQL 8.0 默认 <code>thread_cache_size=-1</code> 自动自适应；5.7 默认 8。</li>
+<li>如果业务大量长连接，几乎不会复用线程缓存，Thread_cache_hits 几乎不增长，属于正常。</li>
+</ul>
+<h3 id="_1">计算公式：线程缓存命中率</h3>
+<div class="codehilite"><pre><span></span><code>命中率 = Thread_cache_hits / (Thread_cache_hits + Threads_created)
+</code></pre></div>
+
+<p>命中率低，代表大量新建线程，大多是短连接业务。</p>
+<hr />
+<h2 id="_2">汇总速查表</h2>
+<table>
+<thead>
+<tr>
+<th>状态变量</th>
+<th>含义</th>
+<th>空闲 sleep 会话是否计入</th>
+<th>事务无关说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Threads_connected</td>
+<td>当前已建立成功会话数(TCP 连上)</td>
+<td>✅ 算</td>
+<td>包含空闲无事务连接，不是运行中事务数量</td>
+</tr>
+<tr>
+<td>Threads_created</td>
+<td>累计创建 OS 工作线程数，只增不减</td>
+<td>无，计数器</td>
+<td>短连接频繁重连会快速上涨；从缓存复用线程不计数</td>
+</tr>
+<tr>
+<td>Aborted_connects</td>
+<td>登录/建立连接阶段失败</td>
+<td>❌ 连接都没建立</td>
+<td>密码错误、max_connections 打满拒绝连接，属于这个</td>
+</tr>
+<tr>
+<td>Aborted_clients</td>
+<td>登录成功后会话异常断开</td>
+<td>✅ sleep 超时被 mysql 踢掉会 +1</td>
+<td>客户端崩溃、超时、网络断都算</td>
+</tr>
+<tr>
+<td>Thread_cache_hits</td>
+<td>线程缓存命中次数，复用已有 OS 线程</td>
+<td>无，计数器</td>
+<td>缓存操作系统线程，减少创建销毁开销；长连接场景该值增长慢</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">生产排查小技巧</h2>
+<ol>
+<li>Threads_connected 很高，但是 processlist 大量 Command=Sleep → 大量空闲长连接。</li>
+<li>Threads_created 持续快速上涨，Thread_cache_hits 低 → 大量短连接，考虑调大 thread_cache_size，或者程序加连接池。</li>
+<li>Aborted_connects 飙升：排查账号密码、IP 白名单、是否连接数打满。</li>
+<li>Aborted_clients 持续上涨：排查 wait_timeout 是否过小；应用是否没正常关闭连接、程序崩溃、代理超时。</li>
+<li>看真实运行事务数量：<code>select count(*) from information_schema.innodb_trx;</code> 这个才是正在运行的事务，和 Threads_connected 完全两码事。</li>
+</ol>
+<blockquote>
+<p>补充：企业版 MySQL Thread Pool 线程池，逻辑完全不一样，上面是默认 one-thread-per-connection 模型。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

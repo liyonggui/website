@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>K8s 实战学习路线图（已学 + 待学） · 小番茄程序猿</title>
+<meta name="description" content="K8s 实战学习路线图（已学 + 待学） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>K8s 实战学习路线图（已学 + 待学）</h1>
+  </div>
+  <article class="prose">
+<h1 id="k8s">K8s 实战学习路线图（已学 + 待学）</h1>
+<blockquote>
+<p>目标定位：<strong>认识 K8s，不是验证功能</strong>。本文件是学习进度的总账，记录已亲手跑通的能力、对应的清单文件、关键认知，以及尚未涉及但实战常用的功能与建议路线。</p>
+<p>最后更新：2026-10-08</p>
+</blockquote>
+<hr />
+<h2 id="_1">〇、本机环境基线（重要事实，先记死）</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>集群形态</td>
+<td>单节点 <strong>K3s</strong>（all-in-one）</td>
+</tr>
+<tr>
+<td>节点</td>
+<td><code>lyg</code>，Roles=control-plane，Version=<code>v1.36.5+k3s1</code></td>
+</tr>
+<tr>
+<td>命名空间</td>
+<td><code>sc-demo</code>（所有实战资源都在这里）</td>
+</tr>
+<tr>
+<td>可视化</td>
+<td><strong>Lens</strong>（Windows 侧 import <code>D:\k3s.kubeconfig</code>）</td>
+</tr>
+<tr>
+<td>存储</td>
+<td>K3s 自带 <code>local-path</code> 存储类，PVC 自动供给</td>
+</tr>
+<tr>
+<td>Metrics Server</td>
+<td>自带（HPA 依赖，已验证可采数）</td>
+</tr>
+<tr>
+<td>Ingress Controller</td>
+<td><strong>Traefik</strong>，但安装时被 <code>--disable traefik</code> 关掉；已移除该禁用项并 <code>systemctl restart k3s</code> 重新部署成功</td>
+</tr>
+<tr>
+<td>Traefik Service</td>
+<td>LoadBalancer，80:31189/TCP、443:31828/TCP，ClusterIP 10.43.252.79（EXTERNAL-IP <code>&lt;pending&gt;</code>，因 <code>servicelb</code> 被禁用）</td>
+</tr>
+<tr>
+<td>IngressClass</td>
+<td><code>traefik (default)</code>（默认类，Ingress 无需写 <code>ingressClassName</code>）</td>
+</tr>
+<tr>
+<td><strong>WSL2 网络坑</strong></td>
+<td>WSL2+K3s 的 <strong>NodePort 外部访问不通</strong>（Windows 侧 <code>10061</code> 拒绝）；集群<strong>内部</strong> ClusterIP/Service 名访问正常。<strong>验证入口流量一律走集群内临时 Pod</strong>，别用 NodePort 对外</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sc-demo">已部署的实战资源（sc-demo 命名空间）</h3>
+<table>
+<thead>
+<tr>
+<th>资源</th>
+<th>类型</th>
+<th>关键配置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>service-user</code></td>
+<td>Deployment + ClusterIP Service</td>
+<td>2 副本默认、image <code>sc-user:0.1.0</code>、端口 8081、<code>envFrom</code> 引用 ConfigMap <code>user-env</code> + Secret <code>user-secret</code>、三探针、securityContext、resources 限制</td>
+</tr>
+<tr>
+<td>MySQL</td>
+<td>外置（docker-compose）</td>
+<td><code>192.168.0.104:3306</code>，库 <code>user_db</code>，密码 <code>Root@123456</code></td>
+</tr>
+<tr>
+<td><code>redis</code> (redis-0/redis-1)</td>
+<td>StatefulSet + Headless Service</td>
+<td>1主1从；当前<strong>临时态 redis-1 主 / redis-0 从</strong>（内存级 masterauth 修复，待固化）；密码 <code>Redis@123456</code></td>
+</tr>
+<tr>
+<td><code>redis-sentinel</code> ×3</td>
+<td>Deployment + Service</td>
+<td>监控主库、自动故障转移，quorum=2，端口 26379</td>
+</tr>
+<tr>
+<td><code>service-user</code> HPA</td>
+<td>HorizontalPodAutoscaler</td>
+<td>CPU 50% 目标，min 2 / max 10</td>
+</tr>
+<tr>
+<td><code>service-user</code> Ingress</td>
+<td>Ingress</td>
+<td>host <code>service-user.local</code>，path <code>/</code> → <code>service-user:8081</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">一、已掌握（均亲手跑通验证）</h2>
+<h3 id="1-service-user">1. 无状态服务 —— <code>service-user</code></h3>
+<ul>
+<li><strong>多副本 + Service 负载均衡</strong>：<code>curltest</code> 集群内访问 <code>service-user:8081/user/whoami</code>，请求均匀散到各 Pod（验证过 5 副本、2 副本两种）</li>
+<li><strong>故障自愈</strong>：删 Pod → Deployment 自动补齐，副本数不变</li>
+<li><strong>scale</strong>：手动 <code>kubectl scale</code> 调整副本</li>
+<li><strong>滚动更新 + 回滚</strong>：<code>kubectl set env</code> / <code>set image</code> 触发，配合 <code>rollout status/history/undo</code></li>
+<li><strong>声明式固化</strong>：<code>deploy.yaml</code> + <code>user-env.yaml</code> + <code>user-secret.yaml</code> 三件套统一 <code>apply</code>，消除 <code>last-applied-configuration</code> 注解漂移</li>
+<li>对应文件：<code>sc-user/deploy.yaml</code>、<code>sc-user/user-env.yaml</code>、<code>sc-user/user-secret.yaml</code>、<code>sc-user/ROLLING-UPDATE.md</code></li>
+</ul>
+<h3 id="2-redis">2. 有状态中间件 —— <code>redis</code>（三档全跑通）</h3>
+<ul>
+<li><strong>单实例</strong>：StatefulSet + PVC 持久化（删 Pod 后数据不丢，验证 <code>get hello</code> 仍返回 <code>world</code>）</li>
+<li><strong>1主1从</strong>：replicas=2 + Headless Service 稳定 DNS（<code>redis-0.redis</code>/<code>redis-1.redis</code>）+ <code>--replicaof</code> 主从复制</li>
+<li><strong>1主1从3哨兵</strong>：自动故障转移（删主库 → 从库升主 → 旧主重建后被降级归队）</li>
+<li><strong>踩坑并修复</strong>：主库缺 <code>--masterauth</code>，被降级为从后无法向有密码新主认证 → 已在 <code>redis-statefulset.yaml</code> 主库分支补上（<strong>待固化</strong>）</li>
+<li>对应文件：<code>sc-user/redis-secret.yaml</code>、<code>redis-statefulset.yaml</code>、<code>redis-service.yaml</code>、<code>redis-README.md</code>、<code>redis-replication.md</code>、<code>redis-sentinel.yaml</code>、<code>redis-sentinel-service.yaml</code>、<code>redis-sentinel.md</code></li>
+</ul>
+<h3 id="3-configmap-secret">3. 配置管理 —— ConfigMap / Secret</h3>
+<ul>
+<li><code>ConfigMap user-env</code> 注入 <code>MYSQL_*</code> 环境变量</li>
+<li><code>Secret user-secret</code> 注入密码（不进明文）</li>
+<li>通过 <code>envFrom</code> 整体引用（非逐条 env）</li>
+<li>认知：改 envFrom 注入的配置<strong>需重建 Pod 才生效</strong>（不热更新）</li>
+</ul>
+<h3 id="4-ingresstraefik">4. 入口流量 —— Ingress（Traefik）</h3>
+<ul>
+<li>七层路由：<code>Host: service-user.local</code> + path <code>/</code> → <code>service-user:8081</code></li>
+<li>验证：<code>curl -H "Host: service-user.local" http://traefik.kube-system.svc.cluster.local:80/user/whoami</code> 返回 Pod 主机名（HTTP 200）</li>
+<li><strong>关键认知</strong>：Ingress 只是意图声明，<strong>必须配合 Ingress Controller 才生效</strong>；本机 Traefik 曾被禁用，移除 <code>--disable traefik</code> 重启后才起来</li>
+<li>对应文件：<code>sc-user/service-user-ingress.yaml</code>、<code>ingress-hpa.md</code></li>
+</ul>
+<h3 id="5-hpa">5. 弹性伸缩 —— HPA</h3>
+<ul>
+<li>按 CPU 利用率自动扩缩：压测下 REPLICAS 阶梯 <code>2→4→8→10</code>（触顶 max），停压测后约 5 分钟稳定窗口后缩回 2</li>
+<li><strong>关键认知</strong>：HPA 盯「实际利用率 vs 目标」，有 5 分钟缩容稳定窗口防抖动</li>
+<li>对应文件：<code>sc-user/service-user-hpa.yaml</code></li>
+</ul>
+<h3 id="6">6. 基础安全 / 探针 / 资源</h3>
+<ul>
+<li>三探针：startup / readiness / liveness</li>
+<li>securityContext：<code>runAsNonRoot</code> / <code>readOnlyRootFilesystem</code> / <code>drop ALL</code> / seccomp</li>
+<li>resources：<code>requests</code>(100m/256Mi) + <code>limits</code>(512Mi)</li>
+</ul>
+<hr />
+<h2 id="_3">二、未学（实战常用，按优先级三档）</h2>
+<h3 id="_4">★ 第一档：最该先补（和已学强相关，性价比最高）</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>是什么</th>
+<th>与已学的衔接</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Job / CronJob</strong></td>
+<td>一次性批处理 / 定时任务（备份、跑脚本）</td>
+<td>之前全是长驻 Pod，这是「跑完即退」的另一种生命周期</td>
+</tr>
+<tr>
+<td><strong>DaemonSet</strong></td>
+<td>每个节点自动跑一个副本（日志采集、监控 agent、网络插件）</td>
+<td>与 Deployment「按副本数」对照，理解调度单位差异</td>
+</tr>
+<tr>
+<td><strong>ConfigMap 热更新</strong></td>
+<td>改配置不重启 Pod（挂卷自动同步）</td>
+<td>你现在是 envFrom 注入，<strong>不热更新</strong>；这是生产常见坑（注意 subPath 不热更新）</td>
+</tr>
+<tr>
+<td><strong>ServiceAccount + RBAC</strong></td>
+<td>Pod 以什么身份访问 API；谁能动哪些资源</td>
+<td>Traefik 自带 RBAC，sc-user 还没配 SA；多租户/安全必学</td>
+</tr>
+<tr>
+<td><strong>NetworkPolicy</strong></td>
+<td>命名空间/Pod 间网络隔离（默认全通）</td>
+<td>k3s manifests 自带一份 netpol，正好对照</td>
+</tr>
+<tr>
+<td><strong>发布策略：蓝绿 / 金丝雀</strong></td>
+<td>零停机切换、按流量比例灰度</td>
+<td>你做过滚动更新，这是进阶形态（Traefik 就能做 canary）</td>
+</tr>
+<tr>
+<td><strong>HPA 多指标</strong></td>
+<td>按 内存 / QPS / 自定义指标扩缩</td>
+<td>目前只用 CPU，生产常看多指标</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">★★ 第二档：运维进阶（集群跑稳必碰）</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>是什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>监控三件套</strong></td>
+<td>Prometheus + Grafana + kube-state-metrics / node-exporter（CPU、Pod、节点全貌）</td>
+</tr>
+<tr>
+<td><strong>集中日志</strong></td>
+<td>Loki / EFK（多 Pod 日志汇总检索，告别逐个 <code>kubectl logs</code>）</td>
+</tr>
+<tr>
+<td><strong>Helm</strong></td>
+<td>K8s 的「包管理器」，模板化部署（实战部署中间件几乎都用它）</td>
+</tr>
+<tr>
+<td><strong>节点调度</strong></td>
+<td>nodeSelector / 亲和性 affinity / 污点 taints+容忍 tolerations / 拓扑打散 topologySpread（控制 Pod 落在哪）</td>
+</tr>
+<tr>
+<td><strong>ResourceQuota / LimitRange</strong></td>
+<td>命名空间级资源上限（防某业务把集群吃爆）</td>
+</tr>
+<tr>
+<td><strong>VPA / Cluster Autoscaler</strong></td>
+<td>垂直调容器规格 / 按负载加节点（HPA 横扩，这是纵扩和扩节点）</td>
+</tr>
+<tr>
+<td><strong>kubectl debug / drain / cordon</strong></td>
+<td>临时排障容器、节点维护下线</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">★★★ 第三档：高阶（走向生产级平台）</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>是什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>GitOps（ArgoCD / Flux）</strong></td>
+<td>清单存 Git 自动同步部署，替代手工 <code>kubectl apply</code></td>
+</tr>
+<tr>
+<td><strong>Kustomize</strong></td>
+<td>多环境（dev/test/prod）配置叠加，不重复写 YAML</td>
+</tr>
+<tr>
+<td><strong>Operator 模式 + CRD</strong></td>
+<td>用代码管理复杂有状态应用（你那个「哨兵脚本硬编码」的优雅替代 = Redis Operator）</td>
+</tr>
+<tr>
+<td><strong>Service Mesh（Istio/Linkerd）</strong></td>
+<td>流量治理、mTLS、细粒度灰度，比 Ingress 更底层</td>
+</tr>
+<tr>
+<td><strong>cert-manager</strong></td>
+<td>自动签发/续期 TLS 证书（配合 Ingress 上 HTTPS）</td>
+</tr>
+<tr>
+<td><strong>多集群 / 联邦</strong></td>
+<td>跨可用区、跨云容灾</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">三、建议学习路线</h2>
+<blockquote>
+<p>贴合「认识 K8s」节奏，从「已学概念的对照/补完」入手，再上平台级能力。</p>
+</blockquote>
+<ol>
+<li><strong>第一档轻量补完</strong>（半天内可跑通，全是对照已学）：</li>
+<li><code>Job/CronJob</code> + <code>DaemonSet</code>（生命周期 &amp; 调度单位对照）</li>
+<li><code>ConfigMap 热更新</code>（直接补 sc-user 配置管理痛点）</li>
+<li><code>ServiceAccount + RBAC</code>（给 sc-user 配最小权限 SA）</li>
+<li><strong>可观测性 + 包管理</strong>：<code>Helm</code> 部署 + <code>Prometheus/Grafana</code> 把集群看板建起来</li>
+<li><strong>发布进阶</strong>：<code>蓝绿 / 金丝雀</code>（用 Traefik 做 canary，复用已通的 Ingress）</li>
+<li><strong>平台级</strong>：<code>GitOps(ArgoCD)</code> → <code>Operator</code> → <code>Service Mesh</code></li>
+</ol>
+<h3 id="_8">待办（未完成项，供后续会话接手）</h3>
+<ul>
+<li><strong>[未固化]</strong> redis 主库 masterauth：当前集群为临时修复态，需 <code>kubectl apply -f redis-statefulset.yaml -n sc-demo</code> + 重建两 Pod，拓扑回到 redis-0 主且主库自带 masterauth</li>
+<li><strong>[可选]</strong> sc-user 真正接入 redis 做缓存联调（最有实战感的一步）</li>
+</ul>
+<hr />
+<h2 id="_9">附录：常用命令速查</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 负载均衡验证（集群内，绕开 WSL2 NodePort 坑）</span>
+kubectl<span class="w"> </span>run<span class="w"> </span>curltest<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--image<span class="o">=</span>curlimages/curl<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'for i in $(seq 1 20); do curl -s http://service-user:8081/user/whoami; echo; done'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span><span class="p">|</span><span class="w"> </span>uniq<span class="w"> </span>-c
+
+<span class="c1"># HPA 观察</span>
+kubectl<span class="w"> </span>get<span class="w"> </span>hpa<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>-w
+
+<span class="c1"># Ingress 七层路由验证（集群内）</span>
+kubectl<span class="w"> </span>run<span class="w"> </span>curltest-ing<span class="w"> </span>--image<span class="o">=</span>curlimages/curl<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'curl -v -m 5 -H "Host: service-user.local" http://traefik.kube-system.svc.cluster.local:80/user/whoami'</span>
+kubectl<span class="w"> </span>logs<span class="w"> </span>curltest-ing<span class="w"> </span>-n<span class="w"> </span>sc-demo
+
+<span class="c1"># Redis 主从 / 哨兵状态</span>
+kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>redis-0<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -a "$REDIS_PASSWORD" info replication'</span>
+kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span><span class="k">$(</span>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>-l<span class="w"> </span><span class="nv">app</span><span class="o">=</span>redis-sentinel<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.items[0].metadata.name}'</span><span class="k">)</span><span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster'</span>
+
+<span class="c1"># 声明式三件套重建顺序</span>
+kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>user-env.yaml<span class="w"> </span>-f<span class="w"> </span>user-secret.yaml<span class="w"> </span>-f<span class="w"> </span>deploy.yaml<span class="w"> </span>-n<span class="w"> </span>sc-demo
+</code></pre></div>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

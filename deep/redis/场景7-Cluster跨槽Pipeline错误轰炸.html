@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>使用 cluster profile 启动 6 节点集群 · 小番茄程序猿</title>
+<meta name="description" content="使用 cluster profile 启动 6 节点集群 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>使用 cluster profile 启动 6 节点集群</h1>
+  </div>
+  <article class="prose">
+<h2 id="7-cluster-pipeline">场景 7: Cluster 跨槽 Pipeline 错误轰炸</h2>
+<h3 id="71">7.1 背景与问题</h3>
+<div class="codehilite"><pre><span></span><code>Redis Cluster 核心规则:
+  - 16384 个 hash slot（slot = CRC16(key) % 16384）
+  - 每个 key 根据 CRC16 哈希只属于一个 slot
+  - Pipeline 模式下，一条 Pipeline 中的所有 key 必须属于同一个 slot
+  - 如果 Pipeline 包含跨 slot 的 key → Redis 直接拒绝，返回 CROSSSLOT 错误
+
+生产现象:
+  - 代码发了一条 Pipeline，里面塞了 100 个 SETEX
+  - key 是随机生成的（如 "user:123", "order:456", "log:789"）
+  - 100 个 key 落在不同 slot → Redis 返回 "CROSSSLOT Keys in request don't hash to the same slot"
+  - 客户端的 Pipeline 批量提交全部失败，一条命令都没执行
+  - 如果不处理，几十万/秒的 Pipeline 请求全部变成 CROSSSLOT 异常日志轰炸
+</code></pre></div>
+
+<h3 id="72-crossslot">7.2 CROSSSLOT 仅发生在"单通道"直连场景</h3>
+<p><strong>核心结论：命令最终被发送到"不拥有所有 key 的单个节点"就会触发 CROSSSLOT。</strong></p>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────────────┐
+│                     两种连接方式的根本区别                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  场景 A: 集群客户端（Lettuce ClusterClient / JedisCluster）              │
+│                                                                         │
+│    Pipeline: SET user:1 v + SET order:2 v + SET log:3 v                 │
+│      ↓ 客户端分析每个 key → slot                                        │
+│      ↓ 按 slot 分组成子 Pipeline                                        │
+│      ↓ slot A → 节点 1;  slot B → 节点 2;  slot C → 节点 3             │
+│    → 自动路由到各自节点，全部成功 ✅  CROSSSLOT = 0                      │
+│                                                                         │
+│  场景 B: 单节点直连（绕过集群客户端）                                     │
+│                                                                         │
+│    Pipeline: SET user:1 v + SET order:2 v + SET log:3 v                 │
+│      ↓ 所有命令发送到同一个 Redis 节点                                   │
+│      ↓ 该节点发现 3 个 key 在 3 个不同 slot                              │
+│      ↓ 该节点只拥有其中一部分 slot，拒绝执行                              │
+│    → 返回 CROSSSLOT ❌（全部失败，0 条执行）                              │
+│                                                                         │
+│  场景 C: 集群客户端 + 多 key 命令（MSET / DEL / MGET）                    │
+│                                                                         │
+│    MSET k1 v1 k2 v2   (k1→slot A, k2→slot B)                            │
+│      ↓ Lettuce/Jedis 自动拆分: SET k1 v1 → 节点1 + SET k2 v2 → 节点2   │
+│    → 跨槽 MSET 被拆分执行，全部成功 ✅  CROSSSLOT = 0                    │
+│                                                                         │
+│  场景 D: 集群客户端 + Lua / MULTI 事务（硬限制，不可拆分）                 │
+│                                                                         │
+│    EVAL script 2 k1 k2 ...  (k1→slot A, k2→slot B)                      │
+│      ↓ 集群客户端无法把单个 Lua 脚本拆成多节点执行（无法保证原子性）      │
+│    → 跨槽 → 触发 CROSSSLOT ❌ 或客户端本地报错                           │
+│                                                                         │
+│    MULTI → SET k1 v1 → SET k2 v2 → EXEC                                 │
+│      ↓ 同上，事务不可拆分                                                │
+│    → 跨槽 → 触发 CROSSSLOT ❌                                           │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h4 id="721-crossslot">7.2.1 CROSSSLOT 的其他触发场景</h4>
+<p>不只是"显式绕开集群客户端"，以下情况同样会触发：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">不支持 Cluster 的代理（如旧版 Twemproxy）</td>
+<td style="text-align: left;">代理层无 slot 感知，多 key 命令全发往同一后端</td>
+</tr>
+<tr>
+<td style="text-align: left;">错误配置的负载均衡（LB/DNS 指向集群单节点）</td>
+<td style="text-align: left;">客户端以为是集群，实际所有请求打到同一个节点</td>
+</tr>
+<tr>
+<td style="text-align: left;">集群客户端内拿到单节点连接来做 Pipeline</td>
+<td style="text-align: left;"><code>connection.sync()</code> 而非 <code>clusterClient.connect()</code> 的 cluster-aware API</td>
+</tr>
+<tr>
+<td style="text-align: left;">直接用 <code>redis-cli -h 单节点 -p 6379</code> 跑多 key 命令</td>
+<td style="text-align: left;">直连必然单通道</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>本质：任何时候命令最终发往"不拥有所有相关 key 的单个 Redis 节点"→ CROSSSLOT。</strong></p>
+</blockquote>
+<h3 id="73-crossslot">7.3 CROSSSLOT 触发条件</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">条件</th>
+<th style="text-align: left;">集群客户端</th>
+<th style="text-align: left;">单节点直连</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">单条命令（SET key value）</td>
+<td style="text-align: left;">✅ 自动路由 → 成功</td>
+<td style="text-align: left;">✅ 单 key 无关 slot</td>
+</tr>
+<tr>
+<td style="text-align: left;">Pipeline 内 key 跨不同 slot</td>
+<td style="text-align: left;">✅ <strong>自动按 slot 分组发往各节点 → 成功</strong></td>
+<td style="text-align: left;">❌ <strong>触发 CROSSSLOT</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">MSET / DEL / MGET 跨 slot</td>
+<td style="text-align: left;">✅ <strong>自动拆分为单 key 命令 → 成功</strong></td>
+<td style="text-align: left;">❌ <strong>触发 CROSSSLOT</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Lua 脚本操作多个 key 跨 slot</strong></td>
+<td style="text-align: left;">❌ <strong>无法拆分脚本保持原子性 → CROSSSLOT 或客户端报错</strong></td>
+<td style="text-align: left;">❌ 触发 CROSSSLOT</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>MULTI/EXEC 事务跨 slot</strong></td>
+<td style="text-align: left;">❌ <strong>无法拆分事务保持原子性 → CROSSSLOT 或客户端报错</strong></td>
+<td style="text-align: left;">❌ 触发 CROSSSLOT</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>关键区别</strong>：MSET/MGET/DEL 是"无状态组合命令"，客户端可以安全拆分为多条单 key 命令再合并结果。
+但 Lua 和 MULTI/EXEC 是<strong>有原子性要求的</strong>，客户端无法把单个脚本/事务拆成多个节点并发执行并保证原子性，
+因此跨槽的 Lua/事务在任何客户端下都会失败。
+<strong>Lua / MULTI 必须用 hash tag 确保所有 key 在同一 slot。</strong></p>
+</blockquote>
+<p><strong>总结：对于 MSET/DEL/MGET 和单 key Pipeline，正确使用集群客户端即可 CROSSSLOT = 0。对于 Lua/MULTI，必须用 hash tag 确保同槽。</strong></p>
+<h3 id="74-hash-tag">7.4 哈希标签（Hash Tag）：性能优化而非错误修复</h3>
+<p><strong>重要纠正：集群客户端（Lettuce/Jedis）自动处理跨槽路由 → CROSSSLOT = 0，Hash Tag 不是修复 CROSSSLOT 的工具，而是性能优化手段。</strong></p>
+<h4 id="741">7.4.1 <code>{}</code> 槽位锚定机制</h4>
+<div class="codehilite"><pre><span></span><code>Hash Tag 规则:
+  只对 { } 包裹的部分计算 CRC16，{} 外的前后缀不影响槽位
+
+  key = "{user:1001}:orders"            → CRC16("user:1001")
+  key = "prefix:{user:1001}:suffix"     → CRC16("user:1001")  ← 花括号位置无所谓
+  key = "{order:5001}:items"            → CRC16("order:5001")
+  key = "{order:5001}:logs"             → CRC16("order:5001")  ← 同槽
+
+  → 可以通过 {} 自主指定"按什么分片"，实现：
+    {分片键}:唯一标识后缀
+
+  Hash tag 保证 keys 落在相同 slot —— 在给定集群拓扑下，相同 slot 的 keys 一定在同一个节点。
+  但在 slot 重分配 / reshard 期间，slot 所属节点可能发生变化。
+  （因此 hash tag 的"同槽 = 同节点"在拓扑稳定时成立，集群拓扑变更时需要关注迁移窗口。）
+</code></pre></div>
+
+<h4 id="742-hash-tag">7.4.2 Hash Tag 真实价值：性能优化</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">不加 hash tag（MSET_RANDOM）</th>
+<th style="text-align: left;">加 hash tag（MSET_HASHTAG）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>MSET 行为</strong></td>
+<td style="text-align: left;">客户端自动拆分为多条 SET</td>
+<td style="text-align: left;">单条 MSET 直发</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>网络往返</strong></td>
+<td style="text-align: left;">2 次（拆分到 2 个节点）</td>
+<td style="text-align: left;">1 次</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>cmd/s</strong></td>
+<td style="text-align: left;">~202k</td>
+<td style="text-align: left;"><strong>~356-431k</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>延迟</strong></td>
+<td style="text-align: left;">1.74ms</td>
+<td style="text-align: left;"><strong>0.86ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>性能提升</strong></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;"><strong>~1.9x</strong></td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>跨槽 MSET k1 v1 k2 v2 (k1→slot A, k2→slot B):
+  客户端拆分: SET k1 v1 → 节点1
+              SET k2 v2 → 节点2
+  → 2 条命令、2 次网络往返、2 次等待
+
+同槽 MSET {tag}k1 v1 {tag}k2 v2 (都在 slot X):
+  客户端直发: MSET k1 v1 k2 v2 → 节点1
+  → 1 条命令、1 次网络往返、1 次等待
+</code></pre></div>
+
+<p><strong>什么时候值得加 hash tag：</strong>
+- <strong>多 key 写命令</strong>（MSET、DEL）→ <strong>值得</strong>，拆分开销大，收益 ~2x
+- <strong>Pipeline 单 key 命令</strong>（SETEX、HGET）→ <strong>不需要</strong>，集群客户端已按 slot 自动分组，无明显收益
+- <strong>Lua / MULTI 事务</strong> → <strong>必须加 hash tag！</strong> 这是 Redis 硬限制——所有通过 KEYS[] 指定的 key 必须位于同一 slot。集群客户端无法拆分 Lua 脚本或事务（无法保证原子性），跨槽必报 CROSSSLOT。解决方案：用 <code>{分片键}</code> 强制 key 同槽，或使用 <code>KEYS[]</code> 数组传 key 让客户端校验</p>
+<h3 id="75">7.5 压测架构</h3>
+<div class="codehilite"><pre><span></span><code>Lettuce 集群客户端 — CROSSSLOT = 0（自动路由）:
+  RANDOM:  Pipeline SETEX cs:随机key → 跨槽 → 客户端自动按 slot 分组发送 → 成功 ✅
+  HASHTAG: Pipeline SETEX {tagN}:cs:随机key → 同槽 → 高效 Pipeline → 成功 ✅
+  MSET:    MSET k1 v1 k2 v2 → 跨槽 → 客户端自动拆分 → 成功 ✅
+  HGET:    Pipeline HGET → 跨槽 → 客户端自动路由 → 成功 ✅
+
+RAW 单节点直连 — CROSSSLOT = 100%（完全爆炸）:
+  RAW_MSET:  MSET x:1 v y:2 v → 不同前缀 → 跨槽 → CROSSSLOT ❌
+  RAW_MGET:  MGET x:1  y:2    → 不同前缀 → 跨槽 → CROSSSLOT ❌
+  RAW_DEL:   DEL  x:1  y:2    → 不同前缀 → 跨槽 → CROSSSLOT ❌
+  RAW_LUA:   EVAL 操作 2 key  → 不同前缀 → 跨槽 → CROSSSLOT ❌
+  RAW_MULTI: MULTI + 2 SETEX  → 不同前缀 → 跨槽 → CROSSSLOT ❌
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>Lettuce 集群客户端 — RANDOM 模式:
+  ┌──── Pipeline 100 keys ────┐
+  │ cs:12345 → slot A ──┐     │
+  │ cs:67890 → slot B ──┤     │ ← 客户端按 slot 分组
+  │ cs:11111 → slot C ──┘     │ ← 发往不同节点
+  └───────────────────────────┘
+  → 各节点各自执行 → 全部成功 ✅
+
+RAW 单节点直连 — CROSSSLOT 模式:
+  ┌──── Pipeline 100 keys ────┐
+  │ x:12345 → slot A          │
+  │ y:67890 → slot B   ✗      │ ← 同一节点收到跨槽命令
+  │ x:11111 → slot C          │ ← 该节点不拥有所有 slot
+  └───────────────────────────┘
+  → CROSSSLOT → 全部拒绝 ❌
+</code></pre></div>
+
+<h3 id="76-rest">7.6 REST 端点</h3>
+<div class="codehilite"><pre><span></span><code>GET  /cluster/metrics         -- 当前指标快照
+POST /cluster/start           -- 启动压测 (?concurrency=4&amp;batchSize=100&amp;mode=...)
+POST /cluster/stop            -- 停止压测
+POST /cluster/preload          -- 预载 HSET 数据 (50 万 key, HGET 模式前置)
+POST /cluster/sweep            -- 自动遍历 batchSize 梯度
+GET  /cluster/sweep/results    -- Sweep 对比报告
+
+mode 参数:
+  集群客户端（CROSSSLOT=0）:  RANDOM, HASHTAG, MSET, MSET_TAG, HGET
+  单节点直连（CROSSSLOT=100%）: RAW_MSET, RAW_MGET, RAW_DEL, RAW_LUA, RAW_MULTI
+</code></pre></div>
+
+<blockquote>
+<p><strong>Pipeline 关键提醒</strong>：必须使用集群客户端提供的 cluster-aware pipeline/async API（如 Lettuce 的 <code>StatefulRedisClusterConnection.async()</code>）。
+如果用 <code>clusterClient.getPartitions().getNode(0).connect()</code> 拿单节点连接再做 pipeline，
+等同于"单通道直连"，同样会触发 CROSSSLOT。</p>
+</blockquote>
+<h3 id="77">7.7 测试方法</h3>
+<h4 id="771-redis-cluster">7.7.1 启动 Redis Cluster</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 使用 cluster profile 启动 6 节点集群</span>
+docker-compose<span class="w"> </span>--profile<span class="w"> </span>cluster<span class="w"> </span>up<span class="w"> </span>-d
+
+<span class="c1"># 等待约 15 秒（init 容器运行 cluster create）</span>
+<span class="c1"># 验证集群状态</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>redis-cli<span class="w"> </span>-p<span class="w"> </span><span class="m">6379</span><span class="w"> </span>CLUSTER<span class="w"> </span>INFO<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>cluster_state
+<span class="c1"># → cluster_state:ok</span>
+
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>redis-cli<span class="w"> </span>-p<span class="w"> </span><span class="m">6379</span><span class="w"> </span>CLUSTER<span class="w"> </span>NODES
+<span class="c1"># → 应显示 3 masters + 3 slaves</span>
+</code></pre></div>
+
+<h4 id="772-crossslot-0">7.7.2 集群客户端模式 — CROSSSLOT = 0（自动路由）</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1) Pipeline SETEX 随机 key（跨槽也无问题）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/cluster/start?concurrency=4&amp;batchSize=100&amp;mode=RANDOM"</span>
+curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8082/cluster/metrics
+<span class="c1"># crossSlotErrors: 0   ← 集群客户端自动按 slot 分组发送</span>
+<span class="c1"># cmd/s: ~170k          ← 正常吞吐</span>
+
+<span class="c1"># 2) MSET 随机 key（跨槽也无问题）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/cluster/start?concurrency=4&amp;batchSize=100&amp;mode=MSET"</span>
+<span class="c1"># crossSlotErrors: 0   ← MSET 被自动拆分为单条 SET</span>
+<span class="c1"># cmd/s: ~200k</span>
+
+<span class="c1"># 3) Pipeline HGET（先预载 50 万 HSET key + 再压测）</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/cluster/preload"</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/cluster/start?concurrency=4&amp;batchSize=100&amp;mode=HGET"</span>
+<span class="c1"># crossSlotErrors: 0   ← 读操作同样自动路由</span>
+<span class="c1"># cmd/s: ~390k</span>
+</code></pre></div>
+
+<h4 id="773-raw-crossslot">7.7.3 RAW 单节点直连 — CROSSSLOT 轰炸</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 绕过集群客户端，直连单节点 → CROSSSLOT 100%</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/cluster/start?concurrency=4&amp;batchSize=100&amp;mode=RAW_MSET"</span>
+
+curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8082/cluster/metrics
+<span class="c1"># crossSlotErrors: ~1,500,000 (每5秒 150 万条 CROSSSLOT!)</span>
+<span class="c1"># cmd/s: 0.4               ← 几乎全部失败</span>
+
+<span class="c1"># 其他 RAW 模式同样 100% CROSSSLOT:</span>
+<span class="c1"># RAW_MGET, RAW_DEL, RAW_LUA, RAW_MULTI</span>
+</code></pre></div>
+
+<h4 id="774-sweep-raw-crossslot-batchsize">7.7.4 Sweep 遍历：RAW 模式下 CROSSSLOT 与 batchSize 的关系</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 用 RAW_MSET 模式遍历 batchSize 梯度，看 CROSSSLOT 如何随批次增大而线性增长</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/cluster/sweep?concurrency=4"</span>
+
+<span class="c1"># 等待约 140 秒（7 步 × 20s/步），查看结果</span>
+curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8082/cluster/sweep/results
+
+<span class="c1"># 预期:</span>
+<span class="c1"># batchSize=10:   CROSSSLOT ~10K/s</span>
+<span class="c1"># batchSize=25:   CROSSSLOT ~25K/s</span>
+<span class="c1"># batchSize=50:   CROSSSLOT ~52K/s</span>
+<span class="c1"># batchSize=100:  CROSSSLOT ~100K/s</span>
+<span class="c1"># batchSize=200:  CROSSSLOT ~206K/s</span>
+<span class="c1"># batchSize=400:  CROSSSLOT ~410K/s</span>
+<span class="c1"># batchSize=800:  CROSSSLOT ~820K/s</span>
+<span class="c1"># ↑ batchSize 越大 → CROSSSLOT 线性增长</span>
+<span class="c1"># 但用集群客户端模式跑 sweep → CROSSSLOT 始终 = 0</span>
+</code></pre></div>
+
+<h3 id="78">7.8 实际压测数据对比</h3>
+<h4 id="lettuce-0-crossslot">Lettuce 集群客户端 — 全部 0 CROSSSLOT</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">CROSSSLOT</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">平均延迟</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">①</td>
+<td style="text-align: left;">LETTUCE_RANDOM (SETEX)</td>
+<td style="text-align: left;"><strong>0</strong></td>
+<td style="text-align: left;">~167-171k</td>
+<td style="text-align: left;">2.23ms</td>
+<td style="text-align: left;">跨槽 Pipeline 自动分组路由</td>
+</tr>
+<tr>
+<td style="text-align: left;">②</td>
+<td style="text-align: left;">LETTUCE_HASHTAG (SETEX)</td>
+<td style="text-align: left;"><strong>0</strong></td>
+<td style="text-align: left;">~152-174k</td>
+<td style="text-align: left;">2.24ms</td>
+<td style="text-align: left;">hashtag 同槽 Pipeline</td>
+</tr>
+<tr>
+<td style="text-align: left;">③</td>
+<td style="text-align: left;">LETTUCE_MSET_RANDOM</td>
+<td style="text-align: left;"><strong>0</strong></td>
+<td style="text-align: left;">~202-227k</td>
+<td style="text-align: left;">1.74ms</td>
+<td style="text-align: left;">跨槽 MSET 自动拆分</td>
+</tr>
+<tr>
+<td style="text-align: left;">④</td>
+<td style="text-align: left;">LETTUCE_MSET_HASHTAG</td>
+<td style="text-align: left;"><strong>0</strong></td>
+<td style="text-align: left;"><strong>~356-431k</strong></td>
+<td style="text-align: left;"><strong>0.86ms</strong></td>
+<td style="text-align: left;">同槽 MSET 无需拆分，最快</td>
+</tr>
+<tr>
+<td style="text-align: left;">⑤</td>
+<td style="text-align: left;">LETTUCE_HGET</td>
+<td style="text-align: left;"><strong>0</strong></td>
+<td style="text-align: left;"><strong>~391k</strong></td>
+<td style="text-align: left;"><strong>0.94ms</strong></td>
+<td style="text-align: left;">Pipeline HGET 跨槽读</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>测试条件说明</strong>（供复现参考）：
+- 硬件: Docker 单机，4 core / 8G 内存分配给集群节点
+- Redis 版本: 7.x（docker-compose <code>redis:7-alpine</code>）
+- 网络: Docker bridge 内网（<code>cluster-net</code>），延迟 &lt; 0.1ms
+- 客户端: Lettuce 6.x，4 并发线程，batchSize=100
+- 并发/批次: 4 并发 × 100 cmd/batch，自动 flush
+- value/payload: 约 100 bytes（简单字符串）
+- 集群拓扑: 3 主 3 从，单机部署</p>
+<p>注：不同环境（网络、硬件、value 大小、并发数）的绝对数值会有差异，关注相对趋势即可。</p>
+</blockquote>
+<h4 id="raw-100-crossslot">RAW 单节点直连 — 100% CROSSSLOT</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">CROSSSLOT (每5秒)</th>
+<th style="text-align: left;">cmd/s</th>
+<th style="text-align: left;">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">①</td>
+<td style="text-align: left;">RAW_MSET</td>
+<td style="text-align: left;">~146-159 万</td>
+<td style="text-align: left;">0.4</td>
+<td style="text-align: left;">MSET 跨槽 → CROSSSLOT</td>
+</tr>
+<tr>
+<td style="text-align: left;">②</td>
+<td style="text-align: left;">RAW_MGET</td>
+<td style="text-align: left;">~150 万</td>
+<td style="text-align: left;">0.4</td>
+<td style="text-align: left;">MGET 跨槽 → CROSSSLOT</td>
+</tr>
+<tr>
+<td style="text-align: left;">③</td>
+<td style="text-align: left;">RAW_DEL</td>
+<td style="text-align: left;">~158 万</td>
+<td style="text-align: left;">0.4</td>
+<td style="text-align: left;">DEL 跨槽 → CROSSSLOT</td>
+</tr>
+<tr>
+<td style="text-align: left;">④</td>
+<td style="text-align: left;">RAW_LUA</td>
+<td style="text-align: left;">~118-154 万</td>
+<td style="text-align: left;">0.4</td>
+<td style="text-align: left;">Lua 跨槽 → CROSSSLOT</td>
+</tr>
+<tr>
+<td style="text-align: left;">⑤</td>
+<td style="text-align: left;">RAW_MULTI</td>
+<td style="text-align: left;">~3.5-5.6 万</td>
+<td style="text-align: left;">0.4</td>
+<td style="text-align: left;">MULTI 跨槽 → CROSSSLOT</td>
+</tr>
+</tbody>
+</table>
+<h3 id="79">7.9 对比总结</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"></th>
+<th style="text-align: left;">集群客户端</th>
+<th style="text-align: left;">单节点直连</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>跨槽 Pipeline</strong></td>
+<td style="text-align: left;">✅ 自动按 slot 分组发送</td>
+<td style="text-align: left;">❌ CROSSSLOT 轰炸</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>跨槽 MSET/MGET/DEL</strong></td>
+<td style="text-align: left;">✅ 自动拆分为单 key 命令</td>
+<td style="text-align: left;">❌ CROSSSLOT 轰炸</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>跨槽 Lua / MULTI</strong></td>
+<td style="text-align: left;">❌ <strong>无法拆分保持原子性 → 报错</strong></td>
+<td style="text-align: left;">❌ CROSSSLOT 轰炸</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>CROSSSLOT 错误量</strong></td>
+<td style="text-align: left;">0（除 Lua/MULTI）</td>
+<td style="text-align: left;">100%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>吞吐</strong></td>
+<td style="text-align: left;">正常（17-43 万 cmd/s）</td>
+<td style="text-align: left;">全部失败</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>需要 hash tag？</strong></td>
+<td style="text-align: left;">仅 Lua/MULTI 必须；其他可选</td>
+<td style="text-align: left;">是（唯一能避免的方式）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注意</strong>：HASHTAG 方案在集群客户端下仍有益处——避免 MSET 拆分开销，MSET_HASHTAG 性能（356-431k cmd/s）是 MSET_RANDOM（202-227k cmd/s）的 ~1.7-1.9 倍。</p>
+</blockquote>
+<h3 id="710">7.10 核心结论</h3>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────────────┐
+│                    场景 7 核心发现                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ★ CROSSSLOT 只存在于"命令最终落到不拥有全部 key 的单个节点"时           │
+│                                                                         │
+│  1. 集群客户端（Lettuce/Jedis ClusterClient）自动处理跨槽路由            │
+│     - Pipeline 单 key 命令: 按 slot 分组，自动发往不同节点              │
+│     - MSET/DEL/MGET: 自动拆分为单 key 命令（无状态命令可安全拆分）       │
+│     - 结论: 单 key 命令和可拆分多 key 命令 CROSSSLOT = 0                │
+│                                                                         │
+│  2. Lua / MULTI 是例外——必须同槽！                                       │
+│     - 客户端无法把单个脚本/事务拆到多个节点并保持原子性                   │
+│     - 跨槽的 Lua/MULTI 在所有客户端下都会失败（CROSSSLOT 或客户端报错）  │
+│     - 解决方案: 必须使用 hash tag {分片键} 确保所有 key 同槽             │
+│                                                                         │
+│  3. CROSSSLOT 触发场景（包括非显式绕过客户端的情况）:                     │
+│     - 直接 redis-cli -h 单节点 -p 6379 跑多 key 命令                    │
+│     - 用普通 RedisClient（非 RedisClusterClient）连集群单节点            │
+│     - 不支持 Cluster 的代理（如旧版 Twemproxy）、错误的 LB/DNS 配置      │
+│     - 集群客户端内拿到单节点连接（非 cluster-aware 连接）做 pipeline      │
+│     → 本质: 任何时刻命令发往"不拥有所有 key 的单个节点" → CROSSSLOT     │
+│                                                                         │
+│  4. Hash Tag 的价值:                                                    │
+│     - 对 Lua/MULTI: 必须（否则无法执行）                                 │
+│     - 对 MSET/DEL: 性能优化（避免拆分开销，吞吐 ~2x）                    │
+│     - 对 Pipeline SETEX/HGET: 不需要（客户端已自动分组）                 │
+│                                                                         │
+│  5. 客户端重定向（MOVED / ASK）内置处理:                                 │
+│     - MOVED: 节点告知"key 归另一个节点管"，客户端更新 slot→node 映射并重试│
+│     - ASK: 节点告知"key 正在迁移中"，客户端临时重定向（不更新映射表）     │
+│     - 优秀客户端库（Lettuce/Jedis）自动处理两者，业务代码无感知           │
+│                                                                         │
+│  6. 单机 → 集群迁移 checklist:                                           │
+│     ☐ 确保使用集群客户端（RedisClusterClient / JedisCluster）            │
+│     ☐ **Lua/MULTI 场景必须用 hash tag 保证同槽**                         │
+│     ☐ 不要用普通客户端直连集群单节点，避免代理/LB 错误配置                │
+│     ☐ 性能敏感: 多 key 写用 hash tag 避免拆分开销 ~2x                   │
+│     ☐ 必须使用 cluster-aware pipeline API                                │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h3 id="711-crc16">7.11 CRC16 由客户端自动计算 — 应用层无需关心</h3>
+<p><strong>集群客户端自动完成 CRC16 计算和节点路由，业务代码不需要写任何 CRC16 逻辑。</strong></p>
+<div class="codehilite"><pre><span></span><code>你的 Java 代码:
+  clusterClient.sync().set("user:1001", "value");
+
+Lettuce 内部自动做的事:
+  ① CRC16("user:1001") % 16384 → slot 12182
+  ② 查 slot→node 映射表 → master-2 (172.20.0.3:6379)
+  ③ 发 SET 命令到 master-2
+  ④ 拿到响应返回给你
+
+零行 CRC16 代码，零次手动路由。
+</code></pre></div>
+
+<p>压测已证明：LETTUCE_RANDOM、LETTUCE_MSET_RANDOM、LETTUCE_HGET 全部 <strong>CROSSSLOT = 0</strong>，CRC16 计算和路由全是客户端库内部的事。</p>
+<p><strong>唯一需要手动算 CRC16 的场景</strong>：设计 hashtag 策略时，验证不同 tag 值是否均匀分布。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 仅用于验证分片均匀性，生产代码不需要</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">slot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CRC16</span><span class="p">.</span><span class="na">crc16</span><span class="p">((</span><span class="s">"user:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">).</span><span class="na">getBytes</span><span class="p">())</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">16384</span><span class="p">;</span>
+<span class="w">    </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="s">"user:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" → slot "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">slot</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h4 id="7111-moved-ask">7.11.1 客户端重定向：MOVED 与 ASK</h4>
+<p>集群客户端内置处理以下两种重定向，业务代码无感知：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">重定向类型</th>
+<th style="text-align: left;">触发条件</th>
+<th style="text-align: left;">客户端行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>MOVED</strong></td>
+<td style="text-align: left;">key 归属的 slot 不在当前节点</td>
+<td style="text-align: left;">更新 slot→node 映射表，自动重试到正确节点</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>ASK</strong></td>
+<td style="text-align: left;">key 正在 slot migration 中，暂时在旧节点</td>
+<td style="text-align: left;">临时重定向到目标节点（不更新映射表），仅该次请求</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>MOVED 流程:
+  客户端发送 SET k1 v1 → 节点 A
+  节点 A: "k1 归 slot 6374，MOVED to 节点 B"
+  客户端: 更新 slot 6374→节点 B，自动重发 SET k1 v1 → 节点 B ✅
+
+ASK 流程（slot 迁移窗口）:
+  客户端发送 GET k1 → 节点 A
+  节点 A: "k1 正在迁移，ASK to 节点 B"
+  客户端: 仅本次请求发往节点 B，下一条请求仍然查原映射表
+</code></pre></div>
+
+<blockquote>
+<p>Lettuce 和 Jedis 的集群客户端都内置了 MOVED/ASK 处理。
+使用 <code>RedisClusterClient</code> 时无需额外配置，连接池和拓扑刷新也由库管理。</p>
+</blockquote>
+<h3 id="712-hashtag">7.12 Hashtag 打散策略与最佳实践</h3>
+<p><strong>核心原则：打散但要可控，不能随机打。</strong></p>
+<div class="codehilite"><pre><span></span><code>❌ 错误: 所有人用同一个 hashtag
+
+  key = "{user}:order:1001"    → 都在 slot 1234 → 都在 master-1
+  key = "{user}:order:1002"    → 都在 slot 1234
+  key = "{user}:cart:5001"     → 都在 slot 1234
+
+  → master-1 CPU 100%，master-2/3 闲着 → 热点！
+
+❌ 错误: hashtag 完全是随机值
+
+  key = "{rnd583}:order:1001"  → slot A
+  key = "{rnd291}:cart:1001"   → slot B
+  → 两个 key 永远无法合并 MSET → 失去 hashtag 的价值
+
+✅ 正确: 按业务实体稳定分片
+
+  key = "{1001}:order"         → slot X  ← 用户 1001 所有数据同一个 slot
+  key = "{1001}:cart"          → slot X  ← 可 MSET/DEL/Lua 高效操作
+  key = "{1002}:order"         → slot Y  ← 用户 1002 不同 slot
+  key = "{1002}:cart"          → slot Y
+
+  → 同用户数据高效聚合 + 不同用户负载自然分散
+</code></pre></div>
+
+<p><strong>一条规则：hashtag 的业务实体数量 &gt;&gt; Redis 主节点数量 &gt;&gt; 1</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">hashtag 策略</th>
+<th style="text-align: left;">理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>用户维度数据</strong></td>
+<td style="text-align: left;"><code>{userId}</code></td>
+<td style="text-align: left;">一个用户的所有 key 在同一 slot，可用 MSET 批量操作</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>订单维度</strong></td>
+<td style="text-align: left;"><code>{orderId}</code></td>
+<td style="text-align: left;">订单相关的 order + items + log 同槽</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>消息/时间线</strong></td>
+<td style="text-align: left;"><code>{bucket}</code> 如 <code>{hour-12}</code></td>
+<td style="text-align: left;">按时间窗口分桶</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>全局缓存</strong></td>
+<td style="text-align: left;"><strong>不加 hashtag</strong></td>
+<td style="text-align: left;">单 key 操作无需同槽，集群自然分布即可</td>
+</tr>
+</tbody>
+</table>
+<p><strong>当前代码示例：<code>{tag1}</code> ~ <code>{tag8}</code>，8 个固定 tag 均匀落到 3 个 master。</strong></p>
+<h4 id="7121-hashtag">7.12.1 提前设计 Hashtag：单机 → 集群平滑预备</h4>
+<p><strong>强烈建议：即使在单体 Redis 阶段，就按集群规范设计 key 格式（预埋 <code>{}</code>）。</strong></p>
+<div class="codehilite"><pre><span></span><code>单体阶段就写:
+
+  user:{1001}:profile     ← 即使现在只有单机，{1001} 也无副作用
+  user:{1001}:orders      ← 单机下 CRC16 不参与路由，但格式已就绪
+  user:{1001}:cart
+
+迁移集群时:
+
+  数据原样导入 → {1001} 自动将同一用户的 key 锚定到同一 slot
+  → MSET / Lua / MULTI 全都可以直接使用，零 key 改动 ✅
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>反例：单体阶段没加 {}：
+
+  user:1001:profile       ← 单体下无所谓
+  user:1001:orders
+  user:1001:cart
+
+迁移集群时:
+
+  三个 key 分到三个不同 slot → MSET 被拆分，性能打对折
+  如果要加 {} → 需要全量改 key 格式 + 重新写入数据 → 巨大成本
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">单体阶段</th>
+<th style="text-align: left;">迁移集群</th>
+<th style="text-align: left;">总成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>提前加 <code>{}</code></strong></td>
+<td style="text-align: left;">零额外成本，<code>{}</code> 在单机下无任何影响</td>
+<td style="text-align: left;">零改动，直接迁移</td>
+<td style="text-align: left;"><strong>最低</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>不加 <code>{}</code></strong></td>
+<td style="text-align: left;">零成本</td>
+<td style="text-align: left;">单 key 命令 OK；多 key 性能打折扣；想优化必须改 key</td>
+<td style="text-align: left;"><strong>高</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>提前加 <code>{}</code> 就像建楼时预留电梯井——用不上时没感觉，将来需要时就是零成本升级。</strong></p>
+</blockquote>
+<h3 id="713">7.13 单机升级集群迁移指南</h3>
+<p><strong>推荐停服迁移以获得最简单可靠的迁移路径。</strong></p>
+<div class="codehilite"><pre><span></span><code>为什么推荐停服（风险最低）:
+  集群建立后 slot 立刻有了归属。
+  在线迁移需要协调 slot 逐批搬迁、客户端 MOVED/ASK 重定向、迁移期间的幂等性。
+  对大多数场景，几分钟的停服窗口远小于在线迁移出问题的排查时间。
+
+  单机 → 集群 = 数据物理重分布（2/3 的数据要搬到新节点）
+</code></pre></div>
+
+<blockquote>
+<p><strong>如果需要零停机</strong>，可使用 <code>redis-cli --cluster reshard</code> 在线逐批搬 slot。前提：
+- 客户端正确实现了 MOVED 重定向（更新 slot→node 映射后自动重试）
+- 客户端正确处理 ASK 临时重定向（迁移中的 key 暂时在源节点）
+- 业务层有幂等性保证或可容忍搬迁期间的短暂不可用
+- <strong>必须在测试环境充分验证</strong></p>
+</blockquote>
+<h4 id="7131-hashtag">7.13.1 原有数据是否需要加 hashtag？</h4>
+<p><strong>不需要。</strong> 原有 key 原样迁入集群，单条 GET/SET 命令完全正常。</p>
+<div class="codehilite"><pre><span></span><code>迁移前 key:
+  user:1001:profile    → 独立 key，CRC16 自动算 → 落在某个 slot ✅
+  order:5001:items     → 独立 key，CRC16 自动算 → 落在某个 slot ✅
+
+迁移后:
+  GET user:1001:profile   → 客户端自动算 slot → 路由到正确节点 ✅
+
+  MSET user:1001:profile v1 user:1001:scores v2 ...
+  → Lettuce 自动拆分为多条 SET → 工作正常，只是比单条 MSET 慢 ~2x
+</code></pre></div>
+
+<p><strong>只有想用多 key 命令做性能优化时，才需要加 hashtag 并改写 key 格式。这是可选的后续优化。</strong></p>
+<h4 id="7132">7.13.2 迁移流程</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># === 1. 停服 ===</span>
+<span class="c1"># 关闭业务流量入口</span>
+
+<span class="c1"># === 2. 从单机 dump 数据 ===</span>
+redis-cli<span class="w"> </span>-h<span class="w"> </span>原节点<span class="w"> </span>BGSAVE<span class="w">           </span><span class="c1"># 生成 dump.rdb</span>
+
+<span class="c1"># === 3. 启动 3 主 3 从集群（6 个空节点）===</span>
+docker-compose<span class="w"> </span>--profile<span class="w"> </span>cluster<span class="w"> </span>up<span class="w"> </span>-d
+
+<span class="c1"># === 4. 建立集群关系 ===</span>
+redis-cli<span class="w"> </span>--cluster<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="m">172</span>.20.0.2:6379<span class="w"> </span><span class="m">172</span>.20.0.3:6379<span class="w"> </span><span class="m">172</span>.20.0.4:6379<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="m">172</span>.20.0.5:6379<span class="w"> </span><span class="m">172</span>.20.0.6:6379<span class="w"> </span><span class="m">172</span>.20.0.7:6379<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--cluster-replicas<span class="w"> </span><span class="m">1</span>
+
+<span class="c1"># === 5. 把旧数据导入集群 ===</span>
+<span class="c1"># 方式 A: 用 redis-cli --cluster import 从旧节点 pipe 导入</span>
+<span class="c1"># 方式 B: 覆盖一个 master 的 RDB，再 reshard 到其他节点</span>
+
+<span class="c1"># === 6. 验证 slot 分布和 key 数量 ===</span>
+redis-cli<span class="w"> </span>--cluster<span class="w"> </span>check<span class="w"> </span><span class="m">172</span>.20.0.2:6379
+
+<span class="c1"># === 7. 恢复业务 ===</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>几十万 key 迁移通常只需几分钟。停服是最安全、最简单的方案。</strong></p>
+</blockquote>
+<h4 id="7133-checklist">7.13.3 迁移后 checklist</h4>
+<div class="codehilite"><pre><span></span><code>☐ 确认所有客户端使用 RedisClusterClient / JedisCluster（不是单节点客户端）
+☐ 新写入的 key 不需要特殊处理（单条命令自动路由）
+☐ 性能敏感链路: 评估是否需要 hash tag 优化多 key 命令
+☐ Lua 脚本传 key 用 KEYS[] 而非硬编码
+☐ 压测验证吞吐和延迟符合预期
+</code></pre></div>
+
+<h3 id="714">7.14 停止</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 停止 cluster profile</span>
+docker-compose<span class="w"> </span>--profile<span class="w"> </span>cluster<span class="w"> </span>down
+
+<span class="c1"># 清理数据卷（可选）</span>
+docker<span class="w"> </span>volume<span class="w"> </span>rm<span class="w"> </span>redis-project_cluster-data-1<span class="w"> </span>redis-project_cluster-data-2<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>redis-project_cluster-data-3<span class="w"> </span>redis-project_cluster-data-4<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>redis-project_cluster-data-5<span class="w"> </span>redis-project_cluster-data-6
+</code></pre></div>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

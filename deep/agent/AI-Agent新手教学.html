@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI Agent 新手教学（后端工程师·零基础版） · 小番茄程序猿</title>
+<meta name="description" content="AI Agent 新手教学（后端工程师·零基础版） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>AI Agent 新手教学（后端工程师·零基础版）</h1>
+  </div>
+  <article class="prose">
+<h1 id="ai-agent">AI Agent 新手教学（后端工程师·零基础版）</h1>
+<blockquote>
+<p>你是谁：会写后端、懂接口/并发/缓存，但<strong>从没碰过 AI Agent</strong>。
+这份文档怎么读：<strong>从上到下，每一课 = 一个概念 + 你项目里的代码 + 你现在动手试什么</strong>。别跳，前 5 课是地基。
+你的实验室：<code>D:\ai-agent-project\</code>（phase1~6 都是我给你搭好的、能跑的）。</p>
+</blockquote>
+<hr />
+<h2 id="0">第 0 课：一句话建立正确的心智模型（最重要）</h2>
+<p><strong>AI Agent 不是魔法。把它拆成你熟的东西：</strong></p>
+<ul>
+<li><strong>大模型（LLM）= 一个"很聪明但不靠谱的外部 HTTP 服务"</strong>。你 POST 一段文字进去，它返回一段文字。特点：</li>
+<li><strong>无状态</strong>：它不记得你上一句说了什么（每次都要把历史重新发给它）；</li>
+<li><strong>会胡说</strong>：它优化的是"像不像合理的下一句话"，不是"真不真"，所以会一本正经地编数据（术语叫<strong>幻觉 hallucination</strong>）；</li>
+<li><strong>按 token 计费、有延迟</strong>：token≈字词的碎片，输入输出都算钱、都要时间。</li>
+<li><strong>Agent = 围绕这个不靠谱服务写的一个"编排服务"</strong>。它的全部工作就是：<strong>决定往这个服务的输入里塞什么、把它吐出来的东西怎么处理、要不要再调一次</strong>。</li>
+</ul>
+<blockquote>
+<p>类比：LLM 就像一个"能力很强但爱吹牛、记性为零、按次收费的外部 API"。Agent 工程 = 你怎么把这个 API 用得靠谱。你过去治理"不靠谱下游服务"的那套（超时/重试/降级/缓存/对账/监控）<strong>全部适用</strong>。</p>
+</blockquote>
+<p>记住三句话，后面每一课都在展开它：
+1. <strong>上下文窗口 = 模型唯一的"内存"</strong>；
+2. <strong>token = 模型唯一的"成本和带宽"</strong>；
+3. <strong>非确定性 = 你唯一的对手</strong>（同样的输入，输出可能不一样）。</p>
+<hr />
+<h2 id="1-phase1">第 1 课：第一次"调用模型"（phase1 前半）</h2>
+<p><strong>概念</strong>：所谓调用模型，就是发一个 HTTP 请求，带上"提示词(prompt)"，拿回一段文本。
+- 你项目里：<code>phase1-minimal-agent</code> 的 <code>AgentController</code> 里 <code>chatClient.prompt().user(问题).call().content()</code> 就是"问一句、答一句"。
+- 关键参数：<code>temperature</code>（0=稳定可复现，越高越发散）；<code>model</code>（选哪个模型）。</p>
+<p><strong>动手</strong>：起 phase1，<code>curl -X POST localhost:8080/api/agent/chat -d "你好"</code>，看它回话。再 <code>curl -N ".../stream?text=..."</code> 看<strong>流式</strong>（字一个个吐，因为模型是逐 token 生成的）。</p>
+<p><strong>新手误区</strong>：以为"模型记住了刚才的对话"。不——除非你把历史重新发过去（这就是第 4 课的"记忆"）。</p>
+<hr />
+<h2 id="2-function-callingphase1">第 2 课：让模型"动手"——工具调用（Function Calling）（phase1 核心）</h2>
+<p><strong>这是 Agent 的心脏，务必吃透。</strong></p>
+<p><strong>概念</strong>：模型只会输出文字，它<strong>不能自己查数据库/调接口</strong>。所谓"工具调用"是一个配合：
+1. 你在请求里附带一份"工具说明书"：有哪些工具、叫什么名、参数是什么（JSON Schema）；
+2. 模型看完问题，如果觉得"我该用工具"，它<strong>不返回人话</strong>，而是返回一个结构化意图：<code>我要调用 searchSchools，参数 {city:"北京"}</code>；
+3. <strong>你的代码（框架）</strong>看到这个意图，去真正执行那个方法，拿到结果；
+4. 把结果<strong>塞回对话</strong>再发给模型；
+5. 模型这次基于结果，给出人话答案（或再要下一个工具）。</p>
+<blockquote>
+<p>所以"自主"= 上面 2→3→4→5 这个<strong>循环</strong>（模型说要调→框架调→结果回填→模型再想→…→不再要工具就停）。智能来自"模型会规划下一步"，能力来自"框架真的去执行"。</p>
+</blockquote>
+<p><strong>你项目里</strong>：<code>phase1</code> 的 <code>DemoTools</code> 里 <code>@Tool</code> 注解的方法（<code>calculator</code>、<code>orderStatus</code>）。<code>@Tool</code> 的 <code>description</code> 是<strong>写给模型看的说明书</strong>——写得越清楚，模型越会在对的时候、传对的参数去调它。这是新手最容易忽略、却最影响效果的点。</p>
+<p><strong>动手</strong>：<code>curl -X POST localhost:8080/api/agent/chat -d "先算(128+64)*3，再查订单A1001"</code>。看它<strong>连调两个工具</strong>再汇总——这就是多步自主。</p>
+<p><strong>新手误区</strong>：
+- 以为模型"执行"了工具。没有，执行的是你的框架；模型只是"点菜"。
+- 工具返回值别原样丢一大坨 JSON 回去——每多一个字都是 token 成本、还会干扰模型。要<strong>裁剪</strong>（你项目里就只留关键字段、最多 8 条）。</p>
+<hr />
+<h2 id="3-ragphase2">第 3 课：给模型"外挂知识"——RAG（phase2）</h2>
+<p><strong>问题</strong>：模型不知道你私有的资料（你的文档、你的业务数据），而且它会编。
+<strong>解法 RAG（检索增强生成）</strong>：回答前，先去你自己的资料库里<strong>搜出相关的几段</strong>，塞进 prompt，告诉模型"只根据这些资料回答"。</p>
+<p><strong>概念拆解</strong>：
+- <strong>Embedding（向量化）</strong>：用一个模型把任意文本变成一串数字（向量，如 1024 维）。<strong>意思相近 → 向量距离近</strong>。于是"找相关资料"变成"算哪几段向量离问题最近"。
+- <strong>向量库</strong>：存这些向量、能快速找最近的。你项目用 <code>SimpleVectorStore</code>（内存版，够学习用）。
+- <strong>分块(chunk)</strong>：长文档要切成小段分别存。切太大→噪声多，切太碎→语义断。这是 RAG 效果的第一杠杆。
+- <strong>检索→拼上下文→约束作答</strong>：搜出 Top-K 段 → 拼进 prompt → 让模型只依据它回答，并<strong>标注引用</strong>（能溯源=防幻觉）。</p>
+<p><strong>你项目里</strong>：<code>phase2-rag</code>，语料在 <code>src/main/resources/kb/*.md</code>，启动时自动切分+向量化入库；<code>/api/rag/ask?q=...</code> 问答并带 <code>(资料N)</code> 引用。</p>
+<p><strong>动手</strong>：起 phase2，<code>curl -G localhost:8082/api/rag/ask --data-urlencode "q@问题.txt"</code>（注意：中文要走 UTF-8 文件，见第 8 课坑）。看答案 + 引用来源。</p>
+<p><strong>新手误区</strong>：以为 RAG 是"把整个文档库塞进 prompt"——不是，是<strong>检索出最相关的几段</strong>再塞（上下文有限、token 贵）。</p>
+<hr />
+<h2 id="4-phase3">第 4 课：多轮对话——"记忆"（phase3）</h2>
+<p><strong>概念</strong>：模型无状态。所谓"记住上文"，是<strong>框架把之前的对话历史，每轮重新拼进 prompt 发给模型</strong>。
+- 最简单：滑动窗口，保留最近 N 轮（你项目 <code>MessageWindowChatMemory(20)</code>）。
+- 代价：历史越长，token 越多、越贵越慢，且太长模型会"注意力涣散"。所以有摘要、向量长期记忆等进阶手段（现在先知道有这回事）。</p>
+<p><strong>你项目里</strong>：<code>phase3-agent</code> 的 <code>/api/a3/chat?cid=会话id&amp;q=...</code>，同一个 <code>cid</code> 就能追问。</p>
+<p><strong>动手</strong>：先问"北京前三院校"，同一 cid 再问"那上海的呢"——它没让你重复，说明记住了。</p>
+<p><strong>新手误区</strong>：把"记忆"想成数据库存东西。它本质是"每次重新发历史"，是<strong>成本</strong>，不是免费的。</p>
+<hr />
+<h2 id="5-phase3">第 5 课：接你自己的真实业务（phase3）</h2>
+<p>前面工具都是假的（计算器、假订单）。这一课把工具接到<strong>你真实的后端接口</strong>上——这才是 Agent 有生产价值的地方。
+- 做法：把"查院校/查专业/查课程"这些真实 HTTP 接口，包成 <code>@Tool</code> 方法（方法内部用 HTTP 客户端调你的后端）。
+- 你项目里：<code>phase3-agent</code> 的 <code>RuidaxingTools</code> 调 <code>http://127.0.0.1/wxma/school</code> 等（瑞达星后端，跑在沙盒）。模型问"北京前三院校"，它真的去查你的库拿真数据。
+- 关键纪律：<strong>Agent 只连本机后端，永不默认打生产</strong>。</p>
+<p><strong>动手</strong>：起后端+phase3，问一个只有你库里才有的事实（如某校软科排名），看它是不是真查出来的。</p>
+<hr />
+<h2 id="6-mcpphase5">第 6 课：MCP——把"工具"标准化、解耦（phase5）</h2>
+<p><strong>问题</strong>：第 5 课的工具是<strong>写死在 Agent 代码里</strong>的。加个工具就得改代码、重编译；换个 Agent 又得重写。
+<strong>MCP（Model Context Protocol）</strong>= 给"工具"定一个通用协议（类比：<strong>USB-C</strong>）。工具提供方做成一个 <strong>MCP Server</strong> 对外声明"我有哪些工具"；Agent 作为 <strong>MCP Client</strong> 运行时<strong>动态发现并调用</strong>，不写死。
+- 你项目里：<code>phase5-mcp-server</code> 把 <code>/wxma</code> 那几个接口封成 MCP 工具；<code>phase5-mcp-client</code> 那个 Agent 启动时通过 <code>tools/list</code> 自动拿到工具清单。
+- 传输：本地用 stdio，网络用 <strong>streamable-http</strong>（一个 <code>/mcp</code> 端点 + 会话 id）。</p>
+<p><strong>动手</strong>：起 server(8085)+client(8086)，问一句，看 client 日志里工具是"从 MCP 发现的"而不是代码里写死的。</p>
+<p><strong>新手误区</strong>：一上来就上微服务/多 agent。先单 agent + 好工具 + 好评测，MCP 是"解耦工具"的手段，不是必须。</p>
+<hr />
+<h2 id="7-phase4">第 7 课：让它"能扛"——工程化护栏（phase4）</h2>
+<p>模型和下游都不靠谱，Agent 要能稳定扛住流量。全是你熟的后端套路：
+- <strong>超时 + 降级</strong>：调下游设超时；下游挂了要<strong>快速失败并返回"不可用"</strong>，让模型如实说"查不到"，而不是瞎编。
+- <strong>舱壁（并发上限）</strong>：限制同时打模型的请求数（信号量），超了直接快速拒绝(503)——<strong>保护付费模型和线程</strong>。
+- <strong>熔断</strong>：下游连续失败就暂停一段时间，别一直撞墙。
+- <strong>缓存</strong>：重复的查询直接返回，把下游移出热路径（你项目实测 p95 从 836ms 降到 12ms）。
+- <strong>可观测</strong>：每次调用的延迟、token 用量、成本、工具成功/失败都要能看见（否则 Agent 是黑盒）。</p>
+<p><strong>你项目里</strong>：<code>phase4-agent-ops</code>（<code>ToolGateway</code> 缓存+熔断、<code>AgentService</code> 舱壁、<code>AgentMetrics</code> 指标、k6 压测脚本）。</p>
+<p><strong>动手</strong>：起 phase4，<code>curl localhost:8084/api/ops/snapshot</code> 看延迟/成本/工具计数；把工具基址指个死端口，看它怎么优雅降级。</p>
+<hr />
+<h2 id="8-phase6">第 8 课：怎么知道它"好不好"——评测（phase6，最值钱的一课）</h2>
+<p><strong>为什么难</strong>：Agent 输出非确定、没有标准答案。跑一次"感觉挺对"不算数。
+<strong>做法</strong>：造一批"带标准答案的测试题"，每次改动都自动跑分。几种打分方式，各有适用：
+- <strong>关键词硬校验</strong>：答案里有没有关键事实（简单、可回归）；
+- <strong>LLM-as-judge</strong>：让另一个模型当裁判打分（能判"部分正确/幻觉"，但裁判自己也会错、会抖）；
+- <strong>trajectory（轨迹评测）</strong>：看它<strong>到底调没调对工具、参数对不对</strong>——这是 Agent 专属、前两种测不出的（能抓"模型凭常识瞎答、根本没查库"）；
+- <strong>RAGAS 四指标</strong>：给 RAG 用的 faithfulness/relevancy/precision/recall。
+<strong>两条铁律</strong>（新手最该记住）：
+1. <strong>单次结果会抖</strong> → 跑 N 次取<strong>中位数</strong>、看离散度，别拿一个百分比下结论；
+2. <strong>数字难看先怀疑"尺子"</strong>：是指标选错、还是裁判判错，还是系统真差——先归因再优化（我们踩过 precision@k 假象、裁判假阴性两次，都是"尺子错"）。</p>
+<p><strong>你项目里</strong>：<code>phase6-eval</code>（三路打分 + <code>gate.sh</code> CI 门禁，卡中位数阈值）。</p>
+<p><strong>动手</strong>：起全栈后 <code>bash run-e2e-gate.sh</code>，看它自动起服务→跑评测→中位数→门禁过/不过。</p>
+<hr />
+<h2 id="_1">环境怎么起（你的实验室）</h2>
+<ul>
+<li>一键起全栈 + 跑评测门禁：<code>bash D:\ai-agent-project\run-e2e-gate.sh</code></li>
+<li>逐接口怎么 curl、各服务端口：见 <code>D:\ai-agent-project\README.md</code>（索引+手册）</li>
+<li>数据从哪来、代码链路：见 <code>D:\ai-agent-project\全链路.md</code></li>
+<li>⚠️ 两个必踩的坑先记住：① 模型 base-url 到 <code>/compatible-mode</code>（不带 /v1）；② <strong>Windows 的 Git Bash 里 curl 传中文会乱码</strong>，中文请求体一律写成 UTF-8 文件用 <code>--data @文件</code>。</li>
+</ul>
+<h2 id="_2">建议学习顺序（新手）</h2>
+<p>第0课心智 → 第1课调用 → 第2课工具(心脏) → 第3课RAG → 第4课记忆 → 第5课接真实业务 → 第7课护栏 → 第6课MCP → 第8课评测。
+每课都"起对应 phase、跑那条 curl、看结果"，<strong>动手 &gt; 看字</strong>。</p>
+<h2 id="glossary">术语小抄（glossary）</h2>
+<ul>
+<li><strong>LLM/大模型</strong>：文本进文本出的外部服务。</li>
+<li><strong>prompt/提示词</strong>：你发给模型的输入。</li>
+<li><strong>token</strong>：文本碎片，计费与长度单位。</li>
+<li><strong>temperature</strong>：输出随机度，0 最稳。</li>
+<li><strong>幻觉 hallucination</strong>：模型一本正经编假内容。</li>
+<li><strong>Function/Tool Calling</strong>：模型输出"要调哪个工具+参数"，框架执行。</li>
+<li><strong>ReAct</strong>：边想(Reason)边做(Act)的循环范式。</li>
+<li><strong>Embedding/向量</strong>：文本→数字，语义近=距离近。</li>
+<li><strong>RAG</strong>：先检索再作答。</li>
+<li><strong>chunk/分块</strong>：文档切小段。</li>
+<li><strong>向量库</strong>：存向量+近邻检索（HNSW/IVF 是加速索引）。</li>
+<li><strong>上下文窗口</strong>：模型一次能看的最大长度=它的内存。</li>
+<li><strong>MCP</strong>：工具的通用协议（tools/list 发现、tools/call 调用）。</li>
+<li><strong>Agent</strong>：把上面这些编排起来、能自主多步完成任务的服务。</li>
+<li><strong>trajectory 评测</strong>：评它中间步（调没调对工具）而不只是最终答案。</li>
+</ul>
+<h3 id="4">第4课补充实验：用"指代词"肉眼验证记忆（强烈推荐亲手做）</h3>
+<p>给 <code>/chat</code> 加 <code>memory</code> 开关（读历史+写历史 或 完全脱离），然后对比：
+- a) <code>cid=s1</code>："查一下上海的院校"（memory=true）→ 答出列表
+- b) <code>cid=s1</code>："那同济呢"（memory=true）→ 接上上文，答同济详情 ✓
+- c) <code>cid=s1</code>："那同济呢"（memory=false）→ <strong>也能答</strong>！因为"同济"在问题里，工具按名字查即可——注意这个坑：问题自带实体时，测不出记忆
+- history 验证：s1 里只有 b 没有 c → <strong>memory=false 既不读也不写</strong> ✓
+- d) <code>cid=s1</code>："那它的学费"（memory=true）→ "它"=上文的同济 → 查出真学费 ✓
+- e) 同句（memory=false）→ "它"无法解析 → <strong>反问"哪所院校？"</strong> ✓
+<strong>d/e 是决定性对比</strong>：指代词只能靠历史解析——有历史答、无历史问。这就是"上下文是框架拼的"的肉眼证据。</p>
+<h3 id="7">第7课补充实验：三道护栏的实测方法（已全跑通）</h3>
+<ul>
+<li><strong>舱壁</strong>：6 并发 <code>/api/ops/chat</code>（LLM并发上限=3）→ 3×503 秒拒 + 2×200（mean 11.8s）+1 客户端超时。<strong>拒得快、放行的变慢</strong>——并发保护的真实表现。</li>
+<li><strong>缓存</strong>：<code>/ops/snapshot</code> 看 <code>cache{}</code> 命中计数；压测用 k6（cache-off/on 对比 p95 836→12ms，见 phase4 README）。</li>
+<li><strong>熔断</strong>：混沌实例（工具基址指死端口+TOOL_TIMEOUT_MS=1000）连打 15 次 → 前 5 次真试失败 → <strong>OPEN</strong> → 之后 <strong>11 次 <code>circuit-open</code> 秒拒</strong>，返回 <code>{"unavailable":true}</code>。</li>
+<li>全部数字在 <code>/ops/snapshot</code>：延迟 mean/max、工具 ok/fail、cache hit/miss、breaker.rejects、token 成本。</li>
+</ul>
+<h3 id="56phase5">第5/6课补充实验：复合问题全链路耗时拆解（phase5）</h3>
+<p>问"中大排名第几？在哪个省？有什么学院？有什么专业？"（cid=zd，总耗时 42.8s）：
+- 轨迹：2 次工具调用 search_schools(44ms) + search_majors(46ms)，<strong>工具链路合计 ~90ms（占 0.2%）</strong>；
+- 其余 <strong>42.7s 全是 3 轮 LLM 推理（占 99.8%）</strong>——优化 Agent 延迟先数"转了几轮 LLM"；
+- 模型自己把缩写"中大"解析成中山大学（⚠️ 歧义缩写有风险：中南大学也叫中大）；
+- "学院"没单独调 colleges 接口，从 search_majors 的 college_name 字段带出（省一次调用，但学院覆盖不全=只列有研究生专业的学院）——"省调用"vs"答得全"是业务取舍；
+- 同步 /chat 的首字节=总耗时（无流式）；要看首字延迟得用 /stream。</p>
+<h3 id="6">第6课补充实验：失控与修复的前后对比（必看）</h3>
+<p>问"中山大学有哪些学院？请尽量列全"——但 server 没暴露"列学院"工具：
+- <strong>修复前</strong>：模型拿 search_majors 把能想到的专业关键词<strong>穷举了 100+ 次</strong>（计算机/医学/法学/外语/考古/口腔…），180s 超时无答案，成本爆炸；
+- <strong>修复后</strong>（三处）：① server 补 <code>list_colleges(schoolId)</code> 工具（后端 /wxma/colleges 本来就有）；② client 的 RecordingToolCallback 加<strong>单次请求工具调用硬上限</strong>（超限返回"停止调用"指令让模型收敛）；③ 系统提示"查学院用 list_colleges 一次查全，禁止穷举"。
+- <strong>重跑同一问题：2 次工具调用（search_schools 133ms → list_colleges 79ms）、10.6s 出完整学院列表 20+ 个。</strong>
+三条铁律：<strong>Agent 的能力边界 = 工具清单</strong>（缺能力它就硬凑）；<strong>循环必须有上限</strong>（开放式指令+无上限=成本失控）；<strong>这种失控只有 trajectory 能发现</strong>（终答评测可能还显示"正确"）。</p>
+<h3 id="56">第5/6课补充实验：不存在的大学（防幻觉测试）</h3>
+<p>问"亚特兰蒂斯大学排名第几？有哪些学院？"：
+- 轨迹：先调 search_schools(name=亚特兰蒂斯) → 29ms 返回空；
+- 回答：如实说"该院校不存在于数据库中"，<strong>未编造任何排名/省份/学院</strong> ✓（防幻觉核心成立）；
+- ⚠️ 细节：它顺带补充了"亚特兰蒂斯是柏拉图传说中的文明"等常识背景——来自模型知识而非工具。教育场景无害，<strong>严格业务场景（金融/医疗）应约束"非工具来源的陈述一律不说"</strong>——常识补充是幻觉的温床，这次对不保证下次对。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

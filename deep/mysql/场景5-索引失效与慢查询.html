@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景5：索引失效与慢查询 · 小番茄程序猿</title>
+<meta name="description" content="场景5：索引失效与慢查询 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景5：索引失效与慢查询</h1>
+  </div>
+  <article class="prose">
+<h1 id="5">场景5：索引失效与慢查询</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>MySQL 在<strong>数据量大</strong>时，若查询未命中合适的索引，会退化为<strong>全表扫描（type=ALL）</strong>，导致<strong>慢查询</strong>、<strong>CPU 打满</strong>、<strong>锁表</strong>。索引失效通常源于<strong>写法问题</strong>（函数、隐式转换、like 前导、or、最左前缀、范围等），而非索引本身失效。</p>
+<p>本场景用大数据量表 <code>t_idx_test</code>（20 万行）系统性复现<strong>六类索引失效</strong>，并通过 <code>EXPLAIN</code> + 实测耗时 + 并发压测量化"索引失效 → 慢查询"的因果链。</p>
+<p>演示表 <code>t_idx_test</code>：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>索引</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>BIGINT PK</td>
+<td>主键</td>
+</tr>
+<tr>
+<td>user_id</td>
+<td>BIGINT</td>
+<td>联合索引 <code>(user_id,type,status)</code></td>
+</tr>
+<tr>
+<td>name</td>
+<td>VARCHAR(32)</td>
+<td><code>idx_name</code></td>
+</tr>
+<tr>
+<td>phone</td>
+<td>VARCHAR(20)</td>
+<td><code>idx_phone</code></td>
+</tr>
+<tr>
+<td>type</td>
+<td>INT</td>
+<td>联合索引</td>
+</tr>
+<tr>
+<td>status</td>
+<td>TINYINT</td>
+<td>联合索引</td>
+</tr>
+</tbody>
+</table>
+<h2 id="20">二、九类索引失效实测（20 万行）</h2>
+<blockquote>
+<p><code>type=ALL</code> 表示全表扫描、<code>key=null</code> 表示未使用索引；<code>type=ref/range</code>、<code>key</code> 非空表示走索引。</p>
+</blockquote>
+<h3 id="1-index-invalidfunction">1. 函数操作导致索引失效（<code>/index-invalid/function</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：LEFT() 包裹索引列 → 索引失效</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="k">LEFT</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'用户000'</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：等值 → 走 idx_name</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'用户000001'</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>rows</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（LEFT 函数）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td>20 万</td>
+<td><strong>66ms</strong></td>
+</tr>
+<tr>
+<td>好（等值）</td>
+<td><code>ref</code></td>
+<td>idx_name</td>
+<td>1</td>
+<td><strong>1ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：对索引列做函数运算，索引立即失效，退化为全表扫描。</p>
+<h3 id="2-index-invalidimplicit-cast">2. 隐式类型转换导致索引失效（<code>/index-invalid/implicit-cast</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：phone 是 VARCHAR，用数字比较 → 隐式转换、索引失效</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">phone</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">13800000000</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：字符串字面量 → 走 idx_phone</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">phone</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'13800000000'</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>rows</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（数字）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td>20 万</td>
+<td><strong>53ms</strong></td>
+</tr>
+<tr>
+<td>好（字符串）</td>
+<td><code>ref</code></td>
+<td>idx_phone</td>
+<td>1</td>
+<td><strong>0ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：索引列类型与参数类型不一致，触发隐式转换，索引失效。</p>
+<h3 id="3-like-index-invalidlike-leading">3. like 前导通配符导致索引失效（<code>/index-invalid/like-leading</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：% 在前 → 无法利用 B+ 树最左匹配</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="k">LIKE</span><span class="w"> </span><span class="s1">'%000001'</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：% 在右 → 走 idx_name 范围扫描</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="k">LIKE</span><span class="w"> </span><span class="s1">'用户000001%'</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>rows</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（前导通配）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td>20 万</td>
+<td><strong>89ms</strong></td>
+</tr>
+<tr>
+<td>好（前缀匹配）</td>
+<td><code>range</code></td>
+<td>idx_name</td>
+<td>1</td>
+<td><strong>1ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：<code>LIKE '%xxx'</code> 不满足最左匹配原则，索引失效；<code>LIKE 'xxx%'</code> 走索引。</p>
+<h3 id="4-or-index-invalidor">4. or 连接导致索引失效（<code>/index-invalid/or</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：name 走索引，但 status 无单列索引 → 整体降级全表扫描</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'用户000001'</span><span class="w"> </span><span class="k">OR</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：拆 UNION ALL，name 分支走索引</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'用户000001'</span>
+<span class="k">UNION</span><span class="w"> </span><span class="k">ALL</span><span class="w"> </span><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（or）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td><strong>110ms</strong></td>
+</tr>
+<tr>
+<td>好（UNION ALL）</td>
+<td><code>ref</code></td>
+<td>idx_name</td>
+<td>93ms</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：<code>or</code> 连接的多个条件只要有一个无法走索引，整体就可能退化为全表扫描。</p>
+<h3 id="5-index-invalidleftmost-prefix">5. 联合索引最左前缀失效（<code>/index-invalid/leftmost-prefix</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：直接查 status（跳过最左列 user_id,type）→ 索引失效</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：按最左列 user_id 查询 → 走联合索引</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>rows</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（跳过最左列）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td>20 万</td>
+<td><strong>111ms</strong></td>
+</tr>
+<tr>
+<td>好（最左列）</td>
+<td><code>ref</code></td>
+<td>idx_user_type_status</td>
+<td>20</td>
+<td><strong>1ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：联合索引必须遵循<strong>最左前缀原则</strong>，跳过最左列直接查后面的列，索引失效。</p>
+<h3 id="6-index-invalidrange">6. 范围查询导致索引失效（<code>/index-invalid/range</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：user_id 等值 + type 范围，type 之后 status 无法继续用索引</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：等值匹配，三列都可用索引</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>Extra</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（范围）</td>
+<td><code>range</code></td>
+<td>idx_user_type_status</td>
+<td><code>Using index condition</code></td>
+</tr>
+<tr>
+<td>好（等值）</td>
+<td><code>ref</code></td>
+<td>idx_user_type_status</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：联合索引中<strong>范围条件之后的列</strong>无法继续走索引（只能回表过滤）。范围前用等值，可最大限度利用联合索引。</p>
+<h3 id="7-index-invalidinequality">7. 不等值判断导致索引失效（<code>/index-invalid/inequality</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：user_id &lt;&gt; 100 → 需扫描全部非目标行，索引失效</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">user_id</span><span class="w"> </span><span class="o">&lt;&gt;</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：等值 → 走联合索引</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>rows</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（<code>&lt;&gt;</code>）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td>20 万</td>
+<td><strong>144ms</strong></td>
+</tr>
+<tr>
+<td>好（等值）</td>
+<td><code>ref</code></td>
+<td>idx_user_type_status</td>
+<td>20</td>
+<td><strong>1ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：<code>!=</code>、<code>&lt;&gt;</code>、<code>NOT IN</code>、<code>NOT LIKE</code> 等"取反"运算通常无法走索引（需扫描全部不匹配行），优化器一般选全表扫描。</p>
+<h3 id="8-index-invalidarithmetic">8. 索引列算术运算导致索引失效（<code>/index-invalid/arithmetic</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：对主键列做算术运算 → 索引失效</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：运算移到条件右侧 → 走主键索引</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>rows</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（<code>id+1</code>）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td>20 万</td>
+<td><strong>204ms</strong></td>
+</tr>
+<tr>
+<td>好（<code>id</code>）</td>
+<td><code>range</code></td>
+<td>PRIMARY</td>
+<td>10 万</td>
+<td><strong>94ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：对索引列做 <code>+ - * /</code> 等运算，等价于对索引列套函数 → 索引失效。把运算移到等号/条件右侧即可恢复索引。</p>
+<h3 id="9-is-not-null-index-invalidis-not-null">9. IS NOT NULL 判断导致索引失效（<code>/index-invalid/is-not-null</code>）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 坏：phone IS NOT NULL → 需扫描绝大多数非空行，走全表扫描</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">phone</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">;</span>
+<span class="c1">-- ✅ 好：等值匹配 → 走 idx_phone</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">t_idx_test</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">phone</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'13800000000'</span><span class="p">;</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>type</th>
+<th>key</th>
+<th>rows</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坏（IS NOT NULL）</td>
+<td><code>ALL</code></td>
+<td>null</td>
+<td>20 万</td>
+<td><strong>116ms</strong></td>
+</tr>
+<tr>
+<td>好（等值）</td>
+<td><code>ref</code></td>
+<td>idx_phone</td>
+<td>1</td>
+<td><strong>1ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：<code>IS NULL</code> 通常可走索引（扫描空值区间），但 <code>IS NOT NULL</code> 因需扫描大量非空行，优化器常放弃索引走全表扫描。</p>
+<h2 id="vs-index-invalidbench">三、并发压测：索引失效 vs 生效（<code>/index-invalid/bench</code>）</h2>
+<p>在 20 万行数据上，并发 50、各 2 万次请求，对比索引失效（全表扫描）与索引生效（索引定位）：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>坏 SQL（<code>status=1</code> 全表扫）</th>
+<th>好 SQL（<code>user_id=100</code> 走索引）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>QPS</strong></td>
+<td>8643</td>
+<td><strong>21810</strong></td>
+</tr>
+<tr>
+<td><strong>P99 延迟</strong></td>
+<td>57ms</td>
+<td><strong>22ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：同一并发下，索引失效导致 QPS 降低约 <strong>2.5 倍</strong>、P99 延迟升高约 <strong>2.6 倍</strong>。索引失效是高并发下慢查询与吞吐骤降的核心诱因。</p>
+<h2 id="_2">四、生产避坑准则</h2>
+<ol>
+<li><strong>索引列禁用函数/算术运算</strong>：<code>WHERE LEFT(name,n)=...</code>、<code>WHERE id+1&gt;2</code> → 改写 <code>LIKE 'xxx%'</code>/等值，或把运算移到条件右侧</li>
+<li><strong>类型严格一致</strong>：字符串字段用字符串字面量，杜绝隐式转换（<code>phone = 138...</code> 改为 <code>phone = '138...'</code>）</li>
+<li><strong>like 避免前导通配符</strong>：<code>LIKE '%xxx'</code> 改为 <code>LIKE 'xxx%'</code> 或走搜索引擎</li>
+<li><strong>or 拆分 UNION ALL</strong>：或让 or 的所有条件都能走索引</li>
+<li><strong>联合索引遵守最左前缀</strong>：查询条件从最左列开始；范围条件尽量放最后或用等值</li>
+<li><strong>少用不等值/取反</strong>：<code>!=</code>、<code>&lt;&gt;</code>、<code>NOT IN</code>、<code>NOT LIKE</code> 尽量改写成范围或等值</li>
+<li><strong>避免 IS NOT NULL 大范围</strong>：非空字段筛选优先用等值/范围，而非 IS NOT NULL</li>
+<li><strong>用 EXPLAIN 兜底</strong>：上线前检查 <code>type</code> 是否为 <code>ALL</code>、<code>key</code> 是否为 null</li>
+</ol>
+<h2 id="_3">五、面试简述</h2>
+<blockquote>
+<p><strong>索引失效九大场景</strong>：① 函数操作（<code>LEFT(name)</code> 包裹索引列）；② 隐式类型转换（VARCHAR 字段用数字比较）；③ like 前导通配符（<code>LIKE '%xx'</code>）；④ or 连接（部分条件无法走索引时整体失效）；⑤ 联合索引不满足最左前缀；⑥ 联合索引范围条件之后的列失效；⑦ 不等值判断（<code>!=</code>/<code>&lt;&gt;</code>/<code>NOT IN</code>/<code>NOT LIKE</code>）；⑧ 索引列算术运算（<code>id+1&gt;2</code>）；⑨ <code>IS NOT NULL</code>。实测 20 万行数据下，失效时全表扫描（type=ALL）单次约 50-200ms，生效时走索引（type=ref/range）约 0-1ms，相差约百倍；并发 50 下 QPS 从 21810 降到 8643、P99 从 22ms 升到 57ms。生产用 EXPLAIN 检查 <code>type</code>/<code>key</code>，杜绝全表扫描。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

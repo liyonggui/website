@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>service-user 滚动更新练习（K8s 核心概念 · B） · 小番茄程序猿</title>
+<meta name="description" content="service-user 滚动更新练习（K8s 核心概念 · B） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>service-user 滚动更新练习（K8s 核心概念 · B）</h1>
+  </div>
+  <article class="prose">
+<h1 id="service-user-k8s-b">service-user 滚动更新练习（K8s 核心概念 · B）</h1>
+<blockquote>
+<p>目标：认识 K8s 的<strong>滚动更新（Rolling Update）</strong>与<strong>回滚</strong>，理解"零停机发布"是怎么发生的。
+当前状态：<code>sc-demo</code> 命名空间下，<code>service-user</code> Deployment 副本 2，镜像 <code>sc-user:0.1.0</code>，Service 为 ClusterIP:8081。
+所有 <code>kubectl</code> 命令都在 <strong>WSL 终端</strong>里执行（Windows 侧没有 kubectl）。</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、滚动更新是什么</h2>
+<p>Deployment 发布新版本时，不会"先删旧的再建新的"（那样会有停机窗口），而是：</p>
+<ol>
+<li>新建一个 <strong>新 ReplicaSet</strong>（用新 Pod 模板）</li>
+<li>新 RS <strong>逐个</strong>拉起新 Pod，同时旧 RS <strong>逐个</strong>退出旧 Pod</li>
+<li>任意时刻都有 <code>replicas</code> 个 Pod 在对外服务 → <strong>零停机</strong></li>
+<li>全部替换完成后，旧 RS 缩容到 0，新 RS 接管</li>
+</ol>
+<p><code>kubectl rollout</code> 系列命令就是用来观察、暂停、回滚这条流水线的。</p>
+<hr />
+<h2 id="_2">二、路径一（推荐 · 零构建 · 立刻能玩）</h2>
+<p><strong>思路</strong>：用 <code>kubectl set env</code> 给 Pod 模板加一个环境变量 <code>APP_VERSION=0.2.0</code>，这会改变 Pod 模板的 hash → 触发一次真实的滚动更新。<strong>不需要重新构建镜像</strong>。</p>
+<blockquote>
+<p>注：当前 <code>whoami</code> 接口只返回 Pod 名（不读 <code>APP_VERSION</code>），所以这条路径用来观察"滚动过程"和"零停机"，验证靠 Pod 名新后缀 + <code>rollout status</code>。若想看到版本号文字变化，走路径二。</p>
+</blockquote>
+<h3 id="1">1. 触发滚动更新</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>env<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span><span class="nv">APP_VERSION</span><span class="o">=</span><span class="m">0</span>.2.0
+</code></pre></div>
+
+<h3 id="2">2. 实时看流水线状态（会一直挂到完成）</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>rollout<span class="w"> </span>status<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo
+</code></pre></div>
+
+<p>正常会逐行打印 <code>Waiting for rollout...</code> 直到 <code>deployment "service-user" successfully rolled out</code>。</p>
+<h3 id="3-pod-ctrlc">3. 另开一个窗口看 Pod 新旧交替（Ctrl+C 退出）</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>-w
+</code></pre></div>
+
+<p>你会看到：新后缀的 Pod 进入 <code>Running</code>，同时旧后缀的 Pod 变成 <code>Terminating</code> → <code>Completed</code>/<code>消失</code>。</p>
+<h3 id="4">4. 零停机验证（关键）</h3>
+<p>保持服务一直被访问，证明更新期间请求不中断。在 WSL 里跑集群内 curltest：</p>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>run<span class="w"> </span>curltest<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--image<span class="o">=</span>curlimages/curl<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'for i in $(seq 1 60); do curl -s -m 2 http://service-user:8081/user/whoami; echo; sleep 0.3; done'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span><span class="p">|</span><span class="w"> </span>uniq<span class="w"> </span>-c
+</code></pre></div>
+
+<p>如果输出里<strong>同时出现新旧两种 Pod 名</strong>（过渡期），且<strong>没有请求失败</strong>，就说明滚动更新确实零停机。</p>
+<h3 id="5">5. 看发布历史</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>rollout<span class="w"> </span><span class="nb">history</span><span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo
+</code></pre></div>
+
+<p>会列出 <code>REVISION 1</code>（原模板）、<code>REVISION 2</code>（加了 APP_VERSION 的模板）。</p>
+<h3 id="6">6. 回滚（回到上一版）</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>rollout<span class="w"> </span>undo<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo
+<span class="c1"># 或回滚到指定 revision：</span>
+kubectl<span class="w"> </span>rollout<span class="w"> </span>undo<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--to-revision<span class="o">=</span><span class="m">1</span>
+</code></pre></div>
+
+<p>回滚本身也是一次滚动更新（新 RS 缩、旧 RS 扩），同样零停机。</p>
+<h3 id="7">7. 可选：暂停 / 继续（金丝雀发布雏形）</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>rollout<span class="w"> </span>pause<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w">     </span><span class="c1"># 更新到一半先卡住</span>
+kubectl<span class="w"> </span>rollout<span class="w"> </span>resume<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w">    </span><span class="c1"># 继续完成</span>
+</code></pre></div>
+
+<hr />
+<h2 id="_3">三、路径二（真换镜像版本 · 更贴近实战）</h2>
+<p>这条路径会真正换一个镜像 tag，你能看到 <code>/user/whoami</code> 返回的版本号从 <code>0.1.0</code> 变 <code>0.2.0</code>。</p>
+<h3 id="1-whoami">1. 改源码，让 whoami 带上版本（读环境变量）</h3>
+<p>在 <code>UserController.whoami()</code> 里追加版本返回，例如：</p>
+<div class="codehilite"><pre><span></span><code><span class="nd">@Value</span><span class="p">(</span><span class="s">"${APP_VERSION:0.1.0}"</span><span class="p">)</span>
+<span class="kd">private</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">appVersion</span><span class="p">;</span>
+
+<span class="nd">@GetMapping</span><span class="p">(</span><span class="s">"/whoami"</span><span class="p">)</span>
+<span class="kd">public</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">whoami</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">getenv</span><span class="p">(</span><span class="s">"HOSTNAME"</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hostname</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* 原有兜底 */</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">" | v="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">appVersion</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>（这一步需要改代码重新打包，可让我帮你改，你再 build。）</p>
+<h3 id="2-wsl">2. 打包 + 构建镜像（WSL 内）</h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/mnt/d/high-concurrency-projects/k3s-project/sc-user
+mvn<span class="w"> </span>-DskipTests<span class="w"> </span>package
+docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>sc-user:0.2.0<span class="w"> </span>.
+</code></pre></div>
+
+<h3 id="3-k3s-containerddocker">3. 导入 K3s（单节点用 containerd，docker 构建的镜像默认看不到）</h3>
+<div class="codehilite"><pre><span></span><code>docker<span class="w"> </span>save<span class="w"> </span>sc-user:0.2.0<span class="w"> </span>&gt;<span class="w"> </span>/tmp/sc-user-0.2.0.tar
+sudo<span class="w"> </span>k3s<span class="w"> </span>ctr<span class="w"> </span>images<span class="w"> </span>import<span class="w"> </span>/tmp/sc-user-0.2.0.tar
+</code></pre></div>
+
+<blockquote>
+<p>若你的 K3s 是以 <code>--docker</code> 运行时安装的，则无需 import，docker 镜像直接可用。</p>
+</blockquote>
+<h3 id="4_1">4. 更新镜像（触发滚动更新）</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>image<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>service-user<span class="o">=</span>sc-user:0.2.0
+kubectl<span class="w"> </span>rollout<span class="w"> </span>status<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo
+</code></pre></div>
+
+<h3 id="5_1">5. 验证版本号变化</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>run<span class="w"> </span>curltest<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--image<span class="o">=</span>curlimages/curl<span class="w"> </span>-n<span class="w"> </span>sc-demo<span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sh<span class="w"> </span>-c<span class="w"> </span><span class="s1">'for i in $(seq 1 10); do curl -s http://service-user:8081/user/whoami; echo; done'</span>
+</code></pre></div>
+
+<p>应看到全部返回 <code>... | v=0.2.0</code>。</p>
+<h3 id="6-010">6. 回滚（回到 0.1.0 镜像）</h3>
+<div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>rollout<span class="w"> </span>undo<span class="w"> </span>deployment/service-user<span class="w"> </span>-n<span class="w"> </span>sc-demo
+</code></pre></div>
+
+<hr />
+<h2 id="_4">四、关键命令速查</h2>
+<table>
+<thead>
+<tr>
+<th>目的</th>
+<th>命令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>触发滚动更新（改 env）</td>
+<td><code>kubectl set env deployment/service-user -n sc-demo KEY=VALUE</code></td>
+</tr>
+<tr>
+<td>触发滚动更新（改镜像）</td>
+<td><code>kubectl set image deployment/service-user -n sc-demo service-user=sc-user:0.2.0</code></td>
+</tr>
+<tr>
+<td>看流水线状态</td>
+<td><code>kubectl rollout status deployment/service-user -n sc-demo</code></td>
+</tr>
+<tr>
+<td>实时看 Pod 变化</td>
+<td><code>kubectl get pods -n sc-demo -w</code></td>
+</tr>
+<tr>
+<td>发布历史</td>
+<td><code>kubectl rollout history deployment/service-user -n sc-demo</code></td>
+</tr>
+<tr>
+<td>回滚到上一版</td>
+<td><code>kubectl rollout undo deployment/service-user -n sc-demo</code></td>
+</tr>
+<tr>
+<td>回滚到指定版</td>
+<td><code>kubectl rollout undo ... --to-revision=N</code></td>
+</tr>
+<tr>
+<td>暂停 / 继续</td>
+<td><code>kubectl rollout pause/resume deployment/service-user -n sc-demo</code></td>
+</tr>
+<tr>
+<td>描述某次滚动事件</td>
+<td><code>kubectl describe deployment service-user -n sc-demo</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="wsl2-k3s">五、WSL2 + K3s 网络坑提醒（沿用之前结论）</h2>
+<ul>
+<li><strong>NodePort 外部访问不通</strong>：WSL2 下 kube-proxy 的 NodePort 没暴露到节点端口，<code>curl localhost:&lt;NodePort&gt;</code> 会"积极拒绝"。所以负载均衡 / 零停机验证一律用<strong>集群内临时 Pod（curltest 访问 <code>service-user:8081</code>）</strong>，走 ClusterIP，绕开 NodePort 坑。</li>
+<li><strong>Port Forward 是单 Pod 隧道</strong>：Lens 的 Forward 按钮底层是 <code>kubectl port-forward</code>，直连某 1 个 Pod、绕过了 Service 负载均衡层，只能用来"通不通"，不能用来验证负载均衡/零停机分布。</li>
+</ul>
+<hr />
+<h2 id="_5">附录：声明式基线（已固化为三件套）</h2>
+<p><code>sc-user/</code> 目录现在包含 service-user 的<strong>完整可重建包</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>作用</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>deploy.yaml</code></td>
+<td>Deployment 基线：replicas 2、RollingUpdate 策略（maxSurge 1 / maxUnavailable 0）、startup/readiness/liveness 三探针、securityContext（runAsNonRoot + readOnlyRootFilesystem + drop ALL）、resources 限制、preStop、envFrom 引用下面两个对象</td>
+<td>导出自 live，清自动字段</td>
+</tr>
+<tr>
+<td><code>user-env.yaml</code></td>
+<td>ConfigMap <code>user-env</code>：注入 MYSQL_HOST(192.168.0.104)/PORT(3306)/DB(user_db)/USER(root)</td>
+<td>导出自 live，清自动字段</td>
+</tr>
+<tr>
+<td><code>user-secret.yaml</code></td>
+<td>Secret <code>user-secret</code>：注入 MYSQL_PASSWORD（base64，含真实密码）</td>
+<td>导出自 live，清自动字段</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>三份都是 <code>kubectl get ... -o yaml</code> 导出后，清理掉 <code>status</code> / <code>resourceVersion</code> / <code>uid</code> / <code>creationTimestamp</code> / <code>last-applied-configuration</code> 自动字段得到的干净基线。</p>
+</blockquote>
+<p><strong>重建顺序</strong>（WSL）：</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/mnt/d/high-concurrency-projects/k3s-project/sc-user
+kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>user-env.yaml<span class="w">      </span><span class="c1"># 1. 先建 ConfigMap</span>
+kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>user-secret.yaml<span class="w">   </span><span class="c1"># 2. 再建 Secret</span>
+kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>deploy.yaml<span class="w">        </span><span class="c1"># 3. 建 Deployment（依赖前两个）</span>
+</code></pre></div>
+
+<p><strong>统一运维（消除 apply / 命令式 set / rollout undo 混管的 warning 正路）</strong>：
+- 改配置 → 改对应 yaml → <code>kubectl apply -f &lt;文件&gt;</code>
+- 看历史 / 回滚 → <code>kubectl rollout history</code> / <code>kubectl rollout undo</code>
+- 始终用 apply 管理，<code>last-applied-configuration</code> 与 live 自动对齐，那个 warning 不再出现</p>
+<p>⚠️ <code>user-secret.yaml</code> 的 <code>data</code> 为 base64（含 mysql 真实密码 <code>Root@123456</code>）。本地留存无妨，但<strong>切勿提交到公开仓库</strong>。</p>
+<blockquote>
+<p>想连 Service 也固化（当前是命令行建的 ClusterIP:8081，未落盘）：<code>kubectl get svc service-user -n sc-demo -o yaml &gt; service.yaml</code>，同样清理自动字段即可。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

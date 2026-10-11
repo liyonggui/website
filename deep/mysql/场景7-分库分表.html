@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景7：分库分表（应用层水平分表） · 小番茄程序猿</title>
+<meta name="description" content="场景7：分库分表（应用层水平分表） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景7：分库分表（应用层水平分表）</h1>
+  </div>
+  <article class="prose">
+<h1 id="7">场景7：分库分表（应用层水平分表）</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，<strong>单表 IO、索引深度、锁竞争</strong>仍是瓶颈。<strong>分库分表</strong>是终极方案：把单表数据<strong>物理拆分</strong>到多个库/表，缩小索引范围、缩短锁持有时间、拆分锁竞争区间。</p>
+<p>本场景用<strong>应用层水平分表</strong>演示：按 <code>user_id % 4</code> 将订单数据路由到 <code>t_order_shard_0 ~ t_order_shard_3</code> 四个物理分表。</p>
+<h2 id="_2">二、分片规则</h2>
+<ul>
+<li><strong>路由键</strong>：<code>user_id</code></li>
+<li><strong>路由算法</strong>：<code>user_id % SHARD_COUNT</code>（SHARD_COUNT=4）</li>
+<li><strong>物理分表</strong>：<code>t_order_shard_0/1/2/3</code>（每表结构与 t_order 一致）</li>
+</ul>
+<div class="codehilite"><pre><span></span><code>user_id=100001 → 100001 % 4 = 1 → t_order_shard_1
+</code></pre></div>
+
+<h2 id="_3">三、实测结果</h2>
+<h3 id="1-sharddistribution">1. 数据分布（<code>/shard/distribution</code>）</h3>
+<p>初始化 8 万行后，各分表行数：</p>
+<table>
+<thead>
+<tr>
+<th>分表</th>
+<th>行数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>t_order_shard_0</td>
+<td>20000</td>
+</tr>
+<tr>
+<td>t_order_shard_1</td>
+<td>20000</td>
+</tr>
+<tr>
+<td>t_order_shard_2</td>
+<td>20000</td>
+</tr>
+<tr>
+<td>t_order_shard_3</td>
+<td>20000</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td><strong>80000</strong>（平均 2 万/表）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：数据按 <code>user_id % 4</code> 均匀分布，单分表数据量 = 总量/4，查询只扫单表。</p>
+<h3 id="2-vs-shardroute-vs-scan">2. 精确路由 vs 跨分片扫描（<code>/shard/route-vs-scan</code>）</h3>
+<p>查询 <code>user_id=100001</code>：</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>扫描范围</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>精确路由</strong></td>
+<td>只扫 <code>t_order_shard_1</code>（1 表）</td>
+<td><strong>9ms</strong></td>
+</tr>
+<tr>
+<td><strong>跨分片扫描</strong></td>
+<td>扫全部分表（4 表，仅 1 表命中）</td>
+<td><strong>16ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：精确路由只在单分表内查询；跨分片扫描即使只命中一个分表，也要遍历所有分表，耗时接近翻倍。</p>
+<h3 id="3-shardaggregate">3. 跨分片聚合（<code>/shard/aggregate</code>）</h3>
+<p>跨分片 COUNT/SUM 需分别查每个分表再应用层合并：</p>
+<table>
+<thead>
+<tr>
+<th>分表</th>
+<th>订单数</th>
+<th>总购买量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>t_order_shard_0</td>
+<td>20000</td>
+<td>60000</td>
+</tr>
+<tr>
+<td>t_order_shard_1</td>
+<td>20000</td>
+<td>60000</td>
+</tr>
+<tr>
+<td>t_order_shard_2</td>
+<td>20000</td>
+<td>60000</td>
+</tr>
+<tr>
+<td>t_order_shard_3</td>
+<td>20000</td>
+<td>60000</td>
+</tr>
+<tr>
+<td><strong>合并</strong></td>
+<td><strong>80000</strong></td>
+<td><strong>240000</strong>（耗时 26ms）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：跨分片聚合必须<strong>分表分别算 + 应用层合并</strong>；单表 <code>GROUP BY</code> 无法跨分片完成，聚合查询复杂度上升。</p>
+<h3 id="4-shardbench">4. 并发吞吐对比（<code>/shard/bench</code>）</h3>
+<p>并发 50、各 2 万次：</p>
+<table>
+<thead>
+<tr>
+<th>查询方式</th>
+<th>QPS</th>
+<th>P99</th>
+<th>avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>精确路由（单分表）</strong></td>
+<td><strong>790</strong></td>
+<td>254ms</td>
+<td>1ms</td>
+</tr>
+<tr>
+<td><strong>全分片扫描</strong></td>
+<td><strong>166</strong></td>
+<td>4144ms</td>
+<td>6ms</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：精确路由比全分片扫描<strong>快约 4.8 倍</strong>（QPS 790 vs 166）；全分片扫描因 UNION 4 个表 + 数据量大，P99 从 254ms 飙到 4144ms。<strong>路由到单分表是分库分表的核心收益</strong>。</p>
+<h2 id="_4">四、生产避坑准则</h2>
+<ol>
+<li><strong>路由键要选准</strong>：按高频查询/更新字段分片（如 user_id、order_no），保证同业务数据落同分片</li>
+<li><strong>精确路由优先</strong>：查询必须带路由键，才能路由到单分表；不带路由键会退化成全分片扫描（广播查询，慢）</li>
+<li><strong>跨分片查询/聚合慎用</strong>：COUNT/SUM/JOIN 需分表分别算再合并，复杂且慢；尽量按路由键单表查询</li>
+<li><strong>避免跨分片事务</strong>：同一业务事务尽量收敛到同一分片；跨分片事务需分布式事务/补偿方案</li>
+<li><strong>分片数量预规划</strong>：扩容困难（rehash），上线前评估未来数据量，预留分片数</li>
+<li><strong>禁止 ID 取模/时间分片</strong>：热点数据分散、锁冲突不解决（详见场景4文档）</li>
+</ol>
+<h2 id="_5">五、面试简述</h2>
+<blockquote>
+<p><strong>分库分表</strong>：按路由键（如 user_id % N）把单表数据物理拆分到多个分表，缩小索引范围、缩短锁持有时间、拆分锁竞争区间。实测 8 万行均匀分布到 4 个分表，精确路由查询只扫单表（QPS 790），全分片扫描遍历所有分表（QPS 166，快 4.8 倍）；跨分片 COUNT/SUM 需分表分别算再合并。核心：路由键必须带、精确路由优先、避免跨分片查询/事务，否则分片反而增加复杂度。</p>
+</blockquote>
+<hr />
+<h1 id="_6">六、分库 + 分表完整结合（补强）</h1>
+<h2 id="61">6.1 背景</h2>
+<p>"只分表"数据仍在一个数据库实例，<strong>库的 IO、连接、锁竞争</strong>仍是单点瓶颈。生产终极方案是<strong>分库 + 分表结合</strong>：把数据分布到<strong>多个独立 MySQL 实例</strong>，每个实例内再分表。</p>
+<p>本场景搭建 <strong>2 个独立分库容器</strong>（<code>mysql-shard-0</code>/<code>mysql-shard-1</code>），每个分库内建 4 张分表，两级路由。</p>
+<h2 id="62">6.2 两级路由规则</h2>
+<div class="codehilite"><pre><span></span><code>user_id % 4            -&gt; 分表（t_order_shard_0 ~ 3）
+(user_id / 4) % 2      -&gt; 分库（db0 / db1）
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>user_id=13 → 13%4=1 → 分表 shard_1；13/4=3 → 3%2=1 → 分库 db1
+</code></pre></div>
+
+<blockquote>
+<p>注意：分表键与分库键必须是<strong>互补</strong>的两个维度，避免相互约束（否则某些 (库,表) 组合无法命中）。</p>
+</blockquote>
+<h2 id="63-2-4-8-8">6.3 实测结果（2 分库 × 4 分表 = 8 物理分片，共 8 万行）</h2>
+<h3 id="1-dbsharddistribution">1. 数据分布（<code>/dbshard/distribution</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>分库</th>
+<th>shard_0</th>
+<th>shard_1</th>
+<th>shard_2</th>
+<th>shard_3</th>
+<th>小计</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>db0（mysql-shard-0）</strong></td>
+<td>10000</td>
+<td>10000</td>
+<td>10000</td>
+<td>10000</td>
+<td>40000</td>
+</tr>
+<tr>
+<td><strong>db1（mysql-shard-1）</strong></td>
+<td>10000</td>
+<td>10000</td>
+<td>10000</td>
+<td>10000</td>
+<td>40000</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td><strong>80000</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：数据按两级路由均匀分布到 8 个物理分片，单分库单分表数据量 = 总量/8。</p>
+<h3 id="2-vs-dbshardroute-vs-scan">2. 精确路由 vs 跨库扫描（<code>/dbshard/route-vs-scan</code>）</h3>
+<p>查询 <code>user_id=13</code>（路由到 db1.shard_1）：</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>扫描范围</th>
+<th>命中</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>精确路由</strong></td>
+<td>只扫 db1 的 shard_1（1 库 1 表）</td>
+<td>1</td>
+<td><strong>4ms</strong></td>
+</tr>
+<tr>
+<td><strong>跨库扫描</strong></td>
+<td>扫 db0+db1 全部 8 张表</td>
+<td>1</td>
+<td><strong>8ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：精确路由只在 1 个分库的 1 张表内查询；跨库扫描需遍历 2 分库 × 4 分表，即使只命中 1 条也要广播所有分库，耗时翻倍。</p>
+<h3 id="3-dbshardaggregate">3. 跨库聚合（<code>/dbshard/aggregate</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>分库</th>
+<th>订单数</th>
+<th>总购买量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>db0</td>
+<td>40000</td>
+<td>120000</td>
+</tr>
+<tr>
+<td>db1</td>
+<td>40000</td>
+<td>120000</td>
+</tr>
+<tr>
+<td><strong>合并</strong></td>
+<td><strong>80000</strong></td>
+<td><strong>240000</strong>（耗时 20ms）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：跨库 COUNT/SUM 需<strong>分别连每个分库实例</strong>、每个分表算完再应用层合并，成本显著高于单库。</p>
+<h3 id="4-dbshardbench">4. 并发吞吐对比（<code>/dbshard/bench</code>）</h3>
+<p>并发 50、各 2 万次：</p>
+<table>
+<thead>
+<tr>
+<th>查询方式</th>
+<th>QPS</th>
+<th>P99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>精确路由（单库单表）</strong></td>
+<td><strong>8624</strong></td>
+<td>58ms</td>
+</tr>
+<tr>
+<td><strong>跨库全扫</strong></td>
+<td><strong>4222</strong></td>
+<td>82ms</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：精确路由比跨库全扫<strong>快约 2 倍</strong>（QPS 8624 vs 4222），P99 从 58ms 升到 82ms。分库分表的核心收益是路由到单分库单分表。</p>
+<h2 id="64">6.4 分库分表生产要点</h2>
+<ol>
+<li><strong>分库分表是"最后一公里"</strong>：先做 SQL 优化、索引优化、隔离级别优化，仍不够再分库分表</li>
+<li><strong>两级路由键互补</strong>：分库键与分表键设计避免相互约束，保证均匀分布</li>
+<li><strong>跨库事务极难</strong>：跨分库事务需分布式事务（XA/TCC/补偿），成本高；尽量收敛到单分库</li>
+<li><strong>跨库聚合/排序/分页困难</strong>：需广播各分库分别算再合并，复杂且慢</li>
+<li><strong>多数据源路由</strong>：应用层需按路由键选数据源 + 选表，路由逻辑要集中封装</li>
+<li><strong>扩容代价大</strong>：分库分表后扩容需 rehash 迁移，上线前预留足够分片数</li>
+</ol>
+<h2 id="65">6.5 面试简述（分库分表补强）</h2>
+<blockquote>
+<p><strong>分库分表</strong>：单表拆到 2 个独立 MySQL 实例（分库），每库再分 4 表（分表），两级路由（<code>user_id%4</code> 分表、<code>user_id/4%2</code> 分库）。实测 8 万行均匀分布到 8 个物理分片；精确路由只在 1 库 1 表查询（QPS 8624），跨库全扫广播 2 库 8 表（QPS 4222，快 2 倍）。跨库聚合需分别连每个分库再合并。分库分表把 IO/连接/锁竞争拆到多个实例，是终极方案，但跨库事务、聚合、扩容成本高，必须路由键精确、两级键互补。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

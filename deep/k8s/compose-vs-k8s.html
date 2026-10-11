@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Compose → K8s 概念对照（给已经会 docker-compose 的人） · 小番茄程序猿</title>
+<meta name="description" content="Compose → K8s 概念对照（给已经会 docker-compose 的人） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Compose → K8s 概念对照（给已经会 docker-compose 的人）</h1>
+  </div>
+  <article class="prose">
+<h1 id="compose-k8s-docker-compose">Compose → K8s 概念对照（给已经会 docker-compose 的人）</h1>
+<p>如果你只记一句话：<strong>Compose 描述的是"一台机器上如何起一组容器"，K8s 描述的是"一个集群里期望状态长什么样"。</strong>
+前者的单位是容器，后者的单位是"契约 + 调和循环"。这个差别会让下面每一条对照都有隐性折扣。</p>
+<h2 id="_1">字段映射</h2>
+<table>
+<thead>
+<tr>
+<th>Compose</th>
+<th>K8s</th>
+<th>折扣在哪（最容易误判的一点）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>services.web.image</code></td>
+<td><code>Deployment.spec.template.spec.containers[].image</code></td>
+<td>一样</td>
+</tr>
+<tr>
+<td><code>deploy-resources.replicas</code></td>
+<td><code>Deployment.spec.replicas</code></td>
+<td>Compose 的 replicas 不解决流量分发，K8s 有 Service 兜底</td>
+</tr>
+<tr>
+<td><code>ports: "8080:80"</code></td>
+<td><strong>没有对应物</strong>，要 Service + Ingress（或 NodePort）</td>
+<td>集群内 Pod 之间从来不需要映射端口，直接走 Pod IP + 容器端口</td>
+</tr>
+<tr>
+<td><code>environment</code> / <code>env_file</code></td>
+<td><code>ConfigMap</code>（env 或挂载）+ <code>Secret</code></td>
+<td>ConfigMap 改了<strong>不会</strong>自动重启 Pod，这是最经典的一次"我改了配置怎么没生效"</td>
+</tr>
+<tr>
+<td><code>volumes: ./src:/app</code></td>
+<td><code>volumeMounts</code> + <code>emptyDir</code> / <code>hostPath</code> / <code>PVC</code></td>
+<td>bind mount 宿主机目录在 K8s 里是 hostPath，属于要被审的写法</td>
+</tr>
+<tr>
+<td><code>volumes: named</code></td>
+<td><code>PersistentVolumeClaim</code>（Deployment 共享 / StatefulSet 按副本独占）</td>
+<td>语义跃迁最大的一项，见第 3 节</td>
+</tr>
+<tr>
+<td><code>depends_on</code></td>
+<td><strong>没有对应物</strong>。K8s 假设依赖是"最终可用"的，用 readinessProbe + 应用侧重试表达</td>
+<td>Compose 能保证单机启动顺序，K8s 里 Pod 分布在不同节点，顺序无意义</td>
+</tr>
+<tr>
+<td><code>networks</code> / 同一 compose 文件内互访</td>
+<td><code>Service</code> DNS：<code>&lt;name&gt;.&lt;namespace&gt;.svc.cluster.local</code></td>
+<td>Compose 靠服务名，K8s 靠 Service 名 + namespace；跨 namespace 要带全名</td>
+</tr>
+<tr>
+<td><code>healthcheck</code></td>
+<td>三根探针：<code>startupProbe</code> / <code>readinessProbe</code> / <code>livenessProbe</code></td>
+<td>Compose 只有一个 health status；K8s 把"能不能收流量"和"要不要重启"拆成两件独立的事</td>
+</tr>
+<tr>
+<td><code>restart: always</code></td>
+<td>控制器 + kubelet 的隐式行为</td>
+<td>不需要写，但也意味着你没法像 Compose 那样"就地改 restart 策略"</td>
+</tr>
+<tr>
+<td><code>expose</code> / <code>internal</code></td>
+<td><code>NetworkPolicy</code></td>
+<td>Compose 的隔离靠拆 network；K8s 默认全通，隔离必须显式写策略</td>
+</tr>
+<tr>
+<td><code>build:</code></td>
+<td><strong>不该出现在 K8s 清单里</strong>。构建在 CI 里做，产出镜像，清单只引用 digest</td>
+<td>见到 K8s YAML 里想"现场构建"就是走偏了</td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td><code>Secret</code> + CSI Secret Provider / External Secrets</td>
+<td>同上一节</td>
+</tr>
+<tr>
+<td><code>deploy.update_config</code></td>
+<td><code>Deployment.spec.strategy.rollingUpdate</code></td>
+<td>语义接近</td>
+</tr>
+<tr>
+<td><code>deploy.placement.constraints</code></td>
+<td><code>nodeSelector</code> / <code>affinity</code> / <code>tolerations</code></td>
+<td>K8s 表达能力强得多，也因此更容易写出调度不过去的清单</td>
+</tr>
+<tr>
+<td>Compose Profile</td>
+<td>K8s 没有：用不同 overlay（Kustomize/Helm values）表达</td>
+<td>呼应"环境差异用 overlay 切，不是换发行版"</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">三件真正需要重建心智的事</h2>
+<p><strong>1. 网络：从"端口映射"变成"名字解析"。</strong>
+Compose 里你习惯 <code>8080:80</code>，因为在 Docker 眼里容器端口要暴露到宿主机。K8s 里整个集群是一张扁平网络，Pod IP 集群内可路由，Service 给一个不变的名字和虚拟 IP。所以迁移时最常见的错误是：Service 的 <code>targetPort</code> 和容器实际监听端口对不上（尤其是 Spring Boot 改了 <code>server.port</code> 但清单里还是 8080），表现是 Service 存在、Pod 健康，但连上就是不通。</p>
+<p><strong>2. 存储：从"宿主机上一个目录"变成"一个会被调度的资源"。</strong>
+Compose 的 named volume 就是 <code>/var/lib/docker/volumes/xxx</code>，永远在那台机器上。K8s 的 PVC 是一份<strong>申请</strong>：谁来 provision、Provisioner 能不能跨节点挂载、访问模式是 RWO 还是 RWX，会直接决定 Pod 能不能被调度。<code>ReadWriteOnce</code> 在 local-path 上意味着"这个 Pod 被钉死在那台节点"；换成 RWX 的共享存储（NFS/CephFS/云盘多_attach_）才允许漂移。这一层想清楚了，StatefulSet 为什么不能换成 Deployment 就自动有答案了。</p>
+<p><strong>3. 生命周期：从"起完就算成功"变成"永远在调和"。</strong>
+Compose <code>up -d</code> 之后容器在跑就算完。K8s 里"在跑"只是中间态：探针在反复判定，controller 在反复对比副本数，节点一挂 Pod 就在别处重建。所以你的应用必须能回答三个问题：怎么被摘流量（readiness）、怎么被要求下线（SIGTERM + 优雅停机）、怎么被杀掉（Graceful Shutdown 超时）。<strong>答不出第一个和第三个，滚动更新就必然有一小撮 502</strong>——这就是 <code>90-fault-drills.sh</code> 演练 8 演示的那个竞态。</p>
+<h2 id="spring-boot-bladex">迁移一个 Spring Boot 单体（比如 BladeX）的最小清单顺序</h2>
+<ol>
+<li>镜像：Dockerfile 里 <code>USER 10001</code> 非 root，<code>EXPOSE 8080</code>，jar 只读层。</li>
+<li>探针：引入 <code>spring-boot-starter-actuator</code>，<code>management.endpoint.health.probes.enabled=true</code>，得到 <code>/actuator/health/liveness</code> 与 <code>/readiness</code>（Spring Boot 2.3+ 自带，别自己造）。</li>
+<li>JVM：<code>-XX:MaxRAMPercentage</code>，让堆跟着容器 limit 走。</li>
+<li>配置：<code>application-prod.yml</code> 的参数全走 env（<code>SPRING_APPLICATION_JSON</code> 或逐个 <code>SPRING_DATASOURCE_URL</code>），密钥走 Secret 挂载文件而不是 env。<strong>"env 会进 <code>kubectl describe</code>"这句要说准，本机实测两种写法不一样</strong>（假值 <code>NOT_A_REAL_TOKEN_000</code>，一次性 Pod 取证后即删）：</li>
+<li>清单里写死的字面量 env：<code>describe</code> 直接打值 —— <code>LITERAL_IN_MANIFEST:  NOT_A_REAL_TOKEN_000</code>。任何有权限看 Pod 的人都看得到，还跟着 Git 进仓库。</li>
+<li><code>valueFrom.secretKeyRef</code> 的 env：<code>describe</code> 只打引用不打值 —— <code>FROM_SECRET_KEYREF:  &lt;set to the key 'token' in secret 'env-probe-secret'&gt;</code>（我把整份 describe 输出对该串计数，结果为 1，就是上面那条字面量）。</li>
+<li>但<strong>别因此就改用 secretKeyRef 收工</strong>：<code>kubectl exec ... -- env</code> 里两条都是明文（实测），进程的日志、crash dump、<code>/proc/1/environ</code> 一样带出去。所以推荐挂载成文件（<code>describe</code> 里只出现 <code>Mounts: /secrets from s (ro)</code> 这一行路径），应用按文件读。</li>
+<li>有状态依赖先<strong>不要</strong>上 K8s：MySQL/KingbaseES 继续用外部实例，集群里只跑无状态应用。这一步克制能省掉 80% 的事故面。</li>
+<li>灰度：先 <code>replicas: 1</code> 跑通，再 2，再加 HPA。一次只引入一个变量。</li>
+</ol>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

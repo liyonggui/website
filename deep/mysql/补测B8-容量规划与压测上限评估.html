@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B8：容量规划与压测上限评估 · 小番茄程序猿</title>
+<meta name="description" content="补测B8：容量规划与压测上限评估 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B8：容量规划与压测上限评估</h1>
+  </div>
+  <article class="prose">
+<h1 id="b8">补测B8：容量规划与压测上限评估</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>高并发系统上线前需<strong>量化容量上限</strong>：能支撑多少 QPS/TPS、连接数上限、buffer_pool/IO 饱和点，支撑容量预估与扩容决策。否则无法回答"系统能扛多少并发"。</p>
+<h2 id="_2">二、评估思路</h2>
+<div class="codehilite"><pre><span></span><code>容量 = f(CPU核数, buffer_pool, IO, 连接数)
+    │
+    ├── 硬件/配置基线 (SHOW VARIABLES/STATUS)
+    ├── 实测单连接吞吐 (TPS/QPS 压测)
+    └── 推算上限：单连接吞吐 × 可用连接数
+</code></pre></div>
+
+<ul>
+<li><strong>基线</strong>：buffer_pool、max_connections、innodb_io_capacity、CPU 核数。</li>
+<li><strong>实测</strong>：并发压测写(TPS)/读(QPS)，得到单连接吞吐。</li>
+<li><strong>推算</strong>：上限 ≈ 单连接吞吐 × max_connections × 余量系数(80%)。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 硬件与配置基线</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/capacity/baseline"</span>
+
+<span class="c1"># 2. 写吞吐实测（TPS）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/capacity/bench-write?concurrency=20&amp;total=2000"</span>
+
+<span class="c1"># 3. 读吞吐实测（QPS）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/capacity/bench-read?concurrency=20&amp;total=2000"</span>
+
+<span class="c1"># 4. 容量评估报告（推算上限）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/capacity/report"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基线</td>
+<td>version=8.4.9、CPU=8核、buffer_pool=<strong>1024MB</strong>、max_connections=<strong>1000</strong></td>
+</tr>
+<tr>
+<td>写吞吐</td>
+<td>并发20写 <strong>TPS≈1976</strong></td>
+</tr>
+<tr>
+<td>读吞吐</td>
+<td>并发20读 <strong>QPS≈15504</strong></td>
+</tr>
+<tr>
+<td>推算上限</td>
+<td>理论写上限 <strong>≈184万 TPS</strong>、读上限 <strong>≈20万 QPS</strong>（按 1000 连接 80% 可用）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：读吞吐远高于写（15504 vs 1976，约 8 倍），符合 InnoDB 读多写少特性。容量上限受连接数、buffer_pool、IO 综合制约，需结合锁/IO 饱和点修正理论值。</p>
+<h3 id="qps">补充：连接复用对 QPS 的影响（实测）</h3>
+<p><strong>连接建立是固定开销（本次约 3.5ms/次），高频短查询下复用的收益极大：</strong></p>
+<table>
+<thead>
+<tr>
+<th>读方式（并发20，总量2000）</th>
+<th>QPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每次新建连接（DriverManager）</td>
+<td><strong>1148</strong></td>
+</tr>
+<tr>
+<td>连接池复用（长连接）</td>
+<td><strong>13513</strong></td>
+</tr>
+<tr>
+<td><strong>提升倍数</strong></td>
+<td><strong>11.8 倍</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：连接复用省掉「连接建立」固定开销（TCP 握手 + 认证约 3.5ms）。查询本身仅约 0.1ms，高频场景下连接开销占比高，复用使 QPS 提升近 12 倍。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 连接复用 vs 新建连接 读吞吐对比</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/capacity/bench-read-compare?concurrency=20&amp;total=2000"</span>
+</code></pre></div>
+
+<h2 id="_5">五、容量规划要点</h2>
+<ol>
+<li><strong>buffer_pool</strong>：设为物理内存 60%-75%，决定数据缓存能力。</li>
+<li><strong>连接数</strong>：max_connections 需 &gt; 应用连接池总上限，预留余量。</li>
+<li><strong>读写分离</strong>：读 QPS 高可扩展从库，线性扩容。</li>
+<li><strong>分库分表</strong>：TPS 高可水平扩展，突破单实例上限。</li>
+<li><strong>压测定点</strong>：定期压测定位饱和点（CPU/IO/锁/连接），修正理论值。</li>
+<li><strong>IO 优化</strong>：innodb_io_capacity / flush_method 适配 SSD。</li>
+</ol>
+<h2 id="_6">六、面试简述</h2>
+<blockquote>
+<p><strong>容量规划与压测</strong>：评估系统 QPS/TPS/连接数上限。实测（并发20）：写 TPS≈1976、读 QPS≈15504（读比写高约8倍）。按 max_connections=1000 的 80% 推算写上限≈184万 TPS。容量 = f(CPU、buffer_pool、IO、连接数)；读多用读写分离、写多用分库分表线性扩容；定期压测定点修正。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

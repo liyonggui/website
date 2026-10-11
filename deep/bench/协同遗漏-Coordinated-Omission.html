@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言 · 小番茄程序猿</title>
+<meta name="description" content="协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言</h1>
+  </div>
+  <article class="prose">
+<h1 id="coordinated-omission">协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言</h1>
+<blockquote>
+<p>记录日期：2026-09-08 ｜ 来源：Gil Tene《How NOT to Measure Latency》(Strange Loop 2015)
+关联实验：<code>demo</code> 高并发写入链路（k6 250 VU 闭环压测）</p>
+</blockquote>
+<h2 id="_1">一、一句话定义</h2>
+<p><strong>闭环压测中，客户端要等上一个请求返回才发下一个。于是当系统变慢时，客户端"自动配合"降低了施压速率——最慢的那批请求根本没被完整计入样本。结果：系统越卡，你测到的延迟越好看。</strong></p>
+<p>这就是"协同（coordinated）"的含义：<strong>压测工具和被测系统"协作"把问题隐藏了。</strong></p>
+<h2 id="_2">二、一个能算清楚的例子</h2>
+<p>假设某服务真实性质：<strong>99% 请求 1ms，1% 请求 1000ms</strong>（每 100 个有 1 个慢 1 秒）。</p>
+<p>用 <strong>1 个 VU</strong> 闭环压测 10 秒：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>发生了什么</th>
+<th style="text-align: right;">样本数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>快请求（1ms）</td>
+<td>1 秒内能连发约 1000 个</td>
+<td style="text-align: right;">~9,900 个</td>
+</tr>
+<tr>
+<td>慢请求（1000ms）</td>
+<td>每碰到一次，这 1 秒就"什么都没发"</td>
+<td style="text-align: right;">~10 个</td>
+</tr>
+</tbody>
+</table>
+<p>测出来：慢请求占比 = 10 / 9,910 ≈ <strong>0.1%</strong></p>
+<p>真实情况：慢请求占比 = <strong>1%</strong></p>
+<p><strong>慢请求被系统性降权了 10 倍。</strong> 你想看 p99，结果 p99 附近的那条尾巴被压测工具自己"协调"掉了。</p>
+<p>极端化一下更直观：如果慢请求是 10 秒，那 1 个 VU 在整个测试期间只能发出个位数次慢请求——<strong>你测出的 p99.9 可能一次都没覆盖到它。</strong></p>
+<h2 id="vs">三、闭环 vs 开环：回答的是两个不同问题</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>闭环（closed workload）</th>
+<th>开环（open / arrival-rate）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>施压方式</td>
+<td>固定 VU 数，等返回再发下一个</td>
+<td><strong>固定速率</strong>发请求，不等返回</td>
+</tr>
+<tr>
+<td>系统变慢时</td>
+<td>施压速率自动下降</td>
+<td>请求照发，开始排队/超时</td>
+</tr>
+<tr>
+<td>QPS 由谁决定</td>
+<td><strong>系统响应速度</strong>（Little 定律：QPS ≈ VU / 平均响应时间）</td>
+<td><strong>你设定的速率</strong></td>
+</tr>
+<tr>
+<td>延迟测量</td>
+<td><strong>偏乐观（有协同遗漏）</strong></td>
+<td>真实（慢请求被完整记录）</td>
+</tr>
+<tr>
+<td>适合回答</td>
+<td>"这个并发下，系统能跑多快？"</td>
+<td>"这个速率下，用户实际感受到多少延迟？"</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键认知：两者不是"对错"关系，是"问的问题不同"。</strong> 闭环测吞吐上限是合理的；用闭环测出的延迟分布去承诺 SLA，就是错的。</p>
+<h2 id="_3">四、我的实验里有没有这个问题</h2>
+<p><strong>有。</strong> <code>demo</code> 用的是 k6 <code>vus: 250, duration: 60s</code> + <code>sleep(0.01)</code>，标准闭环模型。</p>
+<p>影响评估（这是要在面试里说清的三层）：</p>
+<ol>
+<li><strong>绝对延迟值偏乐观</strong> —— 尤其 max 和 p99。真实生产里，慢请求发生时用户不会"配合地不发请求"</li>
+<li><strong>QPS 数字仍然有意义</strong> —— 但它回答的是"250 并发下系统能跑多快"，不是"系统能扛多大速率"</li>
+<li><strong>A/B/C 三方案的相对结论不受影响</strong> —— 因为三个版本用的是<strong>同一套施压模型</strong>，偏差方向一致，对比是公平的</li>
+</ol>
+<blockquote>
+<p>第二篇里我已经把这条写进"局限"段。</p>
+</blockquote>
+<h2 id="_4">五、怎么修（下次实验用）</h2>
+<p><strong>k6 改开环执行器：</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">scenarios</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">steady_load</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nx">executor</span><span class="o">:</span><span class="w"> </span><span class="s1">'constant-arrival-rate'</span><span class="p">,</span><span class="w">   </span><span class="c1">// 固定速率发压</span>
+<span class="w">      </span><span class="nx">rate</span><span class="o">:</span><span class="w"> </span><span class="mf">5000</span><span class="p">,</span><span class="w">                          </span><span class="c1">// 每秒 5000 请求</span>
+<span class="w">      </span><span class="nx">timeUnit</span><span class="o">:</span><span class="w"> </span><span class="s1">'1s'</span><span class="p">,</span>
+<span class="w">      </span><span class="nx">preAllocatedVUs</span><span class="o">:</span><span class="w"> </span><span class="mf">200</span><span class="p">,</span>
+<span class="w">      </span><span class="nx">maxVUs</span><span class="o">:</span><span class="w"> </span><span class="mf">1000</span><span class="p">,</span><span class="w">                        </span><span class="c1">// 关键：给足 VU，系统卡顿时请求照样发</span>
+<span class="w">      </span><span class="nx">duration</span><span class="o">:</span><span class="w"> </span><span class="s1">'60s'</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">thresholds</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">http_req_failed</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">'rate&lt;0.01'</span><span class="p">],</span>
+<span class="w">    </span><span class="c1">// 开环下要盯"未完成的请求"，它们是协同遗漏的替代品</span>
+<span class="w">    </span><span class="nx">vus_max</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">'max&lt;1000'</span><span class="p">],</span><span class="w">                 </span><span class="c1">// VU 打满说明系统已经跟不上施压速率</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<p><strong>配套要报的指标：</strong></p>
+<ul>
+<li><strong>offered load vs achieved load</strong>（想发多少 vs 实际发出去多少）——两者一旦背离，就是系统饱和的信号</li>
+<li><strong>超时/未完成请求数</strong> —— 开环下这些必须计入，否则又变成另一种遗漏</li>
+<li><strong>完整延迟直方图</strong>（不是只报几个百分位点）—— Gil Tene 的 HdrHistogram 就是为此而生</li>
+</ul>
+<h2 id="_5">六、顺带记住的三个关联陷阱</h2>
+<table>
+<thead>
+<tr>
+<th>陷阱</th>
+<th>一句话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>对百分位取平均是错的</strong></td>
+<td>3 轮各得一个 p99，取平均 ≠ 整体 p99。要合并原始样本重算。（我用的"轮次结果取中位数"是安全的，别写成"平均 p99"）</td>
+</tr>
+<tr>
+<td><strong>平均值骗人</strong></td>
+<td>我实测过：APPEND 两种写法 avg 3.92ms vs 3.93ms 几乎相同，max 却是 39ms vs 287ms。<strong>avg/p50/p90/p99/p99.9/max 要一起报。</strong></td>
+</tr>
+<tr>
+<td><strong>观察者效应</strong></td>
+<td>埋点本身有开销。加埋点后数字完全没变，反而要怀疑埋点没生效。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_6">七、面试怎么用（这段是重点）</h2>
+<p>被问"你怎么做压测 / 怎么保证压测可信"时，加这一句：</p>
+<blockquote>
+<p>"我用的 k6 是闭环模型，所以绝对延迟值会偏乐观——<strong>存在协同遗漏：系统变慢时施压速率会跟着下降，最慢的请求不会被完整计入</strong>。三种方案我用同一套施压模型做对比，相对结论是公平的；但如果要承诺 SLA，我会改用开环固定速率施压，并且报 offered load 和 achieved load 的背离情况。"</p>
+</blockquote>
+<p><strong>这句话的价值：</strong> 中文技术圈写压测文章会主动提"协同遗漏"的极少。它一次性证明三件事——① 你知道自己的工具在骗你 ② 你知道偏差影响哪个结论、不影响哪个结论 ③ 你有下一步的修正方案。<strong>这三样合起来就是"会做实验"和"会跑工具"的区别。</strong></p>
+<h2 id="_7">八、待办</h2>
+<ul>
+<li>[ ] demo 压测脚本增加开环（<code>constant-arrival-rate</code>）版本，与闭环结果对比 → <strong>这本身就是一篇好文章：《同一个系统，闭环和开环压测差了多少倍》</strong></li>
+<li>[ ] 后续所有实验报告补 offered vs achieved load</li>
+<li>[ ] 看一遍 Gil Tene 原演讲（飞书妙记跑文字稿，40 分钟）</li>
+</ul>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

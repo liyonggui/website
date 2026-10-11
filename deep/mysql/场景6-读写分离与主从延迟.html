@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景6：读写分离与主从延迟 · 小番茄程序猿</title>
+<meta name="description" content="场景6：读写分离与主从延迟 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景6：读写分离与主从延迟</h1>
+  </div>
+  <article class="prose">
+<h1 id="6">场景6：读写分离与主从延迟</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>在 MySQL 高并发场景下，<strong>读多写少</strong>是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用<strong>读写分离</strong>：<strong>写走主库、读走从库</strong>，把读压力分摊到只读副本上。</p>
+<p>但读写分离引入一个新问题——<strong>主从延迟</strong>：主库写入后，从库需要经过复制（binlog → relay log → SQL apply）才能同步，这个时间窗口内从库读到的是<strong>旧数据</strong>（最终一致）。若业务强依赖"写后立即可见"（如下单后立即查订单），延迟会造成数据不一致。</p>
+<p>本场景搭建<strong>1 主 1 从</strong>复制拓扑，量化主从延迟，并演示强一致 vs 最终一致的差异。</p>
+<h2 id="_2">二、主从复制拓扑搭建</h2>
+<ul>
+<li><strong>主库 <code>mysql</code></strong>（server-id=1）：开启 binlog（ROW 格式）+ GTID，创建复制用户 <code>repl</code></li>
+<li><strong>从库 <code>mysql-slave</code></strong>（server-id=2，端口 3307）：<code>read_only=ON</code>，冷启动时用 <code>mysqldump</code> 从主库拉全量，再建立 <strong>GTID 自动定位复制</strong>（<code>MASTER_AUTO_POSITION=1</code>）</li>
+<li><strong>连接方式</strong>：<code>Source_Host=mysql:3306</code>，<code>Get_Source_public_key=1</code>（解决 caching_sha2_password 认证的 RSA 公钥交换）</li>
+</ul>
+<p>复制状态验证：</p>
+<div class="codehilite"><pre><span></span><code>Replica_IO_Running: Yes      # IO 线程：从主库拉 binlog
+Replica_SQL_Running: Yes     # SQL 线程：应用 relay log 到从库
+Seconds_Behind_Source: 0     # 主从延迟秒数
+Auto_Position: 1             # GTID 自动定位
+</code></pre></div>
+
+<h2 id="_3">三、实测结果</h2>
+<h3 id="1-replicationstatus">1. 主从复制状态（<code>/replication/status</code>）</h3>
+<p>通过"<strong>主库写 + 从库读</strong>"的业务验证方式判定复制健康（不依赖 performance_schema 的 JDBC 会话差异）：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>masterWriteOk</td>
+<td>true（写主库成功）</td>
+</tr>
+<tr>
+<td>replicaVisible</td>
+<td>true（从库能读到刚写入数据）</td>
+</tr>
+<tr>
+<td>replicaDelayMs</td>
+<td><strong>6ms</strong>（从库可见延迟）</td>
+</tr>
+<tr>
+<td>Seconds_Behind_Source</td>
+<td>0</td>
+</tr>
+<tr>
+<td>replicaHealthy</td>
+<td>true（复制正常）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：写入主库后约 6ms，从库即可读到，复制链路健康。</p>
+<h3 id="2-replicationdelay">2. 主从延迟量化（<code>/replication/delay</code>）</h3>
+<p>写主库后高频轮询从库，测量"从库多久能读到"：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>masterWriteMs</td>
+<td>7ms（写主库耗时）</td>
+</tr>
+<tr>
+<td>replicaDelayMs</td>
+<td><strong>1ms</strong>（从库可见延迟）</td>
+</tr>
+<tr>
+<td>masterVisibleImmediately</td>
+<td>true（读主库即时可见，强一致）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：本地 1 主 1 从（同 Docker 网络）延迟极低，约 1ms 级；但真实跨机房/高负载下延迟可达数十~数百 ms，此时"写后立即读从库"会读到旧数据。</p>
+<h3 id="3-vs-replicationconsistency">3. 强一致 vs 最终一致（<code>/replication/consistency</code>）</h3>
+<p>30 轮写主库后，分别立即读主库、立即读从库、延迟 100ms 再读从库：</p>
+<table>
+<thead>
+<tr>
+<th>读路径</th>
+<th>命中率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>读主库（强一致）</td>
+<td><strong>30/30</strong>（100% 即时可见）</td>
+</tr>
+<tr>
+<td>读从库（立即）</td>
+<td>30/30</td>
+</tr>
+<tr>
+<td>读从库（延迟 100ms）</td>
+<td>30/30</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：读主库 100% 强一致；读从库在低延迟复制下也基本即时可见。<strong>关键认知</strong>：主从延迟是"最终一致"的来源——在延迟窗口内读从库会读到旧值。本地延迟极低导致窗口不可见，但<strong>生产跨机房/高负载下窗口显著</strong>，业务需权衡：强一致场景读主库，可容忍最终一致场景读从库。</p>
+<h3 id="4-replicationbench">4. 读写分离读吞吐对比（<code>/replication/bench</code>）</h3>
+<p>并发 50、各 2 万次读，对比读从库与读主库：</p>
+<table>
+<thead>
+<tr>
+<th>读路径</th>
+<th>QPS</th>
+<th>P99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>读从库（replica）</td>
+<td>11641</td>
+<td>52ms</td>
+</tr>
+<tr>
+<td>读主库（master）</td>
+<td>15810</td>
+<td>45ms</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：从库能独立承载高并发读（QPS 破万）。读写分离的核心价值是<strong>把读压力从主库分流</strong>，让主库专注写，整体吞吐与稳定性更高。</p>
+<h2 id="_4">四、生产避坑准则</h2>
+<ol>
+<li><strong>写必须走主库、读走从库</strong>：通过数据源路由（如 ShardingSphere / MyBatis 插件 / 双数据源）按读写分离</li>
+<li><strong>强一致读走主库</strong>：下单后立即查订单、支付回调等"写后即读"场景，读主库避免读到旧数据</li>
+<li><strong>容忍最终一致读走从库</strong>：列表、报表、统计等非关键读可走从库，摊薄主库压力</li>
+<li><strong>监控主从延迟</strong>：<code>SHOW REPLICA STATUS</code> 的 <code>Seconds_Behind_Source</code> 超过阈值需告警；延迟过大时读走主库兜底</li>
+<li><strong>从库只读</strong>：从库 <code>read_only=ON</code>，防止误写破坏复制</li>
+<li><strong>GTID 复制</strong>：用 <code>MASTER_AUTO_POSITION=1</code> 免去手动记录 binlog 位置，主从切换更简单</li>
+</ol>
+<h2 id="_5">五、面试简述</h2>
+<blockquote>
+<p><strong>读写分离与主从延迟</strong>：搭建 1 主 1 从，主库开 binlog+GTID，从库 <code>mysqldump</code> 拉全量后 <code>MASTER_AUTO_POSITION=1</code> 建立复制。实测写主库后从库约 1~6ms 可见，<code>Replica_IO_Running/SQL_Running</code> 均 Yes；读主库 100% 强一致，读从库为最终一致（延迟窗口内可能读旧值）。读写分离把读压力分流到从库（并发 50 下从库读 QPS 超 1 万），但引入主从延迟——强一致场景读主库，可容忍最终一致场景读从库，并监控 <code>Seconds_Behind_Source</code>。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

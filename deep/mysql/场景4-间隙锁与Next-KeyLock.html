@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景4：间隙锁 / Next-Key Lock · 小番茄程序猿</title>
+<meta name="description" content="场景4：间隙锁 / Next-Key Lock —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景4：间隙锁 / Next-Key Lock</h1>
+  </div>
+  <article class="prose">
+<h1 id="4-next-key-lock">场景4：间隙锁 / Next-Key Lock</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>InnoDB 在 <strong>REPEATABLE READ</strong> 隔离级别下，通过<strong>间隙锁（Gap Lock）</strong>和 <strong>Next-Key Lock</strong> 防止幻读，但也因此引入了<strong>锁范围扩大</strong>与<strong>间隙锁死锁</strong>等并发问题。生产上常因对锁机制理解不清，出现<strong>插入被阻塞</strong>、<strong>死锁频发</strong>或<strong>锁范围过大拖垮并发</strong>。</p>
+<p>本场景用专用表 <code>t_gap_lock</code>（含非唯一索引）演示 InnoDB 的间隙锁行为。</p>
+<h2 id="_2">二、三种锁类型</h2>
+<table>
+<thead>
+<tr>
+<th>锁类型</th>
+<th>mode</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>记录锁（Record Lock）</td>
+<td><code>X,REC_NOT_GAP</code></td>
+<td>锁住具体记录，主键/唯一索引等值命中时产生</td>
+</tr>
+<tr>
+<td>间隙锁（Gap Lock）</td>
+<td><code>X,GAP</code></td>
+<td>锁住索引记录间的间隙，防止其它事务在间隙插入</td>
+</tr>
+<tr>
+<td>Next-Key Lock</td>
+<td><code>X</code></td>
+<td>记录锁 + 间隙锁的组合，锁住记录及其前向间隙，<strong>防止幻读</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>关键</strong>：<strong>间隙锁不互相阻塞</strong>（间隙锁是共享的，只阻塞"插入"），只有记录锁/Next-Key 的记录部分才互斥。这是场景3死锁演示"不触发"的根因。</p>
+</blockquote>
+<h2 id="next-key-lock">三、Next-Key Lock 产生的条件</h2>
+<ul>
+<li><strong>主键 / 唯一索引等值命中</strong>：只加记录锁（<code>X,REC_NOT_GAP</code>），不加间隙锁</li>
+<li><strong>非唯一索引等值</strong> 或 <strong>范围查询</strong>：加 Next-Key Lock（<code>X</code>）+ 间隙锁（<code>X,GAP</code>），锁范围扩大</li>
+<li><strong>无索引条件</strong>：锁全表（所有间隙）</li>
+</ul>
+<h2 id="_3">四、实测结果</h2>
+<p>演示表：<code>t_gap_lock</code>（category 非唯一索引），A 分类有 score=10/20/30。</p>
+<h3 id="1-gaplockinsert-block">1. 间隙锁阻塞插入（<code>/gaplock/insert-block</code>）</h3>
+<p>事务 A <code>SELECT ... WHERE category='A' FOR UPDATE</code>（锁 A 范围），事务 B 往 A 的间隙插入 <code>('A', 25)</code>：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B 插入等待</td>
+<td><strong>约 2001ms</strong>（被 A 的间隙锁阻塞，直到 A 释放）</td>
+</tr>
+<tr>
+<td>最终结果</td>
+<td>B 在 A 释放锁后插入成功</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：A 的 Next-Key Lock 覆盖了 category='A' 的记录及间隙，<strong>阻塞了 B 往该间隙插入</strong>，直到 A 提交/回滚。</p>
+<h3 id="2-gaplockdeadlock">2. 间隙锁死锁（<code>/gaplock/deadlock</code>）</h3>
+<p>事务 A 锁 category='A' 范围，事务 B 锁 category='B' 范围，然后 A 向 B 范围插入、B 向 A 范围插入：</p>
+<div class="codehilite"><pre><span></span><code>事务A: 锁 A范围 → 向B范围插入
+事务B: 锁 B范围 → 向A范围插入
+</code></pre></div>
+
+<p>实测：<strong>txB <code>deadlock:1213</code>（回滚）</strong>，txA committed。</p>
+<p><strong>结论</strong>：两个事务的间隙锁形成循环等待，InnoDB 死锁检测回滚代价较小的事务（错误码 1213）。</p>
+<h3 id="3-next-key-lock-gaplocklocks">3. Next-Key Lock 范围（<code>/gaplock/locks</code>）</h3>
+<p><code>WHERE category='A' FOR UPDATE</code> 产生的锁（data_locks）：</p>
+<div class="codehilite"><pre><span></span><code>TABLE, IX                意向排他锁
+RECORD, X,GAP            间隙锁 ×1
+RECORD, X                 Next-Key Lock ×3（A 的 3 条记录 + 间隙）
+RECORD, X,REC_NOT_GAP   记录锁 ×3（A 的 3 条记录）
+</code></pre></div>
+
+<p><strong>结论</strong>：非唯一索引等值查询会锁住该分类的<strong>所有记录 + 相邻间隙</strong>（3 Next-Key + 1 Gap + 3 Record），比主键等值（仅 1 Record Lock）锁范围大得多。</p>
+<h2 id="_4">五、生产启示</h2>
+<ol>
+<li><strong>间隙锁是幻读防护的必要代价</strong>：REPEATABLE READ 下范围查询会扩大锁范围。</li>
+<li><strong>用主键/唯一索引等值查询可减小锁范围</strong>：只锁记录，不锁间隙，减少阻塞。</li>
+<li><strong>非唯一索引的等值/范围操作易引发间隙锁死锁</strong>：两个事务锁不同分类的间隙后互相插入，触发死锁。</li>
+<li><strong>减少间隙锁的策略</strong>：</li>
+<li>尽量用<strong>主键/唯一索引</strong>做等值更新</li>
+<li><strong>避免大范围 UPDATE/DELETE</strong>（会锁大量间隙）</li>
+<li>必要数据可<strong>拆分小事务</strong>，缩短持锁时间</li>
+<li><strong>死锁规避</strong>：固定加锁顺序、缩短事务时长、避免"先查后插"跨分类操作。</li>
+</ol>
+<h2 id="_5">六、面试简述</h2>
+<blockquote>
+<p><strong>间隙锁 / Next-Key Lock</strong>：InnoDB 在 REPEATABLE READ 下，非唯一索引等值或范围查询会加 Next-Key Lock（记录锁+间隙锁），防止幻读但扩大锁范围。实测：A 锁某分类范围会阻塞 B 在该分类插入（等待 2 秒）；两个事务锁不同分类后互相插入会触发死锁（错误码 1213）。主键等值只加记录锁，锁范围最小；生产应多用主键/唯一索引等值，避免大范围 UPDATE。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

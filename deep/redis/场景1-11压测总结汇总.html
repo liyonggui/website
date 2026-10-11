@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis 高并发压测全场景总结（场景 1-11） · 小番茄程序猿</title>
+<meta name="description" content="Redis 高并发压测全场景总结（场景 1-11） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>Redis 高并发压测全场景总结（场景 1-11）</h1>
+  </div>
+  <article class="prose">
+<h1 id="redis-1-11">Redis 高并发压测全场景总结（场景 1-11）</h1>
+<blockquote>
+<p>本文件汇总 <code>docs/</code> 下 11 个压测场景的核心结论与简略压测过程，用于快速回顾与面试准备。完整细节见各场景原始文档。</p>
+</blockquote>
+<hr />
+<h2 id="1lettuce-pipeline">场景 1：Lettuce Pipeline 压测问题排查与优化</h2>
+<p><strong>压测过程</strong>：Lettuce 异步 Pipeline 写入 Redis（单机），逐步排查 7 个问题；后追加 ZSet 排行榜专项（Rounds 6-9）。</p>
+<p><strong>关键问题与修复</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">#</th>
+<th>问题</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td>Redis CPU 100%</td>
+<td>硬件天花板，单机吞吐有限</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td>Pipeline 并发过载反噬</td>
+<td>conc=16 时吞吐 -37%，需客户端反压（限并发 flush）</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td>SecureRandom 并发争用</td>
+<td>改 <code>ThreadLocalRandom</code>，消除全局同步锁</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td>Key 空间太小退化为覆盖写</td>
+<td>keySpace 不足 → 覆盖写掩盖真实写入成本，需足够大 key 空间</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td>AOF 刷盘影响</td>
+<td>仅在开 AOF 时触发</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td>Pipeline 超时配置无效</td>
+<td>配 1s 超时，真正生效</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td>优雅关闭</td>
+<td>两阶段关闭（优雅等待 + 超时强断），防令牌泄露</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心数据</strong>（SETEX 基线，batch=500, c=8, keySpace=5000 万）：优化前 435k（假数据）→ 优化后 <strong>~287k cmd/s</strong>（真实新写入成本），覆盖写占比 &lt;1%。</p>
+<p><strong>混合命令退化（c=8）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>cmds/s</th>
+<th>退化%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 种（SET 基线）</td>
+<td>332,825</td>
+<td>—</td>
+</tr>
+<tr>
+<td>2 种（SETEX+HSET）</td>
+<td>257,856</td>
+<td>-22.5%</td>
+</tr>
+<tr>
+<td>3 种（+ZADD）</td>
+<td>240,706</td>
+<td>-27.7%</td>
+</tr>
+<tr>
+<td>5 种（大杂烩）</td>
+<td>268,057</td>
+<td>-19.5%</td>
+</tr>
+<tr>
+<td>3种+ZADD×10</td>
+<td>81,678</td>
+<td>—（等效 +38% 但 P99×3）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>ZSet 专项（c=64）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>cmds/s</th>
+<th>退化%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基线 SET</td>
+<td>193,795</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Raw ZADD 单key（500K→skiplist）</td>
+<td>168,851</td>
+<td>12.9%</td>
+</tr>
+<tr>
+<td>Raw ZADD 16分片</td>
+<td>177,727</td>
+<td>8.3%</td>
+</tr>
+<tr>
+<td>Pipeline Top-100</td>
+<td>104,405</td>
+<td>46.1%</td>
+</tr>
+<tr>
+<td>Pipeline Top-1000</td>
+<td>138,225</td>
+<td>28.7%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. Pipeline 并发并非越大越好，需反压。
+2. key 空间大小决定"是否测到真实写入成本"。
+3. 混合命令退化由"昂贵命令占比"（ZADD 跳表 O(logN)）决定，非种类数。
+4. ZSet 分片在高吞吐写入下无效（0.16s 突破 listpack 阈值，路由开销成纯负担）。
+5. 排行榜 Top-N 裁剪：Pipeline（ZADD+ZREMRANGEBYRANK）完胜 Lua EVAL（+12%~132%）。
+6. 生产最优：Raw ZADD 实时写 + 异步定时 ZREMRANGEBYRANK 裁剪。</p>
+<hr />
+<h2 id="2-hash">场景 2：大结构 Hash 批量写入</h2>
+<p><strong>压测过程</strong>：多 worker 并发 HSET 大量大 Hash（每 key 10 field × ~256B，500K key，TTL=600s，maxmemory=256MB allkeys-lru）。对比无持久化 / RDB / AOF（percentage=100/500）的 COW、内存峰值与 OOM 风险。</p>
+<p><strong>核心数据（COW 对比）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">持久化模式</th>
+<th style="text-align: left;">子进程存活</th>
+<th style="text-align: left;">COW 大小</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">RDB</td>
+<td style="text-align: left;">~2s</td>
+<td style="text-align: left;"><strong>~245MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF percentage=100</td>
+<td style="text-align: left;">~2s</td>
+<td style="text-align: left;"><strong>~66MB</strong>（最小）</td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF percentage=500</td>
+<td style="text-align: left;">~3s</td>
+<td style="text-align: left;">~264MB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>COW 大小 = 父进程在子进程存活期间写入触发的 copy-on-write 字节数</strong>，与写入速率和 fork 持续时间强相关。
+2. AOF percentage=100 高写入下单次 COW 最小，峰值内存压力最低（但 rewrite 频繁，累计 COW 大）。
+3. <strong>OOM 估算公式</strong>：所需物理内存 ≈ <code>used_memory_rss</code> + 预计 <code>last_cow_size</code> + 10~20% 裕度；保守 <code>used_memory_rss × 1.5~2</code>。
+4. <strong>根除 COW 风险</strong>：主节点关闭持久化 + 副本做持久化/备份 + 副本错峰 BGSAVE。
+5. 生产必须关闭 THP（<code>transparent_hugepage=never</code>）。</p>
+<p><strong>补充场景（冷热混合删除，已实测）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: center;">DEL+SETEX</th>
+<th style="text-align: center;">UNLINK+SETEX</th>
+<th style="text-align: center;">SETEX+RENAME</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">cmds/s</td>
+<td style="text-align: center;">446,182</td>
+<td style="text-align: center;"><strong>512,796</strong> ✅</td>
+<td style="text-align: center;">358,129</td>
+</tr>
+<tr>
+<td style="text-align: left;">P99</td>
+<td style="text-align: center;">87.21ms</td>
+<td style="text-align: center;"><strong>47.62ms</strong> ✅</td>
+<td style="text-align: center;">99.29ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">slowlogΔ</td>
+<td style="text-align: center;">15</td>
+<td style="text-align: center;"><strong>5</strong> ✅</td>
+<td style="text-align: center;">23</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：UNLINK 全面领先 DEL（吞吐 +15%、P99 -45%、slowlog -67%）；RENAME 反而最差（内部隐式 DEL + 并发 tmp key 冲突）。生产一行改动 <code>del→unlink</code> 即可。</p>
+<hr />
+<h2 id="3-ttl-key">场景 3：短期 TTL 海量过期 key 持续灌入</h2>
+<p><strong>压测过程</strong>：大量秒级 TTL key 持续写入，观察 active-expire 采样式扫描对主线程的阻塞与 P99 抖动。</p>
+<p><strong>问题本质</strong>：过期压力来自"到期同步性"（同一时间大量 key 到期）+ "key 空间大小"。</p>
+<p><strong>三种武器对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">① 基线（固定TTL,默认Redis）</th>
+<th style="text-align: left;">② Redis 层优化（hz=50,effort=2,lazyfree）</th>
+<th style="text-align: left;">③ 应用层打散（TTL+rand）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>P99</strong></td>
+<td style="text-align: left;"><strong>51~159ms</strong></td>
+<td style="text-align: left;"><strong>5.6~17ms</strong></td>
+<td style="text-align: left;">6.7~34ms</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>max</strong></td>
+<td style="text-align: left;"><strong>82~262ms</strong></td>
+<td style="text-align: left;"><strong>8~41ms</strong></td>
+<td style="text-align: left;">12~123ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">37k~236k/s</td>
+<td style="text-align: left;"><strong>384k~471k/s</strong></td>
+<td style="text-align: left;">187k~432k/s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>P99 尖刺根因</strong>：active-expire 在主线程采样式扫描 + 同步释放内存。
+2. <code>hz</code> 控制扫描频率（密度），<code>effort</code> 控制单次扫描深度（阻塞），<code>lazyfree-lazy-expire</code> 只异步化内存回收，<strong>不消除扫描开销</strong>。
+3. <strong>决策树</strong>：能改配置 → 开 lazyfree + 短 TTL 用 hz=50/effort=2；能改应用 → TTL 随机打散（P99: 159ms→34ms）；都不能 → 横向拆分或接受 P99&gt;50ms。
+4. 实测最优组合：<code>hz=50 + effort=2 + lazyfree=yes</code>，P99 从 159ms→16.96ms（↓9.3 倍），吞吐翻倍。
+5. 长 TTL 周期批量写入 → 质数/互质 TTL 打破 LCM 汇集。</p>
+<hr />
+<h2 id="4-writer-pipeline">场景 4：分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位</h2>
+<p><strong>压测过程</strong>：单服务最优 8 个 pipeline 槽位，生产 12 个 Java 服务同时写，用 Redis 全局信号量让 Writer 竞争有限槽位，遍历 slots 找全局最优。</p>
+<p><strong>核心结论</strong>：
+1. <strong>8 个全局槽位是性价比最优值</strong>（cmd/s≈320k, P99≈4.6ms, retries=0）。
+2. 实现要点：① 只在成功占有槽位时释放（不能无条件 DECR）；② 用 token+TTL 防泄漏；③ 用 Lua 保证原子性；④ 避免 tight spin-wait，用随机退避。
+3. <strong>retries=0 不等于无竞争</strong>，吞吐才是真正的健康指标。
+4. 风险评估三轴：吞吐 / 延迟 P99 / 公平性（retries/starvation）。</p>
+<hr />
+<h2 id="5-hgetall-vs-hscan">场景 5：读写争抢 — HGETALL vs HSCAN 全维度验证</h2>
+<p><strong>压测过程</strong>：大 Hash（数千 field）上对比 HGETALL（O(N) 阻塞主线程）与 HSCAN（增量遍历）的读写争抢。</p>
+<p><strong>核心结论</strong>：
+1. <strong>HGETALL 在大 Hash 上 O(N) 阻塞主线程</strong>，写请求排队、P99 激增/超时。
+2. <strong>HSCAN 增量不阻塞</strong>，但返回不保证快照一致，<code>count</code> 只是 hint。
+3. <strong>数据建模优先</strong>：单 key field 数 ≤ 1000（保守 500），从源头避免大 Hash。
+4. 默认 reader-mode = HSCAN + count 可配置（经验值 200）；已知字段名用 HMGET 按需取。
+5. <code>RedisHashUtil</code> 封装策略：HLEN &lt; 500 直接 HGETALL；500~5000 warn 走 HSCAN；≥5000 拒绝。
+6. 禁止在 Lua 中做大循环或 HGETALL/SMEMBERS 大 key 操作；Redis 7+ 可用 EVAL_RO 发只读副本。</p>
+<hr />
+<h2 id="6-pipeline-maxclients">场景 6：高并发多连接 Pipeline — maxclients 边界探测</h2>
+<p><strong>压测过程</strong>：maxclients=500，Sweep 并发 10→360，对比 DIRECT 裸 / POOL / DIRECT+Semaphore 三种模式。</p>
+<p><strong>实测数据（SETEX Pipeline, batch=20）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">吞吐</th>
+<th style="text-align: left;">连接数</th>
+<th style="text-align: left;">吞吐/连接</th>
+<th style="text-align: left;">Redis 压力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">DIRECT 裸</td>
+<td style="text-align: left;">~140k</td>
+<td style="text-align: left;">=并发数（无上限）</td>
+<td style="text-align: left;">388 cmd/s/conn</td>
+<td style="text-align: left;">❌ 高</td>
+</tr>
+<tr>
+<td style="text-align: left;">POOL</td>
+<td style="text-align: left;">~58k</td>
+<td style="text-align: left;">≤poolMax</td>
+<td style="text-align: left;">4,143</td>
+<td style="text-align: left;">✅ 低</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>DIRECT+Semaphore</strong></td>
+<td style="text-align: left;"><strong>~155k</strong></td>
+<td style="text-align: left;">≤semaphoreMax（实测 5-10）</td>
+<td style="text-align: left;"><strong>15,500</strong></td>
+<td style="text-align: left;">✅ 极低</td>
+</tr>
+</tbody>
+</table>
+<p><strong>极限验证</strong>：500 并发、Semaphore 仅 5 连接 → connectFail=231（客户端拦截），<code>redisRejectedConnections=0</code>（Redis 零拒绝），1500 万命令零错误。</p>
+<p><strong>核心结论</strong>：
+1. <strong>DIRECT 模式 = 连接无上限，高并发必撞 maxclients</strong>，连接被拒无优雅降级。
+2. <strong>POOL = 连接池硬上限，天然熔断器</strong>，但吞吐被池机制限制。
+3. <strong>DIRECT+Semaphore = 裸 DIRECT 的吞吐 + POOL 的安全性</strong>，只用 10 条连接打满 ~155k cmd/s，是最优方案。
+4. poolMaxTotal 配置公式：<code>floor((maxclients - reserved) / instance_count / safetyFactor)</code>。
+5. 监控 <code>rejected_connections</code> 的 δ（增长速率），delta&gt;0 说明正在拒绝 → 紧急告警。</p>
+<hr />
+<h2 id="7cluster-pipeline">场景 7：Cluster 跨槽 Pipeline 错误轰炸</h2>
+<p><strong>压测过程</strong>：3 主 3 从集群，对比集群客户端（自动按 slot 分组）与绕过客户端直连单节点两种方式。</p>
+<p><strong>实测数据</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方式</th>
+<th style="text-align: left;">CROSSSLOT</th>
+<th style="text-align: left;">cmd/s</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">集群客户端 Pipeline SETEX（跨槽）</td>
+<td style="text-align: left;"><strong>0</strong></td>
+<td style="text-align: left;">~170k</td>
+</tr>
+<tr>
+<td style="text-align: left;">集群客户端 MSET（跨槽）</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">~200k</td>
+</tr>
+<tr>
+<td style="text-align: left;">集群客户端 Pipeline HGET</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">~390k</td>
+</tr>
+<tr>
+<td style="text-align: left;">绕过客户端直连单节点</td>
+<td style="text-align: left;"><strong>~150 万/5s</strong></td>
+<td style="text-align: left;">0.4（几乎全失败）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>CROSSSLOT 仅发生在"单通道"直连场景</strong>——命令被发送到不拥有所有 key 的单个节点时触发。
+2. <strong>集群客户端（Lettuce Cluster）自动按 slot 分组发送，跨槽命令 CROSSSLOT=0</strong>。
+3. 绕过客户端直连单节点 → CROSSSLOT 100%，吞吐崩塌。
+4. batchSize 越大 CROSSSLOT 线性增长（跨槽失败条数 ∝ batchSize）。
+5. <strong>CRC16 由客户端自动计算</strong>，应用层无需关心。
+6. 哈希标签（Hash Tag）是性能优化（强制同 slot）而非错误修复。</p>
+<hr />
+<h2 id="8-1-key-pipeline-incr">场景 8-1：热点 Key Pipeline INCR 自增</h2>
+<p><strong>压测过程</strong>：16 并发 × 100 batch 全部 INCR 同一个 key，对比五种模式（SINGLE_KEY / DISTRIBUTED / SHARDED / LOCAL_BUFFERED / COMPUTED）。</p>
+<p><strong>实测数据（16 并发, batch=100, 15s 采样）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">特点</th>
+<th style="text-align: left;">本地吞吐</th>
+<th style="text-align: left;">Redis 写</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">SINGLE_KEY</td>
+<td style="text-align: left;">直接 INCR</td>
+<td style="text-align: left;">~307K cmd/s</td>
+<td style="text-align: left;">每次写，单节点瓶颈</td>
+</tr>
+<tr>
+<td style="text-align: left;">DISTRIBUTED</td>
+<td style="text-align: left;">随机 hashtag 后缀</td>
+<td style="text-align: left;">~184K</td>
+<td style="text-align: left;">分散多 slot，不可 MGET 聚合</td>
+</tr>
+<tr>
+<td style="text-align: left;">SHARDED</td>
+<td style="text-align: left;">固定 N 分片</td>
+<td style="text-align: left;">~199K</td>
+<td style="text-align: left;">分散 + 可 MGET 聚合</td>
+</tr>
+<tr>
+<td style="text-align: left;">LOCAL_BUFFERED</td>
+<td style="text-align: left;">本地 Atomic + 定期 INCRBY</td>
+<td style="text-align: left;">~35,000,000/s</td>
+<td style="text-align: left;">1 次/s</td>
+</tr>
+<tr>
+<td style="text-align: left;">COMPUTED</td>
+<td style="text-align: left;">本地业务计算 + 批量写回</td>
+<td style="text-align: left;">~95,000,000/s</td>
+<td style="text-align: left;">1 次/s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>热点 Key 是 Cluster 单点瓶颈</strong>：<code>slot = CRC16(key) % 16384</code> 固定映射，高频 INCR 全部路由到同一 master。
+2. 单点写入还会放大复制压力：replication backlog 被覆盖 → psync 失效 → 全量同步 → BGSAVE/COW 爆发。
+3. <strong>"计算在应用层，汇总写回 Redis"是优先策略</strong>（LOCAL_BUFFERED/COMPUTED），本地吞吐达千万级/s，Redis 每秒仅 1 次写。
+4. 需要强一致/实时去重 → 用 Lua/WAIT/单点原子操作（牺牲吞吐）。
+5. 全量同步防护三层：基础设施（backlog、output-buffer-limit、diskless-sync、lazyfree）+ 应用层（自动降速）+ 运维层（错峰、告警）。</p>
+<p><strong>场景 8.14（主从同步压测）</strong>：高写入 + 从库全量重同步时，复制流占主节点输出带宽 72.6%，backlog 覆盖触发 psync 失效。根除方案三层防御 + 应用层自动降速兜底。</p>
+<hr />
+<h2 id="8-2pipeline-rtt-wait">场景 8-2：Pipeline RTT 敏感度与 WAIT</h2>
+<p><strong>压测过程</strong>：探索 Pipeline 在不同 batchSize 下对 RTT 的敏感度，以及 WAIT/同步对吞吐的影响；追加场景 8.21 EVAL 嵌套执行专项。</p>
+<p><strong>场景 8.21（EVAL 嵌套执行，3×3 实测）</strong>：</p>
+<p><strong>三种模式定义</strong>：
+- <strong>NESTED</strong>：Pipeline 中 batchSize 个独立 EVAL（每个 1 次 INCRBY），Redis 排队执行小脚本，中间可穿插其他连接。
+- <strong>MERGED</strong>：Pipeline 中 1 个 EVAL 脚本内 for 循环 batchSize 次，独占主线程直到全部完成。
+- <strong>RAW</strong>：Pipeline 中 batchSize 个独立 INCRBY，零脚本开销（基线）。</p>
+<p><strong>9 轮结果</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">batchSize</th>
+<th style="text-align: left;">模式</th>
+<th style="text-align: center;">ops/s</th>
+<th style="text-align: center;">sideP99</th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: left;"><strong>NESTED</strong></td>
+<td style="text-align: center;">191,044</td>
+<td style="text-align: center;">18.99ms</td>
+<td style="text-align: center;">6</td>
+</tr>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: left;">MERGED</td>
+<td style="text-align: center;">4,660</td>
+<td style="text-align: center;">12.75ms</td>
+<td style="text-align: center;">20</td>
+</tr>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: left;">RAW</td>
+<td style="text-align: center;">455,483</td>
+<td style="text-align: center;">14.95ms</td>
+<td style="text-align: center;">5</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: left;">NESTED</td>
+<td style="text-align: center;">207,264</td>
+<td style="text-align: center;">45.80ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: left;">MERGED</td>
+<td style="text-align: center;">1,281</td>
+<td style="text-align: center;">28.28ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: left;">RAW</td>
+<td style="text-align: center;">575,859</td>
+<td style="text-align: center;">23.21ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td style="text-align: left;">NESTED</td>
+<td style="text-align: center;">196,931</td>
+<td style="text-align: center;">49.73ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td style="text-align: left;">MERGED</td>
+<td style="text-align: center;">600</td>
+<td style="text-align: center;"><strong>55.37ms</strong> ※</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td style="text-align: left;">RAW</td>
+<td style="text-align: center;">588,261</td>
+<td style="text-align: center;">32.50ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+</tbody>
+</table>
+<p>※ B1000 时 MERGED 的 sideP99 反超 NESTED：单个大 EVAL 独占主线程 1000 次循环的伤害 &gt; 1000 个小 EVAL 排队。</p>
+<p><strong>核心结论</strong>：
+1. <strong>RAW 原生命令最优</strong>：吞吐 455-588K（NESTED 的 2.4-3.0 倍），sideP99 最低。
+2. <strong>NESTED EVAL 可行</strong>：吞吐稳定 ~200K，sideP99 控制在 19-50ms，batchSize ≤ 100 时最稳。
+3. <strong>MERGED EVAL 危险</strong>：sideP99 随 batchSize 超线性增长（13→28→55ms），batchSize &gt; 100 后反超 NESTED，造成全局阻塞。
+4. 分界点约在 batch=100，超过后 MERGED 的阻塞伤害 &gt; NESTED 的脚本解析开销。
+5. 生产优先级：能不用 EVAL 就不用 → 需要原子性时用 NESTED 且 batchSize≤100 → 避免 MERGED 大循环。</p>
+<hr />
+<h2 id="9">场景 9：集合运算（并/交/差）高并发压测</h2>
+<p><strong>压测过程</strong>：先功能正确性验证（26/26 PASS），再做高并发梯度压测（Set 大小 500/1K/5K/10K × 并发）。</p>
+<p><strong>实测数据（环境相关）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">集合大小 N</th>
+<th style="text-align: center;">吞吐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: center;">30,499</td>
+</tr>
+<tr>
+<td style="text-align: center;">1,000 ⭐</td>
+<td style="text-align: center;"><strong>38,031</strong>（甜蜜点）</td>
+</tr>
+<tr>
+<td style="text-align: center;">5,000</td>
+<td style="text-align: center;">18,050（拐点，-52%）</td>
+</tr>
+<tr>
+<td style="text-align: center;">10,000</td>
+<td style="text-align: center;">5,184（主线程 CPU 饱和）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>SINTER 以最小输入集合为遍历基准</strong>（O(S×(k-1))），SUNION 为 O(sum Ni)，SDIFF 遍历第一个集合并排除。
+2. 参数顺序影响成本——把小集合放前面。
+3. <strong>SMOVE 是单命令原子方案</strong>；Pipeline 减少 RTT 但不保证多命令原子性。
+4. SSCAN 遍历必须去重 + max rounds/超时；非快照隔离。
+5. <strong>手动取模跨分片 SINTER 不报错但静默错误</strong>（缺失 key 视为空集）——必须 hashtag 或校验。
+6. 单 Redis 拆小 key 不减少 SINTER 遍历总量。
+7. 概率数据结构（HyperLogLog/BloomFilter/CMS）vs 精确存储：内存与精度权衡，适合 UV、去重等场景。</p>
+<hr />
+<h2 id="10-vs">场景 10：哨兵 vs 集群 — 写入阶段选型</h2>
+<p><strong>压测过程</strong>：同参数（Pipeline 100 SET, 16 线程 × 100 batch, 预热 3s + 采样 5s）在哨兵（1 主+1 从+3 sentinel）和集群（3 主+3 从）各跑一遍稳态写 + kill master 故障韧性。</p>
+<p><strong>稳态写吞吐（单 worker 单 slot）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: center;">哨兵</th>
+<th style="text-align: center;">集群</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">cmdPerSec</td>
+<td style="text-align: center;">~369,300</td>
+<td style="text-align: center;">~354,900</td>
+</tr>
+<tr>
+<td style="text-align: left;">p50</td>
+<td style="text-align: center;">4.650ms</td>
+<td style="text-align: center;">4.360ms</td>
+</tr>
+<tr>
+<td style="text-align: left;">p99</td>
+<td style="text-align: center;">15.970ms</td>
+<td style="text-align: center;">18.233ms</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>集群与哨兵吞吐几乎相同（集群略低 ~4%）。因 key 落在同一固定 slot（单主分片），本质仍是单节点在写。<strong>单热 key/单 worker 分布写时，集群和哨兵都受单节点限制，无吞吐优势。</strong></p>
+</blockquote>
+<p><strong>故障韧性（kill master）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">阶段</th>
+<th style="text-align: center;">观察窗口</th>
+<th style="text-align: center;">重试</th>
+<th style="text-align: center;">哨兵 failRate</th>
+<th style="text-align: center;">集群 failRate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">修复前</td>
+<td style="text-align: center;">15s</td>
+<td style="text-align: center;">无</td>
+<td style="text-align: center;">0.105%</td>
+<td style="text-align: center;">0.099%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>修复后</strong></td>
+<td style="text-align: center;"><strong>35s</strong></td>
+<td style="text-align: center;"><strong>指数退避重试</strong></td>
+<td style="text-align: center;"><strong>0.000%</strong></td>
+<td style="text-align: center;"><strong>0.000%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>稳态写入上集群对单 worker/单热 key 无吞吐优势</strong>（≈相同），因为写路径都是单主分片单线程。
+2. <strong>集群的吞吐优势只在"多 key 均匀分布到多主分片"时体现</strong>。
+3. <strong>故障韧性</strong>：应用层重试 + 足够观察窗口（35s），哨兵和集群 kill master 都做到 failRate=0（零丢失）。
+4. <strong>选型建议</strong>：数据量小/简单高可用 → 哨兵；数据量大/需水平扩展/多 key 高吞吐 → 集群（前提 key 能均匀分布）；单热 key 极高吞吐 → 两者都受限，需 LOCAL_BUFFERED/COMPUTED 本地方案。
+5. RPO 兜底：数据库水位线对账是唯一数学上能保证最终一致性的手段。
+6. <strong>脑裂防护</strong>：<code>min-replicas-to-write=1</code> 即可（与 replica 总数无关）。</p>
+<hr />
+<h2 id="_1">横向总览（一图看懂）</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">场景</th>
+<th style="text-align: left;">核心问题</th>
+<th style="text-align: left;">一句话结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;">Pipeline 压测优化</td>
+<td style="text-align: left;">并发需反压；退化由昂贵命令占比决定；分片在高吞吐写入下无效</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;">大 Hash 批量写入</td>
+<td style="text-align: left;">主节点关持久化+副本持久化；预留 1.5-2× 内存防 COW/OOM</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: left;">TTL 海量过期</td>
+<td style="text-align: left;">hz=50+effort=2+lazyfree 或应用层 TTL 打散，P99 降 9 倍</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td style="text-align: left;">分布式信号量</td>
+<td style="text-align: left;">8 个全局槽位最优；token+TTL 防泄漏，Lua 保证原子性</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td style="text-align: left;">HGETALL vs HSCAN</td>
+<td style="text-align: left;">避免大 Hash；默认 HSCAN+count 可配；阈值封装兜底</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td style="text-align: left;">maxclients 边界</td>
+<td style="text-align: left;">DIRECT+Semaphore 最优（吞吐+安全）；用连接池/Semaphore 防撞墙</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td style="text-align: left;">Cluster 跨槽</td>
+<td style="text-align: left;">集群客户端自动分槽 CROSSSLOT=0；直连单节点 100% CROSSSLOT</td>
+</tr>
+<tr>
+<td style="text-align: center;">8-1</td>
+<td style="text-align: left;">热点 Key 自增</td>
+<td style="text-align: left;">计算放应用层，汇总写回 Redis（千万级/s）；防全量同步三层防御</td>
+</tr>
+<tr>
+<td style="text-align: center;">8-2</td>
+<td style="text-align: left;">Pipeline RTT/WAIT</td>
+<td style="text-align: left;">RAW 原生命令最优；NESTED EVAL 可用（batch≤100）；MERGED 危险</td>
+</tr>
+<tr>
+<td style="text-align: center;">9</td>
+<td style="text-align: left;">集合运算</td>
+<td style="text-align: left;">SINTER 以最小集为基准；单 Redis 拆 key 不省遍历；跨分片静默错误</td>
+</tr>
+<tr>
+<td style="text-align: center;">10</td>
+<td style="text-align: left;">哨兵 vs 集群</td>
+<td style="text-align: left;">单热 key 两者无差；集群优势在多 key 分布；重试+观察窗 failRate=0</td>
+</tr>
+<tr>
+<td style="text-align: center;">11</td>
+<td style="text-align: left;">内部编码对比</td>
+<td style="text-align: left;">各类型编码由数据自动决定不可显式指定；intset/紧凑小结构最优，大结构全量读取（SMEMBERS/HGETALL）是数量级差距</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="11redis">场景 11：Redis 内部编码性能对比压测</h2>
+<p><strong>压测过程</strong>：对 String（int/embstr/raw）、Hash（listpack/hashtable）、ZSet（listpack/skiplist）、Set（intset/listpack/hashtable）四类数据类型的内部编码做吞吐/延迟对比，每轮 5s 预热 + 10s 采样（c=16, batch=50），用 <code>OBJECT ENCODING</code> 验证编码，含公平对比（控制变量仅差 1 条触发转换）。</p>
+<p><strong>前置认知（所有类型共性）</strong>：<strong>内部编码由数据自动决定，无法显式指定</strong>——只能靠 member/value 的类型、数量、长度"凑"出目标编码，且转换均<strong>单向不可逆</strong>（删数据不会转回）。完整原理见 <code>docs/场景11</code> 文档。</p>
+<h3 id="111-stringint-embstr-raw">11.1 String（int / embstr / raw）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>int</strong></td>
+<td>value 是 64 位整数</td>
+<td>8 字节 long 内联在 RedisObject</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>embstr</strong></td>
+<td>字符串 ≤ 44B</td>
+<td>对象+sds 数据 1 次 malloc 连续分配</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>raw</strong></td>
+<td>字符串 &gt; 44B</td>
+<td>对象+sds 2 次 malloc 分离</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心数据</strong>（12 轮，c=16）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: center;">int</th>
+<th style="text-align: center;">embstr</th>
+<th style="text-align: center;">raw</th>
+<th style="text-align: left;">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">INCR</td>
+<td style="text-align: center;"><strong>532K</strong></td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: left;">数值运算 int 碾压</td>
+</tr>
+<tr>
+<td style="text-align: left;">SET</td>
+<td style="text-align: center;">480K</td>
+<td style="text-align: center;">417K</td>
+<td style="text-align: center;">333K</td>
+<td style="text-align: left;">embstr vs raw +25.3%</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: center;">471K</td>
+<td style="text-align: center;">421K</td>
+<td style="text-align: center;">369K</td>
+<td style="text-align: left;">embstr vs raw +14.2%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>APPEND</strong></td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">26.3K(max 287ms)</td>
+<td style="text-align: center;"><strong>33K(max 39ms)</strong></td>
+<td style="text-align: left;"><strong>raw 预分配反超</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>数值运算用 int</strong>：INCR/DECR 零分配，吞吐最高。
+2. <strong>短文本用 embstr</strong>：连续内存 cache 友好，SET/GET 明显优于 raw。
+3. <strong>长文本/可变拼接用 raw</strong>：raw 的 <code>sdsMakeRoomFor</code> 预分配使 APPEND 摊销 O(1)，max 延迟 39ms vs embstr 287ms（避免反复 realloc）。
+4. 生产选型：计数器→int，短文本/缓存→embstr，长文/日志/拼接→raw。</p>
+<h3 id="112-hashlistpack-hashtable">11.2 Hash（listpack / hashtable）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>field 数 ≤ 128 且 value ≤ 64B</td>
+<td>连续内存块</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>field 数 &gt; 128 或 value &gt; 64B</td>
+<td>dict 哈希表</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心数据</strong>（14 轮，c=16）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: center;">listpack(50f)</th>
+<th style="text-align: center;">hashtable(500f)</th>
+<th style="text-align: left;">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">HSET</td>
+<td style="text-align: center;">碾压</td>
+<td style="text-align: center;">低</td>
+<td style="text-align: left;">listpack 紧凑 +2260%</td>
+</tr>
+<tr>
+<td style="text-align: left;">HGET</td>
+<td style="text-align: center;">高</td>
+<td style="text-align: center;">低</td>
+<td style="text-align: left;">listpack 占优</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>公平对比 HGET</strong></td>
+<td style="text-align: center;">127f <strong>321K</strong></td>
+<td style="text-align: center;">128f <strong>388K</strong></td>
+<td style="text-align: left;"><strong>hashtable +21% 反超</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>小 Hash 用 listpack</strong>：50 field 碾压 500 field hashtable。
+2. <strong>临界点 hashtable 反超</strong>：公平对比（127f vs 128f）下 hashtable +21%——listpack 是 O(N) 顺序扫描，临界时 N 大扫描成本反超 dict 的 O(1)。
+3. <strong>listpack 不必强制</strong>：小数据自动生效；大数据保不住且 O(N) 反噬；分片/限容保 listpack 是纯负收益。
+4. 生产选型：单 key field 数控制在 ≤100（保 listpack）或干脆用大 hashtable（O(1)）；<strong>严禁</strong>在大 hashtable 上 HGETALL（O(N) 阻塞，见场景 5）。</p>
+<h3 id="113-zsetlistpack-skiplist">11.3 ZSet（listpack / skiplist）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>member 数 ≤ 128 且 member ≤ 64B</td>
+<td>连续内存块</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>skiplist</strong></td>
+<td>member 数 &gt; 128 或 member &gt; 64B</td>
+<td>跳表+dict，O(logN)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心数据</strong>（12 轮，c=16）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: center;">listpack(50m)</th>
+<th style="text-align: center;">skiplist(500m)</th>
+<th style="text-align: left;">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">ZADD</td>
+<td style="text-align: center;">126K</td>
+<td style="text-align: center;"><strong>139K</strong></td>
+<td style="text-align: left;"><strong>skiplist +11%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">ZSCORE</td>
+<td style="text-align: center;">300K</td>
+<td style="text-align: center;">299K</td>
+<td style="text-align: left;">接近</td>
+</tr>
+<tr>
+<td style="text-align: left;">ZRANGE</td>
+<td style="text-align: center;">188K</td>
+<td style="text-align: center;">188K</td>
+<td style="text-align: left;">接近</td>
+</tr>
+<tr>
+<td style="text-align: left;">ZINCRBY</td>
+<td style="text-align: center;">112K</td>
+<td style="text-align: center;"><strong>116K</strong></td>
+<td style="text-align: left;">skiplist +4%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：
+1. <strong>ZADD 上 skiplist 反而更快（+11%）</strong>：ZADD 需按 score 定位插入点，skiplist 的 O(logN) 跳跃 &lt; listpack 的 O(N) 线性扫描（尽管 skiplist member 更多）。
+2. <strong>ZSCORE/ZRANGE 两者接近</strong>：都需按 member 名查找或顺序遍历，差异小。
+3. <strong>测试局限</strong>：128 个短 member 未触发 skiplist（仍是 listpack），转换阈值需 &gt;128——与 Hash 的 128 边界行为不同。
+4. 生产选型：小排行榜用 listpack；<strong>大排行榜/高并发 ZADD 用 skiplist</strong>（排序定位优势）；不要刻意限容保 listpack。</p>
+<h3 id="114-setintset-listpack-hashtable">11.4 Set（intset / listpack / hashtable）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">编码</th>
+<th>触发条件</th>
+<th>内存布局</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>intset</strong></td>
+<td>全整数 且 数量 ≤ 512</td>
+<td>有序紧凑整数数组</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>listpack</strong></td>
+<td>字符串 且 ≤ 128 且 ≤ 64B</td>
+<td>连续内存块</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>hashtable</strong></td>
+<td>整数 &gt; 512，或字符串 &gt; 128/&gt;64B</td>
+<td>dict 哈希表</td>
+</tr>
+</tbody>
+</table>
+<p><strong>转换链</strong>：intset→(加字符串)→listpack→(&gt;128/&gt;64B)→hashtable；intset→(整数&gt;512)→hashtable。均单向不可逆。</p>
+<p><strong>核心数据</strong>（21 轮，c=16）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: center;">intset(50整数)</th>
+<th style="text-align: center;">listpack(50字符串)</th>
+<th style="text-align: center;">hashtable(500长)</th>
+<th style="text-align: center;">int vs ht</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">SADD</td>
+<td style="text-align: center;">364K</td>
+<td style="text-align: center;">346K</td>
+<td style="text-align: center;">311K</td>
+<td style="text-align: center;">+17%</td>
+</tr>
+<tr>
+<td style="text-align: left;">SISMEMBER</td>
+<td style="text-align: center;">379K</td>
+<td style="text-align: center;">345K</td>
+<td style="text-align: center;">329K</td>
+<td style="text-align: center;">+15%</td>
+</tr>
+<tr>
+<td style="text-align: left;">SREM</td>
+<td style="text-align: center;">448K</td>
+<td style="text-align: center;">449K</td>
+<td style="text-align: center;">307K</td>
+<td style="text-align: center;">+46%</td>
+</tr>
+<tr>
+<td style="text-align: left;">SRANDMEMBER</td>
+<td style="text-align: center;">522K</td>
+<td style="text-align: center;">530K</td>
+<td style="text-align: center;">258K</td>
+<td style="text-align: center;">+102%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SMEMBERS</strong></td>
+<td style="text-align: center;">476K</td>
+<td style="text-align: center;">481K</td>
+<td style="text-align: center;"><strong>14K</strong></td>
+<td style="text-align: center;"><strong>+3136%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>公平对比</strong>：intset 512整数 +22.1% 碾压 hashtable 513整数；但 128 短字符串未触发 hashtable（仍是 listpack）。</p>
+<p><strong>核心结论</strong>：
+1. <strong>intset 全面碾压</strong>：纯整数集合二分查找，SADD/SISMEMBER/SREM/SRANDMEMBER 全面领先。
+2. <strong>SMEMBERS 是最大分水岭</strong>：hashtable 全量读取慢 30 倍+（14K vs 476K，avg 54.7ms）——dict 遍历需逐个 dictEntry 分配返回对象。
+3. <strong>SRANDMEMBER 慢一半</strong>：hashtable 需先计数再随机定位。
+4. <strong>测试局限</strong>：128 短字符串未触发 hashtable（与 ZSet 一致），整数 513 则精确触发。
+5. 生产选型：<strong>整数别存成字符串</strong>；避免在大 hashtable 上全量读取（用 SSCAN/分片）；"能否保小编码"意义不大，真正要防的是<strong>大 hashtable 的全量读取</strong>（数量级差距）。</p>
+<h3 id="115">11.5 四类型横向对比（共性总结）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: center;">String</th>
+<th style="text-align: center;">Hash</th>
+<th style="text-align: center;">ZSet</th>
+<th style="text-align: center;">Set</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">编码</td>
+<td style="text-align: center;">int/embstr/raw</td>
+<td style="text-align: center;">listpack/hashtable</td>
+<td style="text-align: center;">listpack/skiplist</td>
+<td style="text-align: center;">intset/listpack/hashtable</td>
+</tr>
+<tr>
+<td style="text-align: left;">能否显式指定</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">❌</td>
+</tr>
+<tr>
+<td style="text-align: left;">小数据最优</td>
+<td style="text-align: center;">embstr</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: center;">listpack</td>
+<td style="text-align: center;">intset/listpack</td>
+</tr>
+<tr>
+<td style="text-align: left;">大数据"全量读"</td>
+<td style="text-align: center;">raw(拼接)</td>
+<td style="text-align: center;">hashtable HGETALL 慢</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">hashtable SMEMBERS 慢 30x</td>
+</tr>
+<tr>
+<td style="text-align: left;">临界反超现象</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;">128f hashtable +21%</td>
+<td style="text-align: center;">ZADD skiplist +11%</td>
+<td style="text-align: center;">512intset +22%</td>
+</tr>
+<tr>
+<td style="text-align: left;">结论</td>
+<td style="text-align: center;">按 value 用途选编码</td>
+<td style="text-align: center;">小用 listpack，大禁 HGETALL</td>
+<td style="text-align: center;">大排行榜用 skiplist</td>
+<td style="text-align: center;">整数用 intset，大禁 SMEMBERS</td>
+</tr>
+</tbody>
+</table>
+<p><strong>四类型通用生产原则</strong>：
+1. <strong>编码不可强求</strong>：小数据自动落入紧凑编码，无需干预。
+2. <strong>真正要防的是大结构的"全量读取"</strong>（HGETALL/SMEMBERS/SRANDMEMBER/大 value 拼接）——这是数量级差距，改用分页（SSCAN/HSCAN）或分片。
+3. <strong>紧凑编码（listpack/intset/embstr）在临界点会因 O(N) 扫描反噬</strong>，但大 hashtable/skiplist 的 O(1)/O(logN) 更稳——所以"刻意保小"不是银弹。
+4. 分片同时规避：跨槽 CROSSSLOT（场景 7）、大 key 全量读阻塞（场景 5）、编码退化（本场景）。</p>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

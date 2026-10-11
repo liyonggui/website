@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景 2 — 大结构 Hash 批量写入 · 小番茄程序猿</title>
+<meta name="description" content="场景 2 — 大结构 Hash 批量写入 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景 2 — 大结构 Hash 批量写入</h1>
+  </div>
+  <article class="prose">
+<h1 id="2-hash">场景 2 — 大结构 Hash 批量写入</h1>
+<h2 id="tldr">TL;DR</h2>
+<p>多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemory=256MB，policy=allkeys-lru。对比无持久化、RDB、AOF（percentage=100/500）四种模式下内存峰值、COW 尺寸、淘汰量和 OOM 风险。</p>
+<blockquote>
+<p><strong>关键结论</strong>：RDB fork 在高写入且未预热情况下产生的 COW 可非常巨大（本测 ~245MB，超大 Value 场景冷启动可达 ~1.9GB），可能导致 OOM。AOF percentage=100 在本测试下虽然 rewrite 频繁但单次 COW 最小（~66MB），峰值内存压力最小。若要根除 COW 风险，最佳做法是<strong>主节点关闭持久化 + 副本做持久化/备份</strong>，并在副本上错峰做 BGSAVE / AOF rewrite。</p>
+<p><strong>风险估算实用公式</strong>：估算所需物理内存 ≈ <code>used_memory_rss</code> + 预计 <code>last_cow_size</code> + 安全裕度（建议 10~20% 或按 <code>used_memory_rss × 1.5~2</code> 做保守规划）。注意 <code>last_cow_size</code> 为历史观测值，未来 fork 的 COW 取决于实时写入速率、fork 持续时间以及是否开启 THP。</p>
+</blockquote>
+<hr />
+<h2 id="_1">压测架构</h2>
+<div class="codehilite"><pre><span></span><code>Worker-1 ── Redis 连接 1 ── HSET hash:N f0..f9 + EXPIRE── flushCommands ── awaitAll ── 循环
+Worker-2 ── Redis 连接 2 ── HSET hash:N f0..f9 + EXPIRE── flushCommands ── awaitAll ── 循环
+...
+Worker-N ── Redis 连接 N ── HSET hash:N f0..f9 + EXPIRE── flushCommands ── awaitAll ── 循环
+</code></pre></div>
+
+<blockquote>
+<p>注：本文使用 <code>HSET</code> 命令（Redis 4.0+ 已可替代 <code>HMSET</code> 写入多个 field；<code>HMSET</code> 在较新版本中已被标记为 deprecated，仅为历史参考）。</p>
+</blockquote>
+<ul>
+<li>每个 Hash key 10 个 field，每个 field value 256 字节</li>
+<li>Hash key 空间 50 万，TTL 600 秒</li>
+<li>Redis 配置 <code>--maxmemory 256mb --maxmemory-policy allkeys-lru</code></li>
+</ul>
+<hr />
+<h2 id="_2">基线测试：无持久化</h2>
+<p>15 秒立即打满内存：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">写入量</td>
+<td style="text-align: left;">8,176,000 fields</td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐</td>
+<td style="text-align: left;">545k fields/s</td>
+</tr>
+<tr>
+<td style="text-align: left;">内存</td>
+<td style="text-align: left;">256MB / 256MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">RSS</td>
+<td style="text-align: left;">268MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">evicted_keys</td>
+<td style="text-align: left;">641,390</td>
+</tr>
+<tr>
+<td style="text-align: left;">错误</td>
+<td style="text-align: left;">0</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>15 秒即触发 LRU 淘汰，RSS 略超 maxmemory（Hash 结构碎片）。</p>
+</blockquote>
+<hr />
+<h2 id="rdb-fork">RDB fork 风险测试</h2>
+<p>配置 <code>--save "60 1"</code>（每 60 秒至少 1 个变更触发 BGSAVE）。</p>
+<p>65 秒对比：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">无持久化</th>
+<th style="text-align: left;">RDB (save 60 1)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">65s 写入</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">71,968 批 (35,984,000 fields)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RSS 峰值</td>
+<td style="text-align: left;">268MB</td>
+<td style="text-align: left;"><strong>275MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">fork 次数</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><strong>1</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>rdb_last_cow_size</strong></td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><strong>~245MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">BGSAVE 耗时</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">~2s</td>
+</tr>
+<tr>
+<td style="text-align: left;">evicted_keys</td>
+<td style="text-align: left;">641k (15s)</td>
+<td style="text-align: left;"><strong>3,038k</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">丢数据风险</td>
+<td style="text-align: left;">全部</td>
+<td style="text-align: left;">最多 60s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：</p>
+<ul>
+<li>
+<p><strong>COW 精确定义</strong>：<code>rdb_last_cow_size ≈ 245MB</code> 表示"在上一次 BGSAVE 子进程存活期间，<strong>父进程的写操作</strong>导致被 copy-on-write 复制的内存总字节数（即父进程触发的 COW 字节数）"。注意：这是<strong>历史的、已发生</strong>的一次 fork 的 COW 度量值，不是未来 fork 的预测值。COW 内存由父进程承担，因此 fork + COW 显著放大了实际内存占用。</p>
+</li>
+<li>
+<p><strong>fork 阻塞 vs 子进程快照的明确区分</strong>：<code>fork()</code> 调用的那一刻父进程会产生短暂内核开销（通常毫秒级停顿，取决于页表大小），之后子进程在后台执行快照，<strong>不会阻塞</strong>父进程的正常命令处理。但父进程在子进程存活期间的写入会触发 COW，导致内存被复制并推高 RSS，从而间接导致更频繁的淘汰和延迟上升。本测试观测到的 ~2s 是子进程执行快照的耗时，不等于父进程被阻塞 2s。</p>
+</li>
+<li>
+<p><strong>物理内存估算（历史 vs 预测）</strong>：<code>last_cow_size</code> 是上一次 fork 的实际观测值，未来 fork 的 COW 取决于"当前写入速率 × 预计 fork 存活时间 × 页粒度（是否开启 THP/大页）"。因此用于规划应采用：</p>
+</li>
+</ul>
+<p><code>估算所需物理内存 ≈ used_memory_rss + 预计_last_cow_size + 安全裕度(10~20%)</code></p>
+<p>若无法精确估算 <code>预计_last_cow_size</code>，采用保守策略：</p>
+<p><code>物理内存 ≥ used_memory_rss × 1.5~2</code></p>
+<p>示例：275MB + 245MB ≈ <strong>520MB</strong>，再 + 10~20% 裕度 ≈ <strong>572~624MB</strong>；若宿主机仅 512MB，OOM 很可能发生。保守估算法：275MB × 2 = <strong>550MB</strong>。</p>
+<ul>
+<li>RDB 开启后淘汰量暴增 4.7 倍（fork/COW 增加了写入路径的内存压力，allkeys-lru 更激进地淘汰以维持在 maxmemory 以内）。</li>
+</ul>
+<hr />
+<h2 id="aof-percentage-100-vs-500">AOF 对比：percentage 100 vs 500</h2>
+<p>配置 <code>--appendonly yes --appendfsync everysec</code>。</p>
+<blockquote>
+<p><strong>appendfsync everysec 的语义</strong>：Redis 每秒（由后台线程）将 AOF 缓冲区 fsync 到磁盘一次。最坏情况下（服务器崩溃），最多丢失最近 ~1 秒的写入（取决于 OS 调度与 flush 实际行为）。若需要更强持久化可用 <code>appendfsync always</code>（每条命令 fsync，严重影响性能）或在写入时使用 <code>WAIT</code> 命令等待 N 个副本确认写入。</p>
+</blockquote>
+<h3 id="aof-percentage100-rewrite">AOF percentage=100（文件翻倍即 rewrite）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">65s 写入</td>
+<td style="text-align: left;">47,742 批 (23,871,000 fields)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RSS 峰值</td>
+<td style="text-align: left;"><strong>287MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">fork 次数</td>
+<td style="text-align: left;"><strong>17 次</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">单次 COW</td>
+<td style="text-align: left;"><strong>~66MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">总 COW（累计）</td>
+<td style="text-align: left;">~1,122MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">evicted_keys</td>
+<td style="text-align: left;">1,989k</td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF 文件大小</td>
+<td style="text-align: left;">~185MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">rewrite 单次耗时</td>
+<td style="text-align: left;">~2s</td>
+</tr>
+</tbody>
+</table>
+<h3 id="aof-percentage500-5-rewrite">AOF percentage=500（文件增长到 5 倍才 rewrite）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">65s 写入</td>
+<td style="text-align: left;">48,083 批 (24,041,500 fields)</td>
+</tr>
+<tr>
+<td style="text-align: left;">RSS 峰值</td>
+<td style="text-align: left;"><strong>282MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">fork 次数</td>
+<td style="text-align: left;"><strong>5 次</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">单次 COW</td>
+<td style="text-align: left;"><strong>~264MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">总 COW（累计）</td>
+<td style="text-align: left;">~1,320MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">evicted_keys</td>
+<td style="text-align: left;">2,005k</td>
+</tr>
+<tr>
+<td style="text-align: left;">AOF 文件大小</td>
+<td style="text-align: left;"><strong>~735MB</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">rewrite 单次耗时</td>
+<td style="text-align: left;">~3s</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">四模式终局对比</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">无持久化</th>
+<th style="text-align: left;">RDB (60 1)</th>
+<th style="text-align: left;">AOF 100%</th>
+<th style="text-align: left;">AOF 500%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">65s 写入</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">71,968 批</td>
+<td style="text-align: left;">47,742 批</td>
+<td style="text-align: left;">48,083 批</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>RSS 峰值</strong></td>
+<td style="text-align: left;">268MB</td>
+<td style="text-align: left;"><strong>275MB</strong></td>
+<td style="text-align: left;">287MB</td>
+<td style="text-align: left;">282MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">fork 次数</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><strong>1</strong></td>
+<td style="text-align: left;">17</td>
+<td style="text-align: left;">5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>单次 COW</strong></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">~245MB</td>
+<td style="text-align: left;"><strong>~66MB</strong></td>
+<td style="text-align: left;">~264MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">总 COW（累计）</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;"><strong>~245MB</strong></td>
+<td style="text-align: left;">~1,122MB</td>
+<td style="text-align: left;">~1,320MB</td>
+</tr>
+<tr>
+<td style="text-align: left;">evicted</td>
+<td style="text-align: left;">641k</td>
+<td style="text-align: left;">3,038k</td>
+<td style="text-align: left;">1,990k</td>
+<td style="text-align: left;">2,005k</td>
+</tr>
+<tr>
+<td style="text-align: left;">丢数据风险</td>
+<td style="text-align: left;">全部</td>
+<td style="text-align: left;">≤60s</td>
+<td style="text-align: left;"><strong>≤~1s</strong> (everysec)</td>
+<td style="text-align: left;">≤~1s (everysec)</td>
+</tr>
+<tr>
+<td style="text-align: left;">磁盘文件</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">dump.rdb</td>
+<td style="text-align: left;">~185MB</td>
+<td style="text-align: left;">~735MB</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注：所有 "MB" 值均为近似值（来源于 INFO 输出或系统 RSS 换算后的四舍五入），如需严格计量请以 bytes 原始值为准。</p>
+</blockquote>
+<hr />
+<h2 id="value">超大 Value 管道写入压测</h2>
+<h3 id="tldr_1">TL;DR</h3>
+<p>将单个 key 的 value 从 256B 放至 <strong>1KB / 10KB / 50KB / 100KB</strong>，以 Pipeline SETEX 持续写入（keySpace=100k、TTL=120s），对比<strong>无 RDB 与 RDB (save 60 1)</strong> 两种模式下的<strong>网络带宽、延迟尖刺、COW 放大率</strong>。</p>
+<blockquote>
+<p><strong>关键结论</strong>：带宽甜点在 <strong>10KB</strong>（490 MB/s，<strong>本地回环测试值</strong>），100KB 时 P99 从 5.6ms 飙升至 <strong>122ms</strong>（无 RDB）→ <strong>176ms</strong>（最大值），TCP 缓冲区压力明显。RDB 模式下，首次 BGSAVE 的 COW 最高可达 <strong>1928MB</strong>（即使数据仅 132MB），BGSAVE 耗时和写入强度共同决定 COW 规模。</p>
+<p>⚠️ <strong>注意</strong>：本文所有 MB/s 数值均为<strong>本地回环（localhost）测试</strong>结果，不代表 1Gbps/10Gbps 真实网卡可承受的吞吐。经过真实网卡后，千兆网卡理论限速约 125 MB/s，万兆约 1.25 GB/s。</p>
+</blockquote>
+<h3 id="_4">压测架构</h3>
+<div class="codehilite"><pre><span></span><code>Worker-1 ── Redis 连接 1 ── [SETEX lv:0..99999 × batchSize] ── flushCommands ── awaitAll
+Worker-2 ── Redis 连接 2 ── [SETEX lv:0..99999 × batchSize] ── flushCommands ── awaitAll
+Worker-3 ── Redis 连接 3 ── [SETEX lv:0..99999 × batchSize] ── flushCommands ── awaitAll
+Worker-4 ── Redis 连接 4 ── [SETEX lv:0..99999 × batchSize] ── flushCommands ── awaitAll
+</code></pre></div>
+
+<ul>
+<li>每条 SETEX = key <code>lv:N</code> + 随机 value（<code>1KB / 10KB / 50KB / 100KB</code>）+ TTL 120s</li>
+<li>Key 空间 10 万，反压 maxInflightFlushes=4，Pipeline timeout=5s</li>
+<li>每梯度测试 25 秒（不含 5 秒预热），每 5 秒采样一次</li>
+</ul>
+<h3 id="rdb">无 RDB 模式：梯度带宽压测</h3>
+<blockquote>
+<p>⚠️ 以下 MB/s 为 <strong>本地回环（localhost）</strong> 测试值。经过真实网卡后，千兆网卡理论上限约 125 MB/s。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">尺寸</th>
+<th style="text-align: left;">batch</th>
+<th style="text-align: left;">conc</th>
+<th style="text-align: left;">ops/s</th>
+<th style="text-align: left;">MB/s (localhost)</th>
+<th style="text-align: left;">avg(ms)</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;">P90</th>
+<th style="text-align: left;">P99</th>
+<th style="text-align: left;">maxP99</th>
+<th style="text-align: left;">内存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1KB</td>
+<td style="text-align: left;">50</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">2524</td>
+<td style="text-align: left;">123.2</td>
+<td style="text-align: left;">1.6</td>
+<td style="text-align: left;">1.0</td>
+<td style="text-align: left;">2.2</td>
+<td style="text-align: left;">7.2</td>
+<td style="text-align: left;">9</td>
+<td style="text-align: left;">132M</td>
+</tr>
+<tr>
+<td style="text-align: left;">10KB</td>
+<td style="text-align: left;">20</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">2441</td>
+<td style="text-align: left;"><strong>476.8</strong></td>
+<td style="text-align: left;">1.7</td>
+<td style="text-align: left;">1.2</td>
+<td style="text-align: left;">2.4</td>
+<td style="text-align: left;">5.6</td>
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">1.15G</td>
+</tr>
+<tr>
+<td style="text-align: left;">50KB</td>
+<td style="text-align: left;">10</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">503</td>
+<td style="text-align: left;">245.8</td>
+<td style="text-align: left;">8.2</td>
+<td style="text-align: left;">4.8</td>
+<td style="text-align: left;">9.4</td>
+<td style="text-align: left;">21</td>
+<td style="text-align: left;">23</td>
+<td style="text-align: left;">4.24G</td>
+</tr>
+<tr>
+<td style="text-align: left;">100KB</td>
+<td style="text-align: left;">10</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">216</td>
+<td style="text-align: left;">211.1</td>
+<td style="text-align: left;">19.6</td>
+<td style="text-align: left;">16.6</td>
+<td style="text-align: left;">33.6</td>
+<td style="text-align: left;"><strong>122</strong></td>
+<td style="text-align: left;"><strong>176</strong></td>
+<td style="text-align: left;">4.78G</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心发现</strong>：</p>
+<ol>
+<li><strong>带宽峰值在 10KB</strong>（476.8 MB/s），随后递减。大 value 的批量 Pipeline flush 开销越来越大，TCP 层无法持续维持高吞吐。</li>
+<li><strong>P99 在 100KB 爆炸</strong>：5.6ms（10KB）→ 21ms（50KB）→ <strong>122ms</strong>（100KB）。TCP 发送缓冲区被 10 × 100KB = 1MB 的 Pipeline 批次撑满，awaitAll 长时间阻塞。</li>
+<li><strong>内存线性增长</strong>：key 空间 10 万 × value 大小 ≈ 内存（加上少量 Set 元数据开销、碎片）。</li>
+<li><strong>延迟 vs 吞吐权衡</strong>：当目标 MB/s 最大化时，应选 10KB 左右 value；若对 P99 &lt; 10ms 有强要求，value 不应超过 10KB。</li>
+</ol>
+<h3 id="rdb-fork-cow">RDB 模式：fork COW 放大率</h3>
+<blockquote>
+<p>⚠️ 以下 MB/s 为 <strong>本地回环（localhost）</strong> 测试值。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">尺寸</th>
+<th style="text-align: left;">batch</th>
+<th style="text-align: left;">conc</th>
+<th style="text-align: left;">ops/s</th>
+<th style="text-align: left;">MB/s (localhost)</th>
+<th style="text-align: left;">avg(ms)</th>
+<th style="text-align: left;">maxP99</th>
+<th style="text-align: left;">COW(last)</th>
+<th style="text-align: left;">BGSAVE</th>
+<th style="text-align: left;">saves</th>
+<th style="text-align: left;">内存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1KB</td>
+<td style="text-align: left;">50</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">2347</td>
+<td style="text-align: left;">114.6</td>
+<td style="text-align: left;">1.7</td>
+<td style="text-align: left;">9</td>
+<td style="text-align: left;"><strong>1928MB</strong></td>
+<td style="text-align: left;">25s</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">132M</td>
+</tr>
+<tr>
+<td style="text-align: left;">10KB</td>
+<td style="text-align: left;">20</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">2511</td>
+<td style="text-align: left;"><strong>490.4</strong></td>
+<td style="text-align: left;">1.6</td>
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">9MB</td>
+<td style="text-align: left;">3s</td>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">1.15G</td>
+</tr>
+<tr>
+<td style="text-align: left;">50KB</td>
+<td style="text-align: left;">10</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">604</td>
+<td style="text-align: left;">294.9</td>
+<td style="text-align: left;">8.4</td>
+<td style="text-align: left;">28</td>
+<td style="text-align: left;">626MB</td>
+<td style="text-align: left;">27s</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">4.24G</td>
+</tr>
+<tr>
+<td style="text-align: left;">100KB</td>
+<td style="text-align: left;">10</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">231</td>
+<td style="text-align: left;">225.6</td>
+<td style="text-align: left;">21.7</td>
+<td style="text-align: left;">91</td>
+<td style="text-align: left;">220MB</td>
+<td style="text-align: left;">35s</td>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">4.78G</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心发现</strong>：</p>
+<ol>
+<li><strong>首次 BGSAVE COW 最大</strong>：1KB 场景仅 132MB 数据，首次 BGSAVE COW 达 1928MB——原因是首次 BGSAVE 时 OS page cache 完全冷启动，25 秒快照期间父进程的每页写入都触发 COW。</li>
+<li><strong>热数据 BGSAVE 快、COW 小</strong>：10KB 场景 rdb_saves=3（已预热），最后一次 COW 仅 9MB / 3s。热页缓存大幅降低 BGSAVE 耗时和 COW。</li>
+<li><strong>50KB/100KB 大 value 的 BGSAVE 依然昂贵</strong>：50KB COW=626MB（27s），100KB COW=220MB/次 × 5 次 = 累计超 1GB。</li>
+<li><strong>写入吞吐 RDB 影响有限</strong>：RDB 和无 RDB 的 ops/s 差异在 5% 内，因为 Pipeline 写入相比 BGSAVE 子进程的 CPU 争抢有限。网卡先到瓶颈。</li>
+<li><strong>100KB P99 反而改善</strong>：RDB 模式 maxP99=91ms 低于无 RDB 的 176ms——因为 BGSAVE 将数据刷入磁盘，减少了内存压力。</li>
+</ol>
+<h3 id="rdb-cow-value">RDB COW 风险估算（超大 Value 版）</h3>
+<p>与场景2原始公式一致：</p>
+<div class="codehilite"><pre><span></span><code>近似所需物理内存 ≈ used_memory_rss + last_cow_size（+ 安全裕度）
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">used_memory_rss</th>
+<th style="text-align: left;">last_cow_size</th>
+<th style="text-align: left;">所需 ≈</th>
+<th style="text-align: left;">示例宿主机</th>
+<th style="text-align: left;">OOM 风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1KB 冷启动 BGSAVE</td>
+<td style="text-align: left;">157M</td>
+<td style="text-align: left;">1928M</td>
+<td style="text-align: left;"><strong>~2.1G</strong></td>
+<td style="text-align: left;">2G</td>
+<td style="text-align: left;"><strong>高危</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">10KB 热 BGSAVE</td>
+<td style="text-align: left;">1.18G</td>
+<td style="text-align: left;">9M</td>
+<td style="text-align: left;">~1.2G</td>
+<td style="text-align: left;">2G</td>
+<td style="text-align: left;">安全</td>
+</tr>
+<tr>
+<td style="text-align: left;">50KB</td>
+<td style="text-align: left;">4.24G</td>
+<td style="text-align: left;">626M</td>
+<td style="text-align: left;"><strong>~4.9G</strong></td>
+<td style="text-align: left;">6G</td>
+<td style="text-align: left;">注意</td>
+</tr>
+<tr>
+<td style="text-align: left;">100KB × 5 saves</td>
+<td style="text-align: left;">4.78G</td>
+<td style="text-align: left;">220M</td>
+<td style="text-align: left;">~5.0G</td>
+<td style="text-align: left;">6G</td>
+<td style="text-align: left;">注意</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>关键</strong>：即使内存数据仅 132MB，冷启动 BGSAVE 的 COW 也可达到 1.9GB。<strong>仅看 <code>used_memory</code> 做规划会造成严重低估。</strong></p>
+</blockquote>
+<h3 id="value-tcp">超大 Value 的网卡与 TCP 风险</h3>
+<blockquote>
+<p>⚠️ 以下 MB/s 峰值为 <strong>本地回环（localhost）测试值</strong>。真实网络环境下，千兆网卡理论限速约 125 MB/s，万兆约 1.25 GB/s。实际吞吐受网络延迟、丢包、TCP 窗口等影响会更低。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">1KB</th>
+<th style="text-align: left;">10KB</th>
+<th style="text-align: left;">50KB</th>
+<th style="text-align: left;">100KB</th>
+<th style="text-align: left;">警戒线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">MB/s 峰值</td>
+<td style="text-align: left;">123</td>
+<td style="text-align: left;">477</td>
+<td style="text-align: left;">245</td>
+<td style="text-align: left;">211</td>
+<td style="text-align: left;">&gt;400 MB/s（千兆网卡 ~125MB/s 理论）</td>
+</tr>
+<tr>
+<td style="text-align: left;">P99 延迟</td>
+<td style="text-align: left;">7ms</td>
+<td style="text-align: left;">6ms</td>
+<td style="text-align: left;">21ms</td>
+<td style="text-align: left;"><strong>122ms</strong></td>
+<td style="text-align: left;">&gt;50ms 预警</td>
+</tr>
+<tr>
+<td style="text-align: left;">单批大小（flush）</td>
+<td style="text-align: left;">50KB</td>
+<td style="text-align: left;">200KB</td>
+<td style="text-align: left;">500KB</td>
+<td style="text-align: left;"><strong>1MB</strong></td>
+<td style="text-align: left;">&gt;256KB 风险</td>
+</tr>
+<tr>
+<td style="text-align: left;">TCP 发送缓冲压满</td>
+<td style="text-align: left;">不明显</td>
+<td style="text-align: left;">不明显</td>
+<td style="text-align: left;">略感</td>
+<td style="text-align: left;"><strong>明显</strong></td>
+<td style="text-align: left;">—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>100KB value 时</strong>：单 Pipeline flush = 10 × 100KB = 1MB，4 个并发 flush = 4MB 同时在 TCP 发送缓冲中。本地回环（localhost）虽无真实网络带宽限制，但 TCP 缓冲区仍有上限，导致 <code>awaitAll</code> 长时间阻塞（P99=122ms）。</p>
+<h3 id="value_1">生产建议（超大 Value 场景）</h3>
+<ol>
+<li><strong>value 不超过 10KB</strong>：超过此阈值 P99 显著上升，MB/s 反降。</li>
+<li><strong>cold-start RDB 极度危险</strong>：首次 BGSAVE COW 可达数据量的 10~15 倍。需在低峰触发或在刚重启后预热数据再开 BGSAVE。</li>
+<li><strong>主节点关闭持久化</strong>：超大 value 意味着每次 BGSAVE 都会产生巨大 COW。与原始场景 2 建议一致——<strong>主节点关持久化，副本做备份</strong>。</li>
+<li><strong>网络规划</strong>：如果走真实网络而非 localhost，1GB 网卡仅支持 ~125 MB/s，超大 value 的压力首先要过网卡带宽关。</li>
+<li><strong>Pipeline 批次大小</strong>：大 value 时减小 batch 大小（如 100KB → batch=5），避免单 flush 过大撑满 TCP 缓冲区。</li>
+</ol>
+<h3 id="_5">压测现象与根因分析</h3>
+<h4 id="10kb-477-mbs">现象一：带宽在 10KB 达到峰值（477 MB/s），随后大幅衰减</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">尺寸</th>
+<th style="text-align: left;">ops/s</th>
+<th style="text-align: left;">MB/s</th>
+<th style="text-align: left;">衰减</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1KB</td>
+<td style="text-align: left;">2524</td>
+<td style="text-align: left;">123.2</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>10KB</strong></td>
+<td style="text-align: left;">2441</td>
+<td style="text-align: left;"><strong>476.8</strong></td>
+<td style="text-align: left;">峰值</td>
+</tr>
+<tr>
+<td style="text-align: left;">50KB</td>
+<td style="text-align: left;">503</td>
+<td style="text-align: left;">245.8</td>
+<td style="text-align: left;">-48%</td>
+</tr>
+<tr>
+<td style="text-align: left;">100KB</td>
+<td style="text-align: left;">216</td>
+<td style="text-align: left;">211.1</td>
+<td style="text-align: left;">-56%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>根因：</strong></p>
+<p><strong>(1) 1KB → 10KB 带宽翻 3.9 倍 — 小 value 协议开销占比大</strong></p>
+<p>ops 几乎不变（2524 → 2441），但每次 Pipeline batch 的有效载荷从 <code>50 × 1KB = 50KB</code> 升至 <code>20 × 10KB = 200KB</code>。小 value 时系统调用和 RESP 协议编解码的<strong>固定开销占比较大</strong>，数据本身"塞不满管道"。10KB 正好是<strong>协议层开销占比最小</strong>的甜点。</p>
+<p><strong>(2) 10KB → 50KB/100KB 带宽不升反降 — TCP 层反压机制</strong></p>
+<p>单 Pipeline flush 大小：</p>
+<ul>
+<li>10KB × 20 = 200KB — 安全</li>
+<li>50KB × 10 = 500KB — 危险</li>
+<li>100KB × 10 = <strong>1MB</strong> — 灾难</li>
+</ul>
+<p>4 并发 flush → 4MB 同时在 TCP 发送缓冲区中。Linux localhost 的 <code>tcp_wmem</code> 默认最大值约 <strong>4MB</strong>。缓冲区被撑满后，<code>write()</code> 系统调用阻塞等待，后续 <code>awaitAll</code> 空转：</p>
+<div class="codehilite"><pre><span></span><code>Client (4 workers)          TCP send buffer (max ~4MB)      Redis Server
+    │                              │                           │
+    ├─ flush 1MB ──────────────────►│  snd_buf=1MB/4MB          │
+    ├─ flush 1MB ──────────────────►│  snd_buf=2MB/4MB          │
+    ├─ flush 1MB ──────────────────►│  snd_buf=3MB/4MB          │
+    ├─ flush 1MB ──────────────────►│  snd_buf=4MB/4MB ← 满！    │ 正在解析上一条 100KB 命令
+    │  ◄── write() 阻塞 ────────────│                           │
+    │  awaitAll 等待中...           │                           │ Redis 单线程，还在处理
+    │                               │ ◄── ack ────────────────── │ 命令处理完成
+    │  ◄── awaitAll 返回 (122ms) ───│                           │
+</code></pre></div>
+
+<p>Redis 是单线程处理命令的。前面 100KB 命令还没处理完，后面的命令只能在 Redis 输入缓冲区排队。输入缓冲区也有上限（<code>client-output-buffer-limit</code>），超限会断开连接。</p>
+<hr />
+<h4 id="p99-100kb-56ms-122ms-22">现象二：P99 在 100KB 爆炸（5.6ms → 122ms，增长 22 倍）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">尺寸</th>
+<th style="text-align: left;">avg</th>
+<th style="text-align: left;">P50</th>
+<th style="text-align: left;">P99</th>
+<th style="text-align: left;">maxP99</th>
+<th style="text-align: left;">放大倍数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">10KB</td>
+<td style="text-align: left;">1.7ms</td>
+<td style="text-align: left;">1.2ms</td>
+<td style="text-align: left;"><strong>5.6ms</strong></td>
+<td style="text-align: left;">7ms</td>
+<td style="text-align: left;">基准</td>
+</tr>
+<tr>
+<td style="text-align: left;">50KB</td>
+<td style="text-align: left;">8.2ms</td>
+<td style="text-align: left;">4.8ms</td>
+<td style="text-align: left;">21ms</td>
+<td style="text-align: left;">23ms</td>
+<td style="text-align: left;">3.8×</td>
+</tr>
+<tr>
+<td style="text-align: left;">100KB</td>
+<td style="text-align: left;">19.6ms</td>
+<td style="text-align: left;">16.6ms</td>
+<td style="text-align: left;"><strong>122ms</strong></td>
+<td style="text-align: left;"><strong>176ms</strong></td>
+<td style="text-align: left;">22×</td>
+</tr>
+</tbody>
+</table>
+<p><strong>根因：Pipeline awaitAll 的反压放大效应</strong></p>
+<p>P99 非等比增长，而是在 100KB 处<strong>突变</strong>。原因是中间剩余几条流控缓冲区全部被填满：</p>
+<ul>
+<li><strong>P50 = 16.6ms</strong>：在"普通情况"下，管道内的命令可在一个 RTT 内完成处理</li>
+<li><strong>P99 = 122ms</strong>：在"不幸情况"下，4 个 worker 的 flush 恰好<strong>同时到达</strong>，TCP buffer 瞬间满载，形成<strong>同步阻塞风暴</strong></li>
+<li><strong>maxP99 = 176ms</strong>：是所有采样周期中 P99 的<strong>最大值</strong>，捕获了最坏时刻</li>
+</ul>
+<p><code>awaitAll</code> 必须等待所有在途命令的<strong>完整 RESP 响应</strong>。当 TCP 缓冲区满载 + Redis 单线程还在处理上一条大命令时，awaitAll 的空等时长就是 P99。</p>
+<hr />
+<h4 id="rdb-cow-1928mb-132mb-cow-15">现象三：冷启动 RDB COW 高达 1928MB（数据仅 132MB → COW 15 倍放大）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">尺寸</th>
+<th style="text-align: left;">数据内存</th>
+<th style="text-align: left;">last_cow</th>
+<th style="text-align: left;">BGSAVE耗时</th>
+<th style="text-align: left;">saves</th>
+<th style="text-align: left;">放大倍数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>1KB 冷启动</strong></td>
+<td style="text-align: left;">132M</td>
+<td style="text-align: left;"><strong>1928MB</strong></td>
+<td style="text-align: left;">25s</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;"><strong>14.6×</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">10KB 预热后</td>
+<td style="text-align: left;">1.15G</td>
+<td style="text-align: left;">9MB</td>
+<td style="text-align: left;">3s</td>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">&lt;0.01×</td>
+</tr>
+</tbody>
+</table>
+<p><strong>根因有三层叠加：</strong></p>
+<p><strong>(1) jemalloc 内存扫描范围 &gt; used_memory</strong></p>
+<p><code>used_memory = 132MB</code> 只是 KV 数据，但 jemalloc 分配的<strong>虚拟地址空间</strong>可能 &gt; 200MB（含元数据、碎片、空闲 chunk）。BGSAVE 子进程需要扫描 Redis 的整个地址空间。</p>
+<p><strong>(2) COW 的物理粒度是"页"，写 1 字节复制整页</strong></p>
+<div class="codehilite"><pre><span></span><code>父进程写一次 SETEX（1KB value）:
+  ├─ 修改 dictEntry 指针     → 1 个 4KB 页 COW
+  ├─ 修改 key 的 sds          → 1 个 4KB 页 COW  
+  ├─ 修改 value 的 sds        → 1 个 4KB 页 COW
+  └─ 修改 expires dict        → 1 个 4KB 页 COW
+───────────────────────────────────────────
+  一次 SETEX 最多 COW 4 × 4KB = 16KB
+</code></pre></div>
+
+<p>2347 ops/s × 25 秒 BGSAVE × ~4 页/op × 4KB ≈ 938MB 直接 COW。</p>
+<p>但 1928MB 远大于此，原因是下一层。</p>
+<p><strong>(3) Transparent Huge Pages (THP) — COW 放大的隐藏元凶</strong></p>
+<p>如果系统开启了 THP，COW 单位从 <strong>4KB</strong> 膨胀为 <strong>2MB（大页）</strong>：</p>
+<div class="codehilite"><pre><span></span><code>写 1KB value，无 THP → 复制 ~4 个 4KB 页 = 16KB
+写 1KB value，有 THP → 复制 ~2 个 2MB 页 = 4MB  ← 250× 放大！
+</code></pre></div>
+
+<p>这是 1928MB 远超 938MB 的最可能原因。生产环境 Redis <strong>必须关闭 THP</strong>，这是 Redis 官方文档反复强调的。</p>
+<p><strong>(4) 关键洞察 — 冷页 vs 热页</strong></p>
+<p>冷启动时，OS page cache 完全没有缓存 Redis 的内存页。BGSAVE 子进程需要从头读取整个地址空间（25s）。在此期间，父进程的<strong>每一次写入</strong>都在修改"干净"页，触发 COW。</p>
+<p>预热后（saves=3），前两次 BGSAVE 已经把数据"写脏"，第三次 BGSAVE 时大部分页已经是父进程独占的，不在与子进程共享，COW 骤降至 9MB。</p>
+<div class="codehilite"><pre><span></span><code>冷启动 COW = 父进程写入速率 × BGSAVE 存活时间 × 页粒度 × THP 放大系数
+1928MB    ≈ 2347 ops/s × 25s × 4页 × 4KB × (THP 放大 ~10×)
+</code></pre></div>
+
+<hr />
+<h4 id="rdb-100kb-maxp99-91ms-vs-176ms-rdb">现象四：RDB 模式下 100KB 的 maxP99 反而"改善"（91ms vs 176ms 无 RDB）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">avg(ms)</th>
+<th style="text-align: left;">maxP99(ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">无 RDB 100KB</td>
+<td style="text-align: left;">19.6</td>
+<td style="text-align: left;"><strong>176ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">RDB 100KB</td>
+<td style="text-align: left;">21.7</td>
+<td style="text-align: left;"><strong>91ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p>看似违反直觉，实际上：</p>
+<ul>
+<li>两个测试是<strong>独立跑</strong>的，176ms 是无 RDB 测试中的一次性极端离群值（恰好 4 worker 同时 flush 触发同步阻塞风暴）</li>
+<li>RDB 模式下 BGSAVE 子进程占用 CPU/磁盘 IO，<strong>间接限制了 Pipeline 写入峰值速率</strong>，不容易触发同样恶劣的同步条件</li>
+<li>avg 延迟相近（19.6ms vs 21.7ms），说明吞吐层面影响不大，差异来自统计采样</li>
+</ul>
+<p><strong>结论</strong>：这不是 RDB 改善了延迟，而是"有 RDB"恰好没有触发同样恶劣的同步条件。不应解读为 RDB 有助于降低延迟。</p>
+<hr />
+<h4 id="50kb100kb-bgsave-cow">现象五：50KB/100KB 的 BGSAVE COW 持续昂贵</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">尺寸</th>
+<th style="text-align: left;">数据量</th>
+<th style="text-align: left;">last_cow</th>
+<th style="text-align: left;">saves</th>
+<th style="text-align: left;">BGSAVE耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1KB 冷</td>
+<td style="text-align: left;">132M</td>
+<td style="text-align: left;">1928MB</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">25s</td>
+</tr>
+<tr>
+<td style="text-align: left;">50KB</td>
+<td style="text-align: left;">4.24G</td>
+<td style="text-align: left;">626MB</td>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">27s</td>
+</tr>
+<tr>
+<td style="text-align: left;">100KB</td>
+<td style="text-align: left;">4.78G</td>
+<td style="text-align: left;">220MB</td>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">35s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>50KB 场景 COW 高达 626MB</strong>：数据量大（4.24GB），BGSAVE 需要扫描大量页面（27 秒），父进程 604 ops/s 持续写入触发大量 COW。对于非常大的 value（&gt;32KB），jemalloc 可能走 mmap 路径（取决于配置），这会改变页分布与 COW 行为——mmap 分配的页面与 sbrk 分配的页在内核 COW 处理上有差异，评估时需要关注 allocator 的具体行为。</p>
+<p><strong>100KB 场景 COW 仅 220MB/次</strong>，比 50KB 小：因为父进程写入速率更低（231 ops/s vs 604 ops/s），BGSAVE 期间产生的脏页更少。但 BGSAVE 更频繁（5 次），累计 COW 超 1GB；且 BGSAVE 耗时最长（35s），因为大 RDB 文件写入磁盘慢。</p>
+<p><strong>正反馈循环</strong>：写入越密集 → BGSAVE 越频繁 → 单次耗时越长 → COW 越大 → 内存压力增加 → 淘汰更多 key → 写入更多 → BGSAVE 再次触发。</p>
+<hr />
+<h3 id="_6">根除方案</h3>
+<p>按现象逐一给出消除方案，每个方案标注<strong>消除层级</strong>（根除 &gt; 大幅缓解 &gt; 规避）。</p>
+<h4 id="a-value-value-p99">方案 A：拆大 value 为小 value（根除带宽衰减 + P99 爆炸）</h4>
+<div class="codehilite"><pre><span></span><code>❌ 当前：SETEX lv:0  {100KB value}       → 单命令 100KB
+✅ 改进：HSET  lv:0  chunk0 → 10KB, chunk1 → 10KB, ..., chunk9 → 10KB
+        或  LPUSH lv:0  {10KB} ... {10KB}（10次）
+</code></pre></div>
+
+<ul>
+<li>把 100KB 拆成 10 个 10KB 片段，存在 <strong>Hash</strong> 或 <strong>List</strong> 中</li>
+<li>每批 flush 降至 200KB，<strong>根除 TCP 缓冲阻塞</strong></li>
+<li>代价：读取时需 <code>HGETALL</code> 再拼接，可用 Lua 脚本保证多 chunk 写入原子性</li>
+</ul>
+<p><strong>实现注意事项</strong>：</p>
+<ul>
+<li><strong>写入原子性</strong>：多 chunk 写入需要通过 Lua 脚本打包为单条命令执行，避免部分 chunk 写入成功、部分失败：</li>
+</ul>
+<p><code>lua
+  -- Lua 脚本：原子写入拆分后的 chunks
+  for i, chunk in ipairs(KEYS) do
+      redis.call('HSET', KEYS[1], 'chunk' .. i, ARGV[i])
+  end
+  redis.call('EXPIRE', KEYS[1], ARGV[#ARGV])  -- 设置 TTL</code>
+- <strong>读取端</strong>：按顺序 <code>HGETALL</code> 或 <code>HMGET chunk0 chunk1 ... chunk9</code> 后拼接
+- <strong>热点风险</strong>：拆分后单个 key 的读写频率不变，不会引入额外热点。但注意若原 key 已是热点（&gt;10k ops/s），拆分不减总负载，需配合 Redis Cluster 分片
+- <strong>存储开销</strong>：Hash 结构的每个 field 有少量额外元数据（~32B/field），10 chunk × 32B ≈ 320B 额外开销，相比 100KB 总大小可忽略</p>
+<h4 id="b-pipeline-p99">方案 B：控制 Pipeline 并发度（大幅缓解 P99 爆炸）</h4>
+<p>不改数据结构的流控方案：</p>
+<div class="codehilite"><pre><span></span><code>batchSize     = 2     // 从 10 降至 2，单 flush = 200KB
+maxInflight   = 2     // 从 4 降至 2，同时在途 ≤ 400KB
+pipelineTimeout = 1s  // 从 5s 降至 1s，更快感知阻塞
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">调整项</th>
+<th style="text-align: left;">调整前</th>
+<th style="text-align: left;">调整后</th>
+<th style="text-align: left;">效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">单 flush 大小</td>
+<td style="text-align: left;">1MB</td>
+<td style="text-align: left;">200KB</td>
+<td style="text-align: left;">TCP 缓冲区不会满载</td>
+</tr>
+<tr>
+<td style="text-align: left;">在途数据</td>
+<td style="text-align: left;">4MB</td>
+<td style="text-align: left;">400KB</td>
+<td style="text-align: left;">同步阻塞风暴概率→0</td>
+</tr>
+<tr>
+<td style="text-align: left;">P99（预期）</td>
+<td style="text-align: left;">122ms</td>
+<td style="text-align: left;">&lt; 20ms</td>
+<td style="text-align: left;">延迟可控</td>
+</tr>
+<tr>
+<td style="text-align: left;">MB/s（预期）</td>
+<td style="text-align: left;">211</td>
+<td style="text-align: left;">~180</td>
+<td style="text-align: left;">略降但可接受</td>
+</tr>
+</tbody>
+</table>
+<h4 id="cunix-domain-socket-tcp">方案 C：Unix Domain Socket（根除 TCP 栈开销）</h4>
+<p>同机部署时将 localhost TCP 连接改成 UDS：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># application.yml</span>
+<span class="nt">spring</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">redis</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/redis/redis.sock</span><span class="w">  </span><span class="c1"># 跳过 TCP/IP 协议栈</span>
+</code></pre></div>
+
+<ul>
+<li><strong>消除 TCP 握手、拥塞控制、缓冲区限制的开销</strong></li>
+<li>localhost TCP 虽不走真实网卡，但协议栈的缓冲、重传、Nagle 算法仍在生效</li>
+<li>UDS 是纯内存拷贝，吞吐和延迟均优于 TCP localhost</li>
+</ul>
+<h4 id="d-cow">方案 D：主节点关闭持久化（根除 COW）</h4>
+<div class="codehilite"><pre><span></span><code># redis.conf — 主节点
+save ""                    # 关闭 RDB
+appendonly no              # 关闭 AOF
+
+# redis.conf — 副本节点
+save "900 1"               # 只在副本做 BGSAVE
+appendonly yes             # 副本持久化
+</code></pre></div>
+
+<p><strong>效果</strong>：主节点永不 fork，COW = 0。这是唯一真正的 COW 根除。</p>
+<p><strong>⚠️ 数据一致性风险</strong>：主节点关闭持久化后，若主节点崩溃且副本尚未完全同步最近写入，这些写入将永久丢失。缓解措施：</p>
+<ul>
+<li>使用至少 <strong>2 个持久化副本</strong>，分散风险</li>
+<li>对关键写入使用 <code>WAIT n timeout</code> 命令，确认至少被 n 个副本确认后才返回</li>
+<li>确保故障转移策略不会将无持久化的主降级为持久化副本而丢失数据（HA 设计注意点）</li>
+<li><code>WAIT</code> 有性能代价：每次写入增加一个同步等待，取决于网络 RTT</li>
+</ul>
+<h4 id="e-transparent-huge-pages">方案 E：关闭 Transparent Huge Pages（根除页放大）</h4>
+<p><strong>THP 是 COW 放大的隐藏元凶，生产环境 Redis 必须关闭。</strong></p>
+<p><strong>关闭步骤（所有 Redis 节点需执行）：</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 检查当前 THP 状态</span>
+cat<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled
+<span class="c1"># 输出应为 [always] madvise never 或 [madvise] always never</span>
+<span class="c1"># 目标：始终显示 [never]</span>
+
+<span class="c1"># 2. 临时关闭（立即生效，重启失效）</span>
+<span class="nb">echo</span><span class="w"> </span>never<span class="w"> </span>&gt;<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled
+<span class="nb">echo</span><span class="w"> </span>never<span class="w"> </span>&gt;<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/defrag
+
+<span class="c1"># 3. 永久关闭 — 方式 A：systemd（推荐）</span>
+<span class="c1"># 创建 /etc/systemd/system/disable-thp.service：</span>
+<span class="c1"># [Unit]</span>
+<span class="c1"># Description=Disable Transparent Huge Pages</span>
+<span class="c1"># After=sysinit.target</span>
+<span class="c1"># [Service]</span>
+<span class="c1"># Type=oneshot</span>
+<span class="c1"># ExecStart=/bin/sh -c 'echo never &gt; /sys/kernel/mm/transparent_hugepage/enabled &amp;&amp; echo never &gt; /sys/kernel/mm/transparent_hugepage/defrag'</span>
+<span class="c1"># [Install]</span>
+<span class="c1"># WantedBy=multi-user.target</span>
+
+<span class="c1"># 4. 永久关闭 — 方式 B：GRUB（重启生效）</span>
+<span class="c1"># 在 /etc/default/grub 的 GRUB_CMDLINE_LINUX 中添加：</span>
+<span class="c1"># transparent_hugepage=never</span>
+<span class="c1"># 然后执行 update-grub 并重启</span>
+
+<span class="c1"># 5. 重启后确认</span>
+cat<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled
+<span class="c1"># 必须显示：[always] madvise [never]（方括号在 never 上）</span>
+</code></pre></div>
+
+<p><strong>为什么必须关 THP：</strong></p>
+<div class="codehilite"><pre><span></span><code>有 THP：写 1 字节 → 可能触发 2MB 大页 COW  (500× 放大)
+无 THP：写 1 字节 → 触发 4KB 普通页 COW    (正常)
+</code></pre></div>
+
+<p>本测试中 132MB 数据产生 1928MB COW，THP 是核心放大因子之一。Redis 官方文档反复强调必须在所有生产节点上永久禁用 THP。</p>
+<h4 id="f-bgsave-cow">方案 F：预热 BGSAVE（大幅缓解冷启动 COW 炸弹）</h4>
+<p>如果必须保留主节点 RDB，在写入高峰来临前先触发低峰 BGSAVE：</p>
+<p><strong>安全运维流程：</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1"># 步骤 1：检查当前是否已有 BGSAVE 在运行</span>
+<span class="k">if</span><span class="w"> </span>redis-cli<span class="w"> </span>INFO<span class="w"> </span>persistence<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s2">"rdb_bgsave_in_progress:1"</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"已有 BGSAVE 运行中，跳过"</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
+<span class="k">fi</span>
+
+<span class="c1"># 步骤 2：检查当前写入速率是否足够低（&lt; 1000 ops/s 视为低峰）</span>
+<span class="nv">OPS</span><span class="o">=</span><span class="k">$(</span>redis-cli<span class="w"> </span>INFO<span class="w"> </span>stats<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>instantaneous_ops_per_sec<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-d:<span class="w"> </span>-f2<span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span>-d<span class="w"> </span><span class="s1">'\r'</span><span class="k">)</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">"</span><span class="nv">$OPS</span><span class="s2">"</span><span class="w"> </span>-gt<span class="w"> </span><span class="m">1000</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"当前 ops/s=</span><span class="nv">$OPS</span><span class="s2">，不处于低峰期，拒绝执行"</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+
+<span class="c1"># 步骤 3：触发 BGSAVE</span>
+redis-cli<span class="w"> </span>BGSAVE
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"BGSAVE 已触发，等待完成..."</span>
+
+<span class="c1"># 步骤 4：轮询等待 BGSAVE 完成</span>
+<span class="k">while</span><span class="w"> </span>redis-cli<span class="w"> </span>INFO<span class="w"> </span>persistence<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s2">"rdb_bgsave_in_progress:1"</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span>sleep<span class="w"> </span><span class="m">1</span>
+<span class="k">done</span>
+
+<span class="c1"># 步骤 5：记录本次 COW 与耗时（用于后续容量规划）</span>
+redis-cli<span class="w"> </span>INFO<span class="w"> </span>persistence<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"rdb_last_cow_size"</span>
+redis-cli<span class="w"> </span>INFO<span class="w"> </span>stats<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"rdb_last_bgsave_time_sec"</span>
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"预热 BGSAVE 完成，COW 已记录"</span>
+
+<span class="c1"># 或用 cron 每天凌晨 4 点触发</span>
+<span class="c1"># 0 4 * * * /path/to/bgsave_warmup.sh &gt;&gt; /var/log/redis_warmup.log 2&gt;&amp;1</span>
+</code></pre></div>
+
+<p>原理：首次 BGSAVE 做"脏活"——把冷页面标记为 dirty（与子进程解耦），后续 BGSAVE 只需处理新写入的页面，COW 可降 90%+。</p>
+<h4 id="g-oom">方案 G：凑够物理内存（规避 OOM）</h4>
+<p>当 COW 无法根除时，用物理内存兜底：</p>
+<div class="codehilite"><pre><span></span><code>规划公式：物理内存 ≥ used_memory × 3 + 1GB（OS 开销）
+
+示例：
+  预期 used_memory = 4GB
+  → 物理内存 ≥ 4 × 3 + 1 = 13GB → 选 16GB 规格
+</code></pre></div>
+
+<h4 id="_7">综合架构推荐</h4>
+<div class="codehilite"><pre><span></span><code>                    ┌──────────┐
+    写入请求 ──────→│  主节点   │ ──→ 关持久化, COW = 0
+                    │ (Master) │     maxmemory 按要求配置
+                    └────┬─────┘
+                         │ 异步复制
+              ┌──────────┼──────────┐
+              ▼          ▼          ▼
+         ┌────────┐ ┌────────┐ ┌────────┐
+         │ 副本 1  │ │ 副本 2  │ │ 副本 3  │  ← 只读副本
+         │ RDB ON │ │ RDB ON │ │ RDB ON │    错峰 BGSAVE
+         └────────┘ └────────┘ └────────┘
+</code></pre></div>
+
+<p><strong>三条铁律</strong>：</p>
+<ol>
+<li><strong>主节点永远不 fork</strong> — COW 根除</li>
+<li><strong>副本 BGSAVE 错峰</strong> — 副本 1 整点、副本 2 半点，分散 IO 压力</li>
+<li><strong>value ≤ 10KB</strong> — 超过 10KB 的业务必须拆片</li>
+</ol>
+<p><strong>改造成本评估</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">改造项</th>
+<th style="text-align: left;">消除的目标</th>
+<th style="text-align: left;">工作量</th>
+<th style="text-align: left;">风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">主节点关持久化</td>
+<td style="text-align: left;">冷启动 COW 炸弹、BGSAVE 阻塞</td>
+<td style="text-align: left;">1 行配置 + 哨兵确认</td>
+<td style="text-align: left;">低</td>
+</tr>
+<tr>
+<td style="text-align: left;">关闭 THP</td>
+<td style="text-align: left;">COW 页放大 10~500×</td>
+<td style="text-align: left;">1 行配置 + 重启</td>
+<td style="text-align: left;">低</td>
+</tr>
+<tr>
+<td style="text-align: left;">拆 100KB value → 10×10KB</td>
+<td style="text-align: left;">带宽衰减、P99 爆炸</td>
+<td style="text-align: left;">业务代码改造（Hash chunk）</td>
+<td style="text-align: left;">中</td>
+</tr>
+<tr>
+<td style="text-align: left;">Unix Domain Socket</td>
+<td style="text-align: left;">TCP 缓冲阻塞</td>
+<td style="text-align: left;">改连接串</td>
+<td style="text-align: left;">极低</td>
+</tr>
+<tr>
+<td style="text-align: left;">预热 BGSAVE</td>
+<td style="text-align: left;">冷启动 COW 峰值</td>
+<td style="text-align: left;">运维脚本</td>
+<td style="text-align: left;">低</td>
+</tr>
+<tr>
+<td style="text-align: left;">增加副本</td>
+<td style="text-align: left;">单点故障</td>
+<td style="text-align: left;">多 1 台机器</td>
+<td style="text-align: left;">低</td>
+</tr>
+<tr>
+<td style="text-align: left;">凑够物理内存</td>
+<td style="text-align: left;">OOM</td>
+<td style="text-align: left;">升配</td>
+<td style="text-align: left;">中（成本）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">核心发现</h2>
+<h3 id="1-cow-copy-on-write">1. COW 大小 = 父进程在子进程存活期间的写入触发的 copy-on-write 总字节数</h3>
+<p><code>rdb_last_cow_size</code> / <code>aof_last_cow_size</code> 报告的是：在上一次 BGSAVE / AOF rewrite 的子进程存活期间，<strong>父进程的写操作</strong>导致被 copy-on-write 复制的内存总字节数（即父进程触发的 COW 字节数）。该值是历史度量（过去一次 fork 的结果），用作容量规划时需要结合<strong>当前写入速率</strong>与<strong>预计 fork 持续时间</strong>进行估算——不能直接用上一次的值当作下一次的准确预测。</p>
+<div class="codehilite"><pre><span></span><code>RDB:            子进程存活 ~2s  → COW ~245MB
+AOF 100%:       子进程存活 ~2s  → COW ~66MB   (AOF 文件小，rewrite 快，父进程写得少)
+AOF 500%:       子进程存活 ~3s  → COW ~264MB   (AOF 文件 ~735MB，rewrite 慢，父进程写得多)
+</code></pre></div>
+
+<p><strong>调高 percentage 反而把单次 COW 做大了</strong>。RDB 类似逻辑：文件是全量快照，子进程从头读到尾，期间写入不断修改页面。</p>
+<h3 id="2-aof-vs-rdb-cow">2. AOF vs RDB 的 COW 对比</h3>
+<p>本测试中 AOF（percentage=100）单次 rewrite 快、子进程存活时间短，导致单次 COW（~66MB）小于 RDB（~245MB）。但 AOF rewrite 的 COW 与 AOF 文件大小和 rewrite 耗时紧密相关——当 AOF 文件很大（如 percentage=500 时 ~735MB，单次 COW 反超 RDB 达到 ~264MB），不可笼统认为"AOF 总是比 RDB 好"。<strong>选择持久化策略时，需要结合具体的写入量级和 AOF 文件增长速度做决策。</strong></p>
+<h3 id="3-aof-percentage100-cow">3. 高写入场景下 AOF percentage=100 有最低的单次峰值内存压力（COW 角度）</h3>
+<p>虽然 rewrite 频率高（17 次），但单次 COW 仅 ~66MB，<strong>单次峰值内存压力最小</strong>。适合对内存峰值敏感、不能承受 OOM 风险的场景。但累计 COW 总量较大（~1,122MB），需要权衡。</p>
+<h3 id="4-oom">4. OOM 风险近似估算公式（历史观测 + 预测）</h3>
+<div class="codehilite"><pre><span></span><code>估算所需物理内存 ≈ used_memory_rss + 预计_last_cow_size + 安全裕度(建议10~20%)
+</code></pre></div>
+
+<ul>
+<li><code>used_memory_rss</code>：Redis 进程实际占用的物理内存（OS 视角），可从 INFO memory 中获取。</li>
+<li><code>预计_last_cow_size</code>：<code>rdb_last_cow_size</code> 或 <code>aof_last_cow_size</code> 是<strong>历史观测值</strong>，不能直接等同于下一次 fork 的 COW。未来 fork 的 COW 取决于："当前写入速率 × 预计 fork 存活时间 × 页粒度（是否开启 THP）"。若无法精确估算，<strong>建议采用保守策略</strong>：<code>物理内存 ≥ used_memory_rss × 1.5~2</code>。</li>
+<li><strong>安全裕度</strong>：覆盖内存碎片、内核占用、子进程固定开销和其他进程。</li>
+</ul>
+<p>当前场景示例：</p>
+<ul>
+<li>观测值法：275MB + 245MB = 520MB，再 + 10% 裕度 ≈ <strong>572MB</strong></li>
+<li>保守法：275MB × 2 = <strong>550MB</strong></li>
+<li>若宿主机仅 512MB，OOM Kill 几乎必然触发。</li>
+</ul>
+<hr />
+<h2 id="_9">解决方案与建议</h2>
+<h3 id="_10">一、强烈建议（立刻采纳）</h3>
+<h4 id="1">1. 预留足够物理内存</h4>
+<p>给 Redis 实例预留 1.5–2× 的物理内存余量（按峰值估算：<code>used_memory_rss + last_cow_size</code> 的 1.5–2×）。</p>
+<h4 id="2-replica">2. 把持久化移到副本（replica）</h4>
+<ul>
+<li>主节点关闭持久化（<code>save ""</code> + <code>appendonly no</code>），将 RDB/AOF 全部关闭。</li>
+<li>在一台或多台副本上开启持久化并作为备份。</li>
+<li>效果：主节点写入不会触发持久化 fork，COW 降到接近 0。</li>
+</ul>
+<h3 id="_11">二、高效运维</h3>
+<h4 id="3-bgsave-aof-rewrite">3. 避免在高写时段触发 BGSAVE / AOF rewrite</h4>
+<ul>
+<li>把 <code>save</code> / <code>auto-aof-rewrite</code> 参数与业务低峰窗口对齐。</li>
+<li>或手动在低峰期执行 <code>BGSAVE</code> / <code>BGREWRITEAOF</code>。</li>
+</ul>
+<h4 id="4">4. 设置并监控告警</h4>
+<p>必监控项（INFO / 系统），含具体告警阈值：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">监控项</th>
+<th style="text-align: left;">来源</th>
+<th style="text-align: left;">告警级别</th>
+<th style="text-align: left;">告警建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>used_memory_rss</code> / 系统总内存</td>
+<td style="text-align: left;">INFO memory</td>
+<td style="text-align: left;">警告 / 严重</td>
+<td style="text-align: left;">RSS &gt; 70% 系统内存 → 警告；RSS &gt; 90% → 严重</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mem_fragmentation_ratio</code></td>
+<td style="text-align: left;">INFO memory</td>
+<td style="text-align: left;">关注 / 调查</td>
+<td style="text-align: left;">&gt; 1.5 → 关注碎片；&gt; 2.0 → 调查原因</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rdb_last_cow_size</code> / 系统总内存</td>
+<td style="text-align: left;">INFO persistence</td>
+<td style="text-align: left;">警告 / 严重</td>
+<td style="text-align: left;">last_cow_size &gt; 30% 可用内存 → 警告；&gt; 60% → 严重</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rdb_last_bgsave_time_sec</code></td>
+<td style="text-align: left;">INFO stats</td>
+<td style="text-align: left;">警告</td>
+<td style="text-align: left;">BGSAVE 耗时 &gt; 10s → 告警（阈值根据数据规模调整）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>instantaneous_ops_per_sec</code></td>
+<td style="text-align: left;">INFO stats</td>
+<td style="text-align: left;">突降告警</td>
+<td style="text-align: left;">较正常均值下降 &gt; 50% 可能表示 fork 或阻塞</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>evicted_keys</code> 增量</td>
+<td style="text-align: left;">INFO stats</td>
+<td style="text-align: left;">警告 / 严重</td>
+<td style="text-align: left;">每分钟持续上升 → 内存严重压力或配置异常</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>aof_rewrite_in_progress</code> / <code>rdb_bgsave_in_progress</code></td>
+<td style="text-align: left;">INFO persistence</td>
+<td style="text-align: left;">关注</td>
+<td style="text-align: left;">持续 &gt; 预期时间（如 30s）→ 调查</td>
+</tr>
+<tr>
+<td style="text-align: left;">系统 <code>free</code> / <code>available</code> 内存</td>
+<td style="text-align: left;">OS</td>
+<td style="text-align: left;">警告</td>
+<td style="text-align: left;">低于物理内存 20% 告警</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dmesg</code> / OOM 日志</td>
+<td style="text-align: left;">OS</td>
+<td style="text-align: left;">严重</td>
+<td style="text-align: left;">出现即严重</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>latest_fork_usec</code></td>
+<td style="text-align: left;">INFO stats</td>
+<td style="text-align: left;">警告</td>
+<td style="text-align: left;">&gt; 100ms → fork 阻塞过长，页表或内存过大</td>
+</tr>
+</tbody>
+</table>
+<p>记录每次 fork 的 <code>last_cow_size</code> 与 fork 耗时，用于后续容量规划和趋势分析。</p>
+<h3 id="_12">三、配置调优</h3>
+<h4 id="5-aof">5. AOF 参数调优</h4>
+<ul>
+<li>调小 <code>auto-aof-rewrite-percentage</code>（例如 100）+ 合理设置 <code>auto-aof-rewrite-min-size</code>，避免文件无限膨胀到 rewrite 极慢的阶段。</li>
+</ul>
+<h4 id="6">6. 考虑关闭主节点持久化并把持久化委托给副本</h4>
+<p>或使用异步/外部持久化方案。</p>
+<h4 id="7-active-defrag-redis">7. 开启 active-defrag（如果 Redis 版本支持）</h4>
+<p>尽量降低内存碎片（<code>mem_fragmentation_ratio</code>）。</p>
+<h4 id="8-maxmemory-policy">8. 评估 maxmemory-policy</h4>
+<p>如果所有 key 都有 TTL，<code>volatile-*</code> 策略在概念上更匹配；但本测试所有 key 都有 TTL，因此效果上差别有限，仍需验证。</p>
+<h3 id="_13">四、进一步试验（用于完善结论）</h3>
+<h4 id="9">9. 完善持久化配置对比</h4>
+<p>在固定物理机上对比更多 <code>auto-aof-rewrite-percentage</code> 值（50 / 100 / 200 / 500），记录单次 COW、rewrite 次数与 AOF 文件大小。</p>
+<h4 id="10">10. 验证「主节点关持久化」方案</h4>
+<p>在 replica 模式下关闭主持久化再跑一次，验证 COW 是否真正接近 0 以及写入吞吐的差异。</p>
+<h4 id="11">11. 不同写入负载的敏感性测试</h4>
+<p>在不同 key/value 大小和 hash field 数量下重复测试，找出写入单元大小对 COW 的敏感性（例如把 field 从 256B 改到 64B / 1KB）。</p>
+<hr />
+<h2 id="_14">补充说明与注意事项（避免误解）</h2>
+<ol>
+<li>
+<p><strong>MB 与 MiB</strong>：报告中所有 "MB" 值为近似值（来源于 INFO 输出或系统 RSS 换算后四舍五入），若需要严格计量请用 bytes 原始值并标注单位。</p>
+</li>
+<li>
+<p><strong>操作系统层面</strong>：内核 <code>overcommit</code>、<code>swap</code> 与 OOM killer 行为会影响最终是否真的被杀（例如 <code>overcommit=1</code> 会更容易分配内存但不一定能避免 OOM）。在低内存环境下不要依赖 swap。</p>
+</li>
+<li>
+<p><strong>Redis 的"短暂停顿"来源</strong>：主要是 <code>fork()</code> 调用和内核分配页表的开销，而非子进程做 IO 本身阻塞父进程。应写成"短暂停顿 + COW 写放大"。</p>
+</li>
+<li>
+<p><strong>HMSET 与 HSET</strong>：本文使用 <code>HSET</code> 命令（<code>HSET key field1 value1 field2 value2 ...</code>），<code>HMSET</code> 在 Redis 4.0+ 中已被标记为 deprecated。若面向读者或脚本，建议统一用 <code>HSET</code> 以免混淆。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_15">附录：常用诊断命令</h2>
+<h3 id="cow">内存与 COW 检查</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 查看内存使用</span>
+redis-cli<span class="w"> </span>INFO<span class="w"> </span>memory<span class="w"> </span><span class="p">|</span><span class="w"> </span>egrep<span class="w"> </span><span class="s1">'used_memory_rss|used_memory_human|mem_fragmentation_ratio'</span>
+
+<span class="c1"># 查看 COW 与持久化状态</span>
+redis-cli<span class="w"> </span>INFO<span class="w"> </span>persistence<span class="w"> </span><span class="p">|</span><span class="w"> </span>egrep<span class="w"> </span><span class="s1">'rdb_last_cow_size|aof_last_cow_size|rdb_bgsave_in_progress|aof_rewrite_in_progress|rdb_last_bgsave_time_sec'</span>
+
+<span class="c1"># 查看 fork 耗时（微秒）</span>
+redis-cli<span class="w"> </span>INFO<span class="w"> </span>stats<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>latest_fork_usec
+
+<span class="c1"># 查看写入速率</span>
+redis-cli<span class="w"> </span>INFO<span class="w"> </span>stats<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>instantaneous_ops_per_sec
+
+<span class="c1"># 查看淘汰量</span>
+redis-cli<span class="w"> </span>INFO<span class="w"> </span>stats<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>evicted_keys
+</code></pre></div>
+
+<h3 id="thp">THP 检查与关闭</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 检查当前 THP 状态（所有 Redis 节点需执行）</span>
+cat<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled
+<span class="c1"># 期望输出：always madvise [never]（方括号在 never 上）</span>
+
+<span class="c1"># 2. 临时关闭（立即生效，重启失效）</span>
+<span class="nb">echo</span><span class="w"> </span>never<span class="w"> </span>&gt;<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/enabled
+<span class="nb">echo</span><span class="w"> </span>never<span class="w"> </span>&gt;<span class="w"> </span>/sys/kernel/mm/transparent_hugepage/defrag
+
+<span class="c1"># 3. 永久关闭：参考方案 E 中的 systemd service 或 GRUB 配置</span>
+</code></pre></div>
+
+<h3 id="oom">系统内存与 OOM 检查</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 查看系统可用内存</span>
+free<span class="w"> </span>-h
+
+<span class="c1"># 查看 Redis 进程 RSS</span>
+ps<span class="w"> </span>-o<span class="w"> </span>rss,pid,cmd<span class="w"> </span>-p<span class="w"> </span><span class="k">$(</span>pgrep<span class="w"> </span>redis-server<span class="k">)</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'{print $1/1024 " MB"}'</span>
+
+<span class="c1"># 查看最近的 OOM 事件</span>
+dmesg<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">"out of memory"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-5
+dmesg<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">"killed process"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-5
+</code></pre></div>
+
+<h3 id="_16">实时监控（在压测期间使用）</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 每秒输出一次 COW、内存、淘汰量（Ctrl+C 停止）</span>
+<span class="k">while</span><span class="w"> </span>true<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"=== </span><span class="k">$(</span>date<span class="w"> </span>+%H:%M:%S<span class="k">)</span><span class="s2"> ==="</span>
+<span class="w">  </span>redis-cli<span class="w"> </span>INFO<span class="w"> </span>persistence<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">'rdb_last_cow_size\|aof_last_cow_size'</span>
+<span class="w">  </span>redis-cli<span class="w"> </span>INFO<span class="w"> </span>memory<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">'used_memory_rss'</span>
+<span class="w">  </span>redis-cli<span class="w"> </span>INFO<span class="w"> </span>stats<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">'evicted_keys\|instantaneous_ops_per_sec'</span>
+<span class="w">  </span>sleep<span class="w"> </span><span class="m">1</span>
+<span class="k">done</span>
+</code></pre></div>
+
+<hr />
+<h2 id="key">补充场景：管道批量删除冷热混合 key（已实测 ✅）</h2>
+<h3 id="_17">背景与问题</h3>
+<div class="codehilite"><pre><span></span><code>生产现象: 批量刷新缓存——先把旧的全删了，再写入新的。
+
+  for (...) {
+      pipeline.del(randomOldKey);    // 存量 key（内存中已存在）
+      pipeline.setex(newKey, ttl, v); // 新增 key（内存中不存在）
+  }
+  pipeline.flushCommands();
+
+问题:
+  1. DEL 存量 key → 释放 dict entry + value 空间 → 内存碎片
+  2. SETEX 新 key → 分配新 dict entry + value → 可能触发 dict 扩容
+  3. DEL + SET 交替进行 → alloc/free 频繁交错 → 碎片率飙升（mem_fragmentation_ratio &gt; 1.5）
+</code></pre></div>
+
+<h3 id="_18">根因：冷热混合引发的三连击</h3>
+<div class="codehilite"><pre><span></span><code>Redis 内存管理是 jemalloc/glibc malloc 的封装——不是 GC 语言。
+每次 DEL 释放的内存不会立即还给 OS，而是留在 allocator 的空闲链表中。
+
+冷热混合的三连击:
+
+第 1 击: DEL 存量 key（"热" = 已插入 / "冷" = 不常访问但占用空间）
+  → 释放 dict entry → allocator 标记为空闲
+  → 释放 value 空间（可能是不同 size class）→ 产生碎片
+  → dict 可能触发缩容（hashtable_resize_min = 4）
+
+第 2 击: SETEX 新增 key
+  → 分配新 dict entry → allocator 不一定复用刚释放的块（size 可能不同）
+  → dict 可能触发扩容（hashtable_resize，重新 hash 所有 entry）
+
+第 3 击: DEL + SET 交替在一个 Pipeline 批量中
+  → alloc/free 快速交替 → jemalloc 的 size class 缓存污染
+  → RSS（实际物理内存）不降但 used_memory 在波动
+  → mem_fragmentation_ratio 飙升
+</code></pre></div>
+
+<p><strong>dict 扩容/缩容的 CPU 成本</strong>：</p>
+<div class="codehilite"><pre><span></span><code>dict 默认负载因子:
+  扩容阈值: used / size &gt; 1 且 dict_can_resize = 1
+  缩容阈值: used / size &lt; 0.1
+
+假设 dict size = 2^21 = 2M entries:
+  扩容到 2^22 = 4M: 需要 rehash 所有 2M 个 entry → O(N)
+  缩容到 2^20 = 1M: 同理 O(N)
+
+  Pipeline 中大量 DEL → used 骤降 → 触发 dict 缩容
+              → 紧接着大量 SETEX → used 骤升 → 触发 dict 扩容
+
+  → 主线程在缩容→扩容之间反复 rehash → CPU 拉高 → 全局延迟飙升
+</code></pre></div>
+
+<h3 id="_19">理论影响矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>因素</th>
+<th>影响</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>删除 key 比例</td>
+<td>越高 → 碎片越多</td>
+<td>⚠️</td>
+</tr>
+<tr>
+<td>新增 key 数量 = 删除 key 数量</td>
+<td>alloc/free 对齐 → 碎片适中</td>
+<td>⚠️</td>
+</tr>
+<tr>
+<td>新增 key 数量 ≠ 删除 key 数量</td>
+<td>alloc/free 不匹配 → 碎片严重</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>旧 key size ≠ 新 key size</td>
+<td>jemalloc 不同 size class → 碎片最严重</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Pipeline batchSize 大（&gt;500）</td>
+<td>dict 缩容→扩容窗口内，主线程阻塞 &gt;1ms</td>
+<td>🔴</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_20">生产规避方案</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">优先级</th>
+<th>方案</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td><strong>用 <code>UNLINK</code> 代替 <code>DEL</code></strong></td>
+<td>异步删除，将内存释放移到后台 BIO 线程，主线程只标记删除，碎片产生时机延后（不在 Pipeline 热路径上）</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td><strong>用 <code>RENAME</code> 代替 DEL+SET</strong></td>
+<td>批量刷新时：写临时 key → RENAME 原子替换，旧 key 被原子删除（Redis 内部的 del 操作），避免了 Pipeline 中的显式 DEL</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td><strong>错峰删除</strong></td>
+<td>把 DEL 操作拆到单独的低峰窗口，不和写入 Pipeline 混一起</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td><strong>控制 dict 大小</strong></td>
+<td>如果 dict 必然大幅缩小，主动 <code>DEBUG HTSTATS</code> 监控，考虑 <code>activerehashing</code> 让 rehash 以步进方式执行（分摊 CPU）</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td><strong>碎片监控</strong></td>
+<td>监控 <code>mem_fragmentation_ratio</code>，定期 <code>MEMORY PURGE</code>（jemalloc 版）或 <code>activedefrag</code>（若开启）</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ❌ 反模式: Pipeline 中 DEL + SETEX 交替</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">oldKey</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">oldKeys</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">del</span><span class="p">(</span><span class="n">oldKey</span><span class="p">);</span><span class="w">                        </span><span class="c1">// 同步删除 → 碎片</span>
+<span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">setex</span><span class="p">(</span><span class="n">newKeyGen</span><span class="p">.</span><span class="na">next</span><span class="p">(),</span><span class="w"> </span><span class="mi">600</span><span class="p">,</span><span class="w"> </span><span class="n">val</span><span class="p">);</span><span class="w">  </span><span class="c1">// 立即分配 → 碎片加倍</span>
+<span class="p">}</span>
+
+<span class="c1">// ✅ 方案1: UNLINK 异步删除 + 错峰</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">oldKey</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">oldKeys</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">unlink</span><span class="p">(</span><span class="n">oldKey</span><span class="p">);</span><span class="w">                     </span><span class="c1">// 后台异步删，不占主线程</span>
+<span class="p">}</span>
+<span class="n">pipeline</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span>
+<span class="c1">// ... 等 UNLINK 后台完成（监控 lazyfree_pending_objects）</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">setex</span><span class="p">(</span><span class="n">newKey</span><span class="p">,</span><span class="w"> </span><span class="mi">600</span><span class="p">,</span><span class="w"> </span><span class="n">val</span><span class="p">);</span><span class="w">            </span><span class="c1">// 纯写入，无 alloc/free 交错</span>
+<span class="p">}</span>
+
+<span class="c1">// ✅ 方案2: RENAME 原子替换（推荐）</span>
+<span class="n">String</span><span class="w"> </span><span class="n">tmpKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"cache:tmp:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">batchId</span><span class="p">;</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">setex</span><span class="p">(</span><span class="n">tmpKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="mi">600</span><span class="p">,</span><span class="w"> </span><span class="n">val</span><span class="p">);</span><span class="w">  </span><span class="c1">// 写入临时 key</span>
+<span class="p">}</span>
+<span class="n">pipeline</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span>
+<span class="c1">// 然后 low-frequency RENAME（非高频 Pipeline 热路径）</span>
+<span class="n">redis</span><span class="p">.</span><span class="na">rename</span><span class="p">(</span><span class="n">tmpKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">realKey</span><span class="p">);</span><span class="w">          </span><span class="c1">// 原子替换，旧 key 被隐式删除</span>
+</code></pre></div>
+
+<p><strong>原理</strong>：<code>UNLINK</code> 在主线程只做 <code>dictDelete()</code>（O(1) 摘链 + mark），实际 <code>free()</code> 放到 <code>bio_lazy_free</code> 后台线程。而 <code>RENAME</code> 是单命令原子操作，删旧写的成本在 Redis 内部一条命令完成，不在应用层 Pipeline 里混。</p>
+<h3 id="_21">待测维度</h3>
+<table>
+<thead>
+<tr>
+<th>测试项</th>
+<th>方法</th>
+<th>关键指标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>碎片率对比</td>
+<td>相同写入量/速率，对比 DEL/UNLINK/RENAME 三种方案的 <code>mem_fragmentation_ratio</code></td>
+<td>碎片率曲线</td>
+</tr>
+<tr>
+<td>dict 扩容 CPU</td>
+<td><code>INFO stats</code> 跑满一轮后记录 <code>instantaneous_ops_per_sec</code> + <code>used_cpu_sys</code></td>
+<td>CPU 吞吞吐降幅%</td>
+</tr>
+<tr>
+<td>slowlog 增长</td>
+<td>记录 <code>slowlog len</code> 增量，对比三种方案</td>
+<td>slowlog count/s</td>
+</tr>
+<tr>
+<td>dict size 震荡</td>
+<td><code>DEBUG HTSTATS 0</code> 每 5 秒一次，记录 size/used 变化</td>
+<td>size 震荡范围</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="del-vs-unlink-vs-rename-3">实测：DEL vs UNLINK vs RENAME 3 轮对比</h3>
+<p><strong>测试环境</strong>：c=32, batchSize=200, prefill=200K, warmup=10s, sample=15s。每轮独立 <code>FLUSHDB</code> + 预填充。</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th style="text-align: center;"><strong>DEL + SETEX</strong><br>(反模式)</th>
+<th style="text-align: center;"><strong>UNLINK + SETEX</strong><br>(异步删除)</th>
+<th style="text-align: center;"><strong>SETEX + RENAME</strong><br>(原子替换)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>cmds/s</strong></td>
+<td style="text-align: center;">446,182</td>
+<td style="text-align: center;"><strong>512,796</strong> ✅</td>
+<td style="text-align: center;">358,129</td>
+</tr>
+<tr>
+<td>vs DEL</td>
+<td style="text-align: center;">—</td>
+<td style="text-align: center;"><strong>+14.9%</strong></td>
+<td style="text-align: center;">-19.7%</td>
+</tr>
+<tr>
+<td><strong>avg 延迟</strong></td>
+<td style="text-align: center;">28.97ms</td>
+<td style="text-align: center;"><strong>25.23ms</strong> ✅</td>
+<td style="text-align: center;">36.27ms</td>
+</tr>
+<tr>
+<td><strong>p50</strong></td>
+<td style="text-align: center;">25.60ms</td>
+<td style="text-align: center;"><strong>24.30ms</strong></td>
+<td style="text-align: center;">33.44ms</td>
+</tr>
+<tr>
+<td><strong>p99</strong></td>
+<td style="text-align: center;">87.21ms</td>
+<td style="text-align: center;"><strong>47.62ms</strong> ✅</td>
+<td style="text-align: center;">99.29ms</td>
+</tr>
+<tr>
+<td><strong>max</strong></td>
+<td style="text-align: center;">161.70ms</td>
+<td style="text-align: center;"><strong>65.53ms</strong></td>
+<td style="text-align: center;">158.36ms</td>
+</tr>
+<tr>
+<td><strong>slowlogΔ</strong></td>
+<td style="text-align: center;">15</td>
+<td style="text-align: center;"><strong>5</strong> ✅</td>
+<td style="text-align: center;">23</td>
+</tr>
+<tr>
+<td><strong>碎片率</strong></td>
+<td style="text-align: center;">1.28→1.28</td>
+<td style="text-align: center;">1.29→1.28</td>
+<td style="text-align: center;">1.29→1.28</td>
+</tr>
+<tr>
+<td><strong>errors</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;"><strong>8</strong> ❌</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_22">关键发现</h4>
+<p><strong>1. UNLINK 全面领先 DEL</strong></p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>吞吐</td>
+<td><strong>+14.9%</strong></td>
+</tr>
+<tr>
+<td>P99 延迟</td>
+<td><strong>-45%</strong>（87ms → 48ms）</td>
+</tr>
+<tr>
+<td>slowlog</td>
+<td><strong>-67%</strong>（15 → 5）</td>
+</tr>
+</tbody>
+</table>
+<p><code>UNLINK</code> 在主线程只做 O(1) 摘链 + mark，实际 <code>free()</code> 交给 <code>bio_lazy_free</code> 后台线程。Pipeline 不被内存释放阻塞，延迟分布更稳定。</p>
+<p><strong>2. RENAME 反而最差（与理论预期相反）</strong></p>
+<p>理论认为 RENAME 是单命令原子操作，零显式删除。实测却最差：</p>
+<table>
+<thead>
+<tr>
+<th>退化</th>
+<th>幅度</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>吞吐</td>
+<td><strong>-19.7%</strong> vs DEL</td>
+<td>RENAME 内部隐式 DEL + 字典查找 + 重命名三步开销</td>
+</tr>
+<tr>
+<td>slowlogΔ</td>
+<td><strong>23</strong>（是 UNLINK 的 4.6x）</td>
+<td>Pipeline 中密集调用时，隐式删除不可异步化</td>
+</tr>
+<tr>
+<td>errors</td>
+<td><strong>8</strong> 次超时/冲突</td>
+<td>tmp key 在并发 Pipeline 中存在竞态</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RENAME 的核心问题</strong>：在 32 连接并发下，<code>tmp:0..N</code> 的写入和 <code>RENAME(tmp→old)</code> 不是原子的跨命令。当 Worker A 写入 <code>tmp:42</code> 但还没 RENAME 时，Worker B 也可能写入 <code>tmp:42</code> → <code>RENAME</code> 时数据错乱或 key 已不存在。</p>
+<p><strong>3. 碎片率无明显差异</strong></p>
+<p>三轮测试碎片率都在 1.28-1.29，没有明显恶化。原因：200K × (64B value + 56B dict overhead) ≈ 24MB，在 <code>used_memory</code> 37M 中占 65%，但在 jemalloc arena 复用范围内——释放的 <code>dictEntry</code>（~24B）和 value（64B）是不同 size class，相互不产生跨 class 碎片。</p>
+<h4 id="_23">实现解析</h4>
+<p><strong>3 轮扫测架构</strong>：</p>
+<div class="codehilite"><pre><span></span><code>runSweep()
+  ├─ FLUSHDB + prePopulate()  // 插入 200K 存量 key (mc:cold:old:0..199999)
+  ├─ Round1: runRound("DEL_SETEX", "DEL")
+  │     └─ 32 Workers, 每轮: del(oldKeys[idx]) + setex(newKeys[idx])
+  ├─ FLUSHDB + prePopulate()
+  ├─ Round2: runRound("UNLINK_SETEX", "UNLINK")
+  │     └─ 32 Workers, 每轮: unlink(oldKeys[idx]) + setex(newKeys[idx])
+  ├─ FLUSHDB + prePopulate()
+  └─ Round3: runRound("SETEX_RENAME", "RENAME")
+        └─ 32 Workers, 每轮: setex(tmpKeys[idx]) + rename(tmp → old)
+</code></pre></div>
+
+<p><strong>Key Pool 优化</strong>：一次性分配 3 × 200K = 600K 个 String 到数组，热路径用下标取 key（<code>oldKeys[rng.nextInt(200000)]</code>），零分配零拼接。</p>
+<p><strong>Worker 热路径</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 每批次 batchSize × 2 个命令，执行完后 await 等待</span>
+<span class="n">List</span><span class="o">&lt;</span><span class="n">RedisFuture</span><span class="o">&lt;?&gt;&gt;</span><span class="w"> </span><span class="n">futures</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ArrayList</span><span class="o">&lt;&gt;</span><span class="p">(</span><span class="n">batchSize</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+
+<span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">mode</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">"DEL"</span><span class="p">:</span>
+<span class="w">        </span><span class="n">del</span><span class="p">(</span><span class="n">oldKey</span><span class="p">);</span><span class="w">      </span><span class="c1">// 同步释放 dict entry + value</span>
+<span class="w">        </span><span class="n">setex</span><span class="p">(</span><span class="n">newKey</span><span class="p">);</span><span class="w">    </span><span class="c1">// 立即重新分配 → 碎片</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">"UNLINK"</span><span class="p">:</span>
+<span class="w">        </span><span class="n">unlink</span><span class="p">(</span><span class="n">oldKey</span><span class="p">);</span><span class="w">   </span><span class="c1">// 只标记，不释放</span>
+<span class="w">        </span><span class="n">setex</span><span class="p">(</span><span class="n">newKey</span><span class="p">);</span><span class="w">    </span><span class="c1">// alloc 可复用已标记块</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s">"RENAME"</span><span class="p">:</span>
+<span class="w">        </span><span class="n">setex</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">);</span><span class="w">    </span><span class="c1">// 写入临时 key</span>
+<span class="w">        </span><span class="n">rename</span><span class="p">(</span><span class="n">tmp</span><span class="err">→</span><span class="n">old</span><span class="p">);</span><span class="w">  </span><span class="c1">// 原子替换（内部隐式 DEL）</span>
+<span class="p">}</span>
+
+<span class="n">async</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span><span class="w">          </span><span class="c1">// 整批发出</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">f</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">futures</span><span class="p">)</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="mi">2</span><span class="n">s</span><span class="p">);</span><span class="w">   </span><span class="c1">// 同步等待完成</span>
+</code></pre></div>
+
+<p><strong>指标采集</strong>：每个 Round 前后抓取：</p>
+<ul>
+<li><code>INFO memory</code> → <code>mem_fragmentation_ratio</code>、<code>used_memory_human</code>、<code>used_memory_rss_human</code></li>
+<li><code>SLOWLOG LEN</code> → 慢查询增量</li>
+<li><code>INFO stats</code> → <code>used_cpu_sys</code> CPU 系统态增量</li>
+<li><code>DBSIZE</code> → key 数量变化</li>
+<li>客户端采样：所有 batch 的 <code>(await_end - batch_start)</code> 延迟，计算 p50/p90/p99</li>
+</ul>
+<h3 id="_24">实测结论</h3>
+<div class="codehilite"><pre><span></span><code>实测结论（c=32, batch=200, prefill=200K）:
+  1. UNLINK 全面领先 DEL: 吞吐 +15%、P99 -45%、slowlog -67%
+  2. RENAME 反而最差: 吞吐 -20%、slowlog 是 UNLINK 的 4.6 倍，且存在并发竞态（8 次错误）
+  3. 碎片率无显著差异（1.28-1.29），原因: 200K key 在 jemalloc arena 复用范围内
+  4. 生产推荐: UNLINK 替代 DEL，改动最小（1 行代码），收益最显著
+  5. 不推荐 RENAME: 在并发 Pipeline 中存在 tmp key 冲突，且性能不如 UNLINK
+</code></pre></div>
+
+<p><strong>生产最优方案</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ✅ 一行改动：DEL → UNLINK，立即生效</span>
+<span class="o">-</span><span class="w"> </span><span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">del</span><span class="p">(</span><span class="n">oldKey</span><span class="p">));</span>
+<span class="o">+</span><span class="w"> </span><span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">unlink</span><span class="p">(</span><span class="n">oldKey</span><span class="p">));</span><span class="w">   </span><span class="c1">// +15% 吞吐, P99 -45%</span>
+
+<span class="c1">// 备选：错峰删除（UNLINK 单独成批 + SETEX 纯写）</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">oldKey</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">oldKeys</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">unlink</span><span class="p">(</span><span class="n">oldKey</span><span class="p">);</span><span class="w">           </span><span class="c1">// 全异步删除</span>
+<span class="p">}</span>
+<span class="n">pipeline</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span>
+<span class="n">Thread</span><span class="p">.</span><span class="na">sleep</span><span class="p">(</span><span class="mi">100</span><span class="p">);</span><span class="w">                      </span><span class="c1">// 给 BIO 线程一点时间</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">setex</span><span class="p">(</span><span class="n">newKey</span><span class="p">,</span><span class="w"> </span><span class="n">ttl</span><span class="p">,</span><span class="w"> </span><span class="n">val</span><span class="p">);</span><span class="w">  </span><span class="c1">// 纯写入，零删除开销</span>
+<span class="p">}</span>
+</code></pre></div>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景8：批量写入优化 · 小番茄程序猿</title>
+<meta name="description" content="场景8：批量写入优化 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景8：批量写入优化</h1>
+  </div>
+  <article class="prose">
+<h1 id="8">场景8：批量写入优化</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>MySQL 单条 INSERT 的瓶颈主要在<strong>网络往返</strong>和<strong>事务提交</strong>：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。<strong>批量写入</strong>通过减少 SQL 次数、合并事务、驱动级优化，可带来数量级的吞吐提升。</p>
+<p>本场景用表 <code>t_batch_test</code>，对比四种写入方式在同样 1 万行下的耗时与吞吐。</p>
+<h2 id="_2">二、四种写入方式</h2>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>说明</th>
+<th>SQL/事务</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. singleInsert</td>
+<td>逐条 INSERT + autocommit</td>
+<td>每条一个事务、一次网络往返</td>
+</tr>
+<tr>
+<td>2. txInsert</td>
+<td>事务内逐条 INSERT</td>
+<td>多条包一个事务，减少提交，但逐条执行</td>
+</tr>
+<tr>
+<td>3. multiValues</td>
+<td>单条多值 INSERT</td>
+<td>一条 SQL 插多行，减少 SQL 次数</td>
+</tr>
+<tr>
+<td>4. jdbcBatch</td>
+<td>JDBC addBatch + rewriteBatchedStatements</td>
+<td>驱动把多条 INSERT 合并成多值语句执行</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-batchsize500">三、实测结果（1 万行，batchSize=500）</h2>
+<table>
+<thead>
+<tr>
+<th>写入方式</th>
+<th>耗时 (ms)</th>
+<th>吞吐 (行/秒)</th>
+<th>相对逐条</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>singleInsert（逐条）</strong></td>
+<td>229363</td>
+<td><strong>43</strong></td>
+<td>基准</td>
+</tr>
+<tr>
+<td><strong>txInsert（事务内逐条）</strong></td>
+<td>2773</td>
+<td>3606</td>
+<td><strong>快 84 倍</strong></td>
+</tr>
+<tr>
+<td><strong>multiValues（单条多值）</strong></td>
+<td>980</td>
+<td>10204</td>
+<td><strong>快 237 倍</strong></td>
+</tr>
+<tr>
+<td><strong>jdbcBatch（JDBC Batch）</strong></td>
+<td>905</td>
+<td><strong>11049</strong></td>
+<td><strong>快 257 倍</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：
+- <strong>逐条 INSERT 极慢</strong>（43 行/秒）：每条一个事务 + 一次网络往返，磁盘 fsync 成为瓶颈
+- <strong>事务内逐条</strong>（3606 行/秒）：减少提交次数，提升显著（快 84 倍）
+- <strong>单条多值</strong>（10204 行/秒）：一条 SQL 插多行，减少 SQL 与网络往返（快 237 倍）
+- <strong>JDBC Batch + rewriteBatchedStatements</strong>（11049 行/秒）：驱动级多值合并，<strong>最快（快 257 倍）</strong></p>
+<blockquote>
+<p>逐条 INSERT 耗时 229 秒是 autocommit 下每条强制 fsync 的典型表现；批量写入把 fsync 次数从 N 次降到 N/batchSize 次，是吞吐暴涨的根源。</p>
+</blockquote>
+<h2 id="_3">四、生产避坑准则</h2>
+<ol>
+<li><strong>严禁逐条 INSERT</strong>：循环里逐条 <code>INSERT</code> + autocommit 是写入性能杀手（大数据量下数百倍差距）</li>
+<li><strong>批量必须开 rewriteBatchedStatements</strong>：JDBC URL 加 <code>rewriteBatchedStatements=true</code>，驱动才会把多条 INSERT 合并成多值语句；否则 executeBatch 只是逐条发送</li>
+<li><strong>batchSize 适中</strong>：一般 500~1000 为宜，过大导致单条 SQL 过长、内存占用高；过小优化不明显</li>
+<li><strong>批量事务提交</strong>：批量写入放在一个事务里（或分批提交），减少 fsync 次数</li>
+<li><strong>单条多值 SQL 注意长度</strong>：<code>max_allowed_packet</code> 限制单条 SQL 大小，批量别超限</li>
+<li><strong>大批量导入</strong>：可考虑 <code>LOAD DATA INFILE</code>（比 INSERT 更快），或分片并行写入</li>
+</ol>
+<h2 id="_4">五、面试简述</h2>
+<blockquote>
+<p><strong>批量写入优化</strong>：逐条 INSERT（autocommit）每条一个事务 + 一次网络往返，1 万行耗时 229 秒、仅 43 行/秒；事务内逐条 3606 行/秒（减少提交）；单条多值 INSERT 10204 行/秒（减少 SQL 次数）；<strong>JDBC addBatch + rewriteBatchedStatements</strong> 11049 行/秒，比逐条快 <strong>257 倍</strong>。核心：批量写入减少 fsync 次数与网络往返，<code>rewriteBatchedStatements=true</code> 是关键开关，batchSize 取 500~1000 最佳。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

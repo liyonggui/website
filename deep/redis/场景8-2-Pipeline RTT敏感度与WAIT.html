@@ -1,0 +1,2652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>前提: 3 主 3 从集群 + 压测应用 8082 已启动 · 小番茄程序猿</title>
+<meta name="description" content="前提: 3 主 3 从集群 + 压测应用 8082 已启动 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>前提: 3 主 3 从集群 + 压测应用 8082 已启动</h1>
+  </div>
+  <article class="prose">
+<h2 id="815-pipeline-rtt">场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化</h2>
+<h3 id="8151">8.15.1 背景与问题</h3>
+<p>场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT &lt; 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、10~50ms（跨 Region）。</p>
+<p>经典公式 <code>throughput ≈ (concurrency × pipelineSize) / RTT</code> 说明吞吐与 RTT 成反比——但不同模式的退化幅度不同：</p>
+<ul>
+<li><strong>网络依赖模式</strong>（SINGLE_KEY / DISTRIBUTED / SHARDED）：Pipeline 中每条 INCR 都必须等待 Redis 回包 → 吞吐 ∝ 1/RTT（即 RTT 增大时吞吐按反比下降）</li>
+<li><strong>RTT 免疫模式</strong>（LOCAL_BUFFERED / COMPUTED）：主循环在本地内存执行，仅定期 INCRBY 受 RTT 影响 → 本地吞吐不受网络延迟影响</li>
+</ul>
+<p><strong>本场景的目标</strong>：在不同 tc netem 延迟下量化五种模式的退化曲线，给出"何时应该切换到本地缓冲模式"的量化判据。</p>
+<h3 id="8152">8.15.2 原理公式</h3>
+<div class="codehilite"><pre><span></span><code>Pipeline 命令/秒 的简化上限可近似表示为:
+  maxCmdPerSec ≈ (concurrency × pipelineSize) / RTT
+
+⚠️ 单位说明: RTT 必须以「秒」为单位代入计算！
+  例如 RTT = 1ms → 应代入 0.001s。
+  若误将 ms 当作秒直接代入，吞吐估算会偏离 1000 倍。
+
+  由此可知吞吐量与 RTT 成反比: 吞吐 ≈ O(1/RTT)。
+  该公式是理论上限，实际吞吐还受 Redis 单线程处理能力、CPU、网卡
+  和客户端实现（Netty / 线程）等限制。
+
+示例（concurrency=16, pipelineSize=100, 先换算 ms → s）:
+  RTT=0.1ms = 0.0001s → 理论上限 ≈ (16×100)/0.0001 = 16M cmd/s
+                        （实际受 Redis 单线程限制 ~360k）
+  RTT=1ms   = 0.001s  → 理论上限 ≈ 1.6M cmd/s
+  RTT=5ms   = 0.005s  → 理论上限 ≈ 320k cmd/s
+  RTT=10ms  = 0.01s   → 理论上限 ≈ 160k cmd/s
+
+换算过程（以 RTT=1ms 为例）:
+  (16 × 100) / (1ms ÷ 1000) = 1600 / 0.001 = 1,600,000 cmd/s
+
+说明: 按公式 (16 × 100) / RTT_seconds，我们在 RTT=0.1ms 时得到理论上限 ~16M cmd/s，
+但 Redis 本身是单线程，处理/调度/网络上下文切换等会显著降低这个理论值；
+本实验单机 Redis 的实际上限约为 300k~600k（取决于命令类型和 CPU），
+因此在低 RTT 场景下实际吞吐受 Redis 本身限制而非网络限制。
+
+LOCAL_BUFFERED / COMPUTED 本地操作:
+  本地吞吐 ≈ CPU 核心数 × 单核原子操作速率
+  RTT 不影响本地循环 → 始终 ≈ 30M~95M cmd/s（仅定期 INCRBY flush 略有退化）
+</code></pre></div>
+
+<h3 id="8153">8.15.3 压测架构</h3>
+<div class="codehilite"><pre><span></span><code>                    ┌──────────────────────────────────────┐
+                    │   压测应用 (Spring Boot 8082)          │
+                    │   RttBenchService                     │
+                    │   5 模式顺序 sweep                    │
+                    │   (3s 预热 + 5s 采样) / 每模式       │
+                    └───────────┬──────────────────────────┘
+                                │ Pipeline INCR / 本地原子操作
+                                │
+              ┌─────────────────┼─────────────────┐
+              ▼                 ▼                   ▼
+        redis-cluster-1   redis-cluster-2   redis-cluster-3
+        (Master A)        (Master B)        (Master C)
+        │ tc netem        │ tc netem        │ tc netem
+        │ delay Xms       │ delay Xms       │ delay Xms
+        └── egress ──→ 延迟 Xms ──→ 客户端回包延迟
+</code></pre></div>
+
+<p><strong>RTT 模拟方式</strong>：通过 <code>docker exec &lt;master&gt; tc qdisc add dev eth0 root netem delay Xms</code> 在 3 个 master 容器的 egress 方向注入延迟，使客户端收到的回包延迟增加 Xms。</p>
+<blockquote>
+<p><strong>注意</strong>：在这里我们通过在每个 master 容器的 egress（出向）上注入单向延迟 Xms，使得 server→client 的响应路径被延迟 Xms。客户端对单次请求的额外感知延迟大致为 Xms（若 client→server 路径不受延迟影响）。要模拟对称的网络往返 RTT 增加 T，则应在 request 与 response 两个方向各注入约 T/2；如果只在一侧注入 Xms，那么整体 RTT 只增加约 Xms 而非 2×Xms。文中所述"tc delay=5ms 模拟 RTT≈10ms"的说法仅在你同时在两个方向或两个端点都注入 5ms 的情况下成立；单侧注入 5ms 实际上只会在往返上增加约 5ms。</p>
+</blockquote>
+<h3 id="8154">8.15.4 测试方法</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 前提: 3 主 3 从集群 + 压测应用 8082 已启动</span>
+<span class="c1"># docker-compose --profile cluster up -d</span>
+<span class="c1"># mvn spring-boot:run -f redis-lettuce-bench/pom.xml</span>
+
+<span class="c1"># 一键全自动（推荐）</span>
+.<span class="se">\l</span>oadtester<span class="se">\p</span>ipeline-rtt-bench.ps1<span class="w"> </span>-Concurrency<span class="w"> </span><span class="m">16</span><span class="w"> </span>-BatchSize<span class="w"> </span><span class="m">100</span>
+
+<span class="c1"># 或分步手动:</span>
+<span class="c1"># ① 基线</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/rtt/sweep"</span>
+<span class="c1"># ② 注入 5ms 延迟后再次 sweep</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>5ms
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-2<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>5ms
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-3<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>5ms
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/rtt/sweep"</span>
+<span class="c1"># ③ 清除</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-2<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-3<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+</code></pre></div>
+
+<blockquote>
+<p><strong>本实验的 tc 注入方式 = 单侧 egress 注入 Xms</strong>（仅在 3 个 master 的 egress 方向注入）。
+因此表中标注的 <strong>"tc delay = Xms" 是单向注入</strong>，客户端实际感知的往返延迟大约增加 <strong>Xms（非 2×Xms）</strong>。
+例如：<code>tc delay 5ms</code> → 客户端感知 RTT 增加 ≈ 5ms。
+若想精确模拟对称 RTT 增加 T，应在 request 与 response 两个方向各注入 T/2（或 server 与 client 两侧各注入 T/2）。</p>
+</blockquote>
+<h3 id="8155-rest">8.15.5 REST 端点</h3>
+<div class="codehilite"><pre><span></span><code>POST<span class="w"> </span>/rtt/sweep<span class="w">     </span>—<span class="w"> </span>跑一次全模式<span class="w"> </span>sweep（当前网络条件下），返回<span class="w"> </span>JSON<span class="w"> </span>数组
+GET<span class="w">  </span>/rtt/status<span class="w">    </span>—<span class="w"> </span>当前状态
+
+<span class="c1"># 响应示例:</span>
+<span class="c1"># [</span>
+<span class="c1">#   {"mode":"SINGLE_KEY",  "cmdPerSec":"358,210", "avgLatencyMs":"0.044", "errors":0, "rttImmune":false},</span>
+<span class="c1">#   {"mode":"DISTRIBUTED", "cmdPerSec":"290,105", "avgLatencyMs":"0.055", "errors":0, "rttImmune":false},</span>
+<span class="c1">#   {"mode":"SHARDED",     "cmdPerSec":"252,830", "avgLatencyMs":"0.063", "errors":0, "rttImmune":false},</span>
+<span class="c1">#   {"mode":"LOCAL_BUFFERED","cmdPerSec":"~34,000,000 (本地免疫)", "avgLatencyMs":"N/A (本地)", "errors":0, "rttImmune":true},</span>
+<span class="c1">#   {"mode":"COMPUTED",    "cmdPerSec":"~95,000,000 (本地免疫)", "avgLatencyMs":"N/A (本地)", "errors":0, "rttImmune":true}</span>
+<span class="c1"># ]</span>
+</code></pre></div>
+
+<h3 id="8156">8.15.6 实测数据</h3>
+<blockquote>
+<p><strong>测试条件</strong>：Docker 单机，3 主 3 从 Redis 7.x Cluster，Lettuce 6.x + Netty，concurrency=16 × batchSize=100，每种模式 3s 预热 + 5s 采样。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">RTT (tc delay)</th>
+<th style="text-align: left;">SINGLE_KEY (cmd/s)</th>
+<th style="text-align: left;">DISTRIBUTED (cmd/s)</th>
+<th style="text-align: left;">SHARDED (cmd/s)</th>
+<th style="text-align: left;">LOCAL_BUFFERED</th>
+<th style="text-align: left;">COMPUTED</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>基线 (~0.1ms)</strong></td>
+<td style="text-align: left;">307,820</td>
+<td style="text-align: left;">116,700</td>
+<td style="text-align: left;">108,420</td>
+<td style="text-align: left;">~545M</td>
+<td style="text-align: left;">~134M</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>1ms</strong></td>
+<td style="text-align: left;">315,240</td>
+<td style="text-align: left;">130,960</td>
+<td style="text-align: left;">114,940</td>
+<td style="text-align: left;">~538M</td>
+<td style="text-align: left;">~173M</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3ms</strong></td>
+<td style="text-align: left;">333,000</td>
+<td style="text-align: left;">117,000</td>
+<td style="text-align: left;">123,780</td>
+<td style="text-align: left;">~560M</td>
+<td style="text-align: left;">~178M</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>5ms</strong></td>
+<td style="text-align: left;">279,060</td>
+<td style="text-align: left;">116,800</td>
+<td style="text-align: left;">112,980</td>
+<td style="text-align: left;">~537M</td>
+<td style="text-align: left;">~182M</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>10ms</strong></td>
+<td style="text-align: left;">163,600</td>
+<td style="text-align: left;">106,980</td>
+<td style="text-align: left;">103,940</td>
+<td style="text-align: left;">~513M</td>
+<td style="text-align: left;">~173M</td>
+</tr>
+</tbody>
+</table>
+<h4 id="100">退化率分析（以基线为 100%）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">RTT</th>
+<th style="text-align: left;">SINGLE_KEY</th>
+<th style="text-align: left;">DISTRIBUTED</th>
+<th style="text-align: left;">SHARDED</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">基线 → 1ms</td>
+<td style="text-align: left;">102% ✅</td>
+<td style="text-align: left;">112%</td>
+<td style="text-align: left;">106%</td>
+</tr>
+<tr>
+<td style="text-align: left;">基线 → 3ms</td>
+<td style="text-align: left;">108%</td>
+<td style="text-align: left;">100%</td>
+<td style="text-align: left;">114%</td>
+</tr>
+<tr>
+<td style="text-align: left;">基线 → 5ms</td>
+<td style="text-align: left;">91%</td>
+<td style="text-align: left;">100%</td>
+<td style="text-align: left;">104%</td>
+</tr>
+<tr>
+<td style="text-align: left;">基线 → <strong>10ms</strong></td>
+<td style="text-align: left;"><strong>53%</strong> ⚠</td>
+<td style="text-align: left;">92%</td>
+<td style="text-align: left;">96%</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>关于 1~3ms 高于基线的解释</strong>：部分 RTT 梯度吞吐略高于基线属于测量噪声（JIT 预热、GC、线程调度、网络抖动等）。建议对每个 RTT 梯度至少运行 N 次（N≥3）并报告均值±标准差或 P50/P90，以确认趋势的显著性，避免把噪声当作真实性能差异。</p>
+</blockquote>
+<h3 id="8157">8.15.7 关键发现</h3>
+<h4 id="1-single_key-10ms">发现 1: SINGLE_KEY 在低延迟下几乎不退化，10ms 才明显退化</h4>
+<div class="codehilite"><pre><span></span><code>Docker 内网延迟 &lt; 0.1ms，Pipeline 100 命令/往返有效均摊了 RTT:
+  1~3ms 时吞吐反而略高于基线（噪声范围内， ±8%）
+  5ms 时退化至 91%
+  10ms 时退化至基线的 53%（~307k → ~164k）
+
+原因: Pipeline 将 100 条 INCR 合并为 1 次网络往返，
+      RTT 开销被 /100 均摊。
+</code></pre></div>
+
+<h4 id="2-distributed-sharded-rtt">发现 2: DISTRIBUTED / SHARDED 对小幅 RTT 退化非常小</h4>
+<div class="codehilite"><pre><span></span><code>DISTRIBUTED / SHARDED 在本次测试配置下对单向/小幅 RTT 的退化非常小
+（近似 RTT 免疫），但这不是绝对特性。关键条件是：每个 pipeline batch 内
+的命令被路由到相同 slot（或同一 master）以避免 CROSSSLOT，并且不同批次
+能并行落在不同 master，从而并行隐藏了每个 master 的 RTT。若并发减少、
+批次分布发生变化或某些 master 的 replica 延迟较大，DISTRIBUTED/SHARDED
+仍会受 RTT 或节点间复制延迟的影响。
+
+100~130k cmd/s 在所有 RTT 梯度下保持稳定（±10% 噪声范围内）。
+
+注意: 修复前这两个模式吞吐为 0（CROSSSLOT 错误），因为每批内 key 跨 slot。
+      修复: 每批使用同一个 hashtag（buildKey(mode, batchSlotSeed)），
+      确保 100 条 INCR 落在同一 slot，避免 CROSSSLOT。
+</code></pre></div>
+
+<h4 id="3-local_buffered-computed">发现 3: LOCAL_BUFFERED / COMPUTED 本地免疫 — 吞吐级不在一个量级</h4>
+<div class="codehilite"><pre><span></span><code>LOCAL_BUFFERED:  ~500M~560M cmd/s  ← 纯本地 AtomicLong，RTT 完全无关
+COMPUTED:        ~130M~180M cmd/s  ← 本地计算 + 批量 CAS，RTT 完全无关
+
+与网络模式的差距:
+  基线: LOCAL_BUFFERED (545M) ÷ SINGLE_KEY (0.31M) ≈ 1,770 倍
+  10ms: LOCAL_BUFFERED (513M) ÷ SINGLE_KEY (0.16M) ≈ 3,136 倍
+  → 网络越差，本地缓冲优势越显著
+</code></pre></div>
+
+<blockquote>
+<p>⚠️ <strong>Caveat：LOCAL_BUFFERED / COMPUTED 的吞吐优势以牺牲实时一致性与失败恢复为代价。</strong> 本地缓冲的更新若在进程崩溃前未写回到 Redis 会丢失；需配套本地持久化、重启恢复，或将缓冲写到本地持久存储以降低丢失风险。选择本地方案前必须评估业务对丢失与延迟的容忍度（RPO/RTO）。</p>
+</blockquote>
+<h4 id="4">发现 4: 量化判据</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">RTT 条件</th>
+<th style="text-align: left;">最佳方案</th>
+<th style="text-align: left;">原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">RTT &lt; 1ms（同机/Docker）</td>
+<td style="text-align: left;">SINGLE_KEY 足够</td>
+<td style="text-align: left;">Pipeline 均摊有效，退化 &lt; 10%</td>
+</tr>
+<tr>
+<td style="text-align: left;">1ms ≤ RTT &lt; 5ms（同 AZ）</td>
+<td style="text-align: left;">SHARDED / COMPUTED</td>
+<td style="text-align: left;">SINGLE_KEY 仍可用 (91%)，COMPUTED 完全免疫</td>
+</tr>
+<tr>
+<td style="text-align: left;">RTT ≥ 5ms（跨 AZ）</td>
+<td style="text-align: left;">LOCAL_BUFFERED / COMPUTED</td>
+<td style="text-align: left;">SINGLE_KEY 退化明显，本地方案优势放大</td>
+</tr>
+<tr>
+<td style="text-align: left;">RTT ≥ 10ms（跨 Region）</td>
+<td style="text-align: left;">COMPUTED + 批量写回</td>
+<td style="text-align: left;">SINGLE_KEY 退化至 53%，绝不使用直接 INCR Pipeline</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>核心公式</strong>: <code>退化后吞吐 ≈ 基线吞吐 × (基线RTT / 当前RTT)</code>，当地 RTT 达到线程/连接数铺不满带宽的临界点时，退化加速。</p>
+</blockquote>
+<p><strong>可计算切换判据（便于自动化决策）</strong>：</p>
+<div class="codehilite"><pre><span></span><code>① 预测网络吞吐:  T_net(RTT) ≈ min(redis_single_thread_limit,
+                                    (concurrency × batchSize) / RTT_seconds)
+② 若 T_net(RTT) &lt; T_local × α （例如 α = 0.1，即网络方案低于本地方案的 10%）
+   → 切换到本地缓冲模式（LOCAL_BUFFERED / COMPUTED）
+③ 或基于延迟 SLO：若预计读 P99 &gt; SLO_read 或写 P99 &gt; SLO_write → 切换
+④ 经验阈值：RTT ≥ 5ms 且写压占主路径 → 优先本地缓冲/COMPUTED；
+   RTT &lt; 1ms 且需要强一致性 → 同步 WAIT 可接受
+</code></pre></div>
+
+<h4 id="crossslot">开发踩坑: CROSSSLOT 修复</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">问题</th>
+<th style="text-align: left;">原因</th>
+<th style="text-align: left;">修复</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">DISTRIBUTED/SHARDED 吞吐为 0</td>
+<td style="text-align: left;">每批内 100 个 key 使用不同随机后缀，跨 slot 触发 CROSSSLOT</td>
+<td style="text-align: left;">每批共享一个 hashtag: <code>buildKey(mode, batchSlotSeed)</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>hashtag 的范围限制与热点风险</strong>：使用相同 hashtag 能保证同批命令落在同一 slot，但会把热度集中到单一 slot/master，可能造成单一节点成为瓶颈或单点压力源。在生产中应权衡跨 slot 并行性与单 slot 聚合带来的热点风险（必要时通过 key 分片或多 hashtag 策略分摊负载）。
+| 5 模式 sweep 只跑第一个 | <code>runSingle()</code> 结束后 <code>running.set(false)</code> 直接杀死全局 sweep | 引入 <code>workersStopped</code> per-mode 终止标志，不污染全局 <code>running</code> |</p>
+</blockquote>
+<h3 id="8158-docker">8.15.8 Docker 配置变更</h3>
+<p>为确保 <code>tc</code> 可在集群 master 容器中使用，<code>docker-compose.yml</code> 中 cluster profile 的 3 个 master 节点需增加：</p>
+<div class="codehilite"><pre><span></span><code><span class="nt">redis-cluster-1</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">cap_add</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NET_ADMIN</span><span class="w">    </span><span class="c1"># 场景 8.15: tc netem 模拟网络延迟</span>
+</code></pre></div>
+
+<h3 id="8159-rttbenchservice">8.15.9 <code>RttBenchService</code> 实现要点</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 核心结构: 5 种模式顺序 sweep，每种模式跑 8s（预热 3s + 采样 5s）</span>
+<span class="c1">// 网络依赖模式: Pipeline INCR → 记录吞吐 + 延迟</span>
+<span class="c1">// RTT 免疫模式: 本地 AtomicLong 循环 → 返回标注"本地免疫"</span>
+
+<span class="kd">private</span><span class="w"> </span><span class="n">Map</span><span class="o">&lt;</span><span class="n">String</span><span class="p">,</span><span class="w"> </span><span class="n">Object</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">runSingle</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">mode</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// SINGLE_KEY/DISTRIBUTED/SHARDED:</span>
+<span class="w">    </span><span class="c1">//   Pipeline batchSize 条 INCR → flush → awaitAll → 记录耗时</span>
+<span class="w">    </span><span class="c1">// LOCAL_BUFFERED/COMPUTED:</span>
+<span class="w">    </span><span class="c1">//   本地循环 batchSize 次 AtomicLong.addAndGet → 不调 Redis</span>
+<span class="w">    </span><span class="c1">//   返回标记 rttImmune=true</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<blockquote>
+<p>完整代码见 <code>redis-lettuce-bench/src/main/java/com/example/redis/service/RttBenchService.java</code>。</p>
+</blockquote>
+<h3 id="816-pipeline">8.16 Pipeline 混合读写 → 读饥饿演示</h3>
+<h4 id="8161">8.16.1 背景与问题</h4>
+<div class="codehilite"><pre><span></span><code>生产中最常见的是热点 key 上同时存在大量 GET 和 INCR 请求：
+  ├─ 读请求 (GET hotkey:counter) 与写请求 (INCR hotkey:counter) 混在一起
+  ├─ Redis 单线程事件循环：所有命令串行执行
+  ├─ Pipeline 100 条 INCR → 100 条命令排队执行 → GET 被堵在后面
+  └─ 结果：读请求被写请求"饥饿"（read starvation）
+
+两种饥饿形式：
+  ┌─────────────────────────────────────────────────────────┐
+  │ 形式 1: 同连接 Pipeline 混合 (same-connection)          │
+  │   Pipeline 中 50% INCR + 50% GET 混在一起               │
+  │   影响: 有效写吞吐腰斩（写槽位被读命令抢占）              │
+  │   注意: 同连接中读/写 FIFO 有序，读一定看到最新值         │
+  ├─────────────────────────────────────────────────────────┤
+  │ 形式 2: 跨连接独立读写 (cross-connection) ← 真正读饥饿    │
+  │   N 条连接疯狂 Pipeline INCR + M 条连接独立 GET          │
+  │   影响: 读者被写者排队阻塞，P99 延迟飙升至 40ms+          │
+  │   读者有效吞吐仅为写者的 0.4%                             │
+  └─────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h4 id="8162">8.16.2 压测架构</h4>
+<div class="codehilite"><pre><span></span><code>┌────────────────────────────────────────────────────────┐
+│  压测应用 (lettuce-bench, 容器内)                        │
+│                                                         │
+│  MIXED_RW (same-conn):                                   │
+│   1 条连接 × 16 线程 → Pipeline 100 mixed (50 INCR+50 GET)│
+│                                                         │
+│  MIXED_RW_MULTI_CONN (cross-conn):                       │
+│   12 条写连接 × Pipeline 100 INCR → hotkey:counter       │
+│    4 条读连接 × 单条 GET → hotkey:counter                │
+│   读者测量 per-GET 延迟（avg + max）                      │
+│                                                         │
+│  SINGLE_KEY (baseline):                                  │
+│   1 条连接 × 16 线程 → Pipeline 100 INCR（纯写）          │
+│                                                         │
+│  测试窗口: 3s 预热 + 5s 采样                               │
+└────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h4 id="8163">8.16.3 实测数据</h4>
+<blockquote>
+<p><strong>测试条件</strong>: Docker 单机，3 主 3 从 Redis 7.x Cluster，concurrency=16，batchSize=100。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">总吞吐 (cmd/s)</th>
+<th style="text-align: left;">有效写入 (INCR/s)</th>
+<th style="text-align: left;">有效读取 (GET/s)</th>
+<th style="text-align: left;">读者 avg 延迟</th>
+<th style="text-align: left;"><strong>读者 max 延迟</strong></th>
+<th style="text-align: left;">错误数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>SINGLE_KEY</strong> (纯写)</td>
+<td style="text-align: left;">311,260</td>
+<td style="text-align: left;">311,260</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">10</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>MIXED_RW</strong> (同连接, 50:50)</td>
+<td style="text-align: left;">328,700</td>
+<td style="text-align: left;">164,350</td>
+<td style="text-align: left;">164,350</td>
+<td style="text-align: left;">5.8ms/batch</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">800</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>MULTI_CONN</strong> (跨连接)</td>
+<td style="text-align: left;">366,701</td>
+<td style="text-align: left;"><strong>365,380</strong></td>
+<td style="text-align: left;"><strong>1,321</strong></td>
+<td style="text-align: left;">3.66ms</td>
+<td style="text-align: left;"><strong>41.27ms</strong></td>
+<td style="text-align: left;">600</td>
+</tr>
+</tbody>
+</table>
+<h4 id="8164">8.16.4 关键发现</h4>
+<h4 id="1-pipeline">发现 1: 同连接 Pipeline 混合 — 写吞吐腰斩</h4>
+<div class="codehilite"><pre><span></span><code>MIXED_RW (same-conn) 总吞吐 ~329k ≈ 纯写 ~311k（总 CPU 上限不变）
+但有效 INCR 从 311k 骤降至 164k（腰斩至 53%）
+原因: 50% Pipeline 槽位被 GET 占据 → 有效写入减半
+</code></pre></div>
+
+<h4 id="2">发现 2: 跨连接独立读写 — 读者被严重饥饿 ✓ 核心发现</h4>
+<div class="codehilite"><pre><span></span><code>MULTI_CONN (cross-conn) 写者 365k INCR/s vs 读者 1,321 GET/s
+读者有效吞吐仅为写者的 0.4% ← 读饥饿量化指标
+
+原因链路:
+  12 条写连接 → 每批 100 INCR → Redis 单线程顺序执行
+  4 条读连接 → 单个 GET 排在 INCR 队列尾部
+  → 每个 GET 必须等队列中所有 INCR 先执行完
+  → 读者最大延迟 41ms，平均延迟 3.66ms
+</code></pre></div>
+
+<h4 id="3">发现 3: 三层退化对比</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">SINGLE_KEY (纯写)</th>
+<th style="text-align: left;">MIXED_RW (同连接)</th>
+<th style="text-align: left;">MULTI_CONN (跨连接)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">有效写吞吐</td>
+<td style="text-align: left;">311k (100%)</td>
+<td style="text-align: left;">164k (53%)</td>
+<td style="text-align: left;">365k (117%)*</td>
+</tr>
+<tr>
+<td style="text-align: left;">有效读吞吐</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">164k</td>
+<td style="text-align: left;"><strong>1.3k (0.4%)</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">读延迟 P99</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">~15ms/batch</td>
+<td style="text-align: left;"><strong>41ms</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">写槽位抢占</td>
+<td style="text-align: left;">无</td>
+<td style="text-align: left;">有（50% 被读占）</td>
+<td style="text-align: left;">无（独立连接）</td>
+</tr>
+<tr>
+<td style="text-align: left;">读饥饿</td>
+<td style="text-align: left;">无</td>
+<td style="text-align: left;">无（同 FIFO）</td>
+<td style="text-align: left;"><strong>严重</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><em>写者 365k &gt; 311k 的主要原因是多连接提高了并行 pipeline 的并发度，使客户端更好地填满 Redis 的网络/事件循环与 CPU；这并不意味着单连接 pipeline 本身更差，而是</em><em>并发连接数是影响吞吐的关键因素之一</em>*。</p>
+</blockquote>
+<h4 id="4_1">发现 4: 生产应对策略</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">推荐方案</th>
+<th style="text-align: left;">原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">读远多于写 (99:1)</td>
+<td style="text-align: left;">LOCAL_BUFFERED</td>
+<td style="text-align: left;">读者读本地 AtomicLong，不碰 Redis</td>
+</tr>
+<tr>
+<td style="text-align: left;">读/写比例均衡</td>
+<td style="text-align: left;">MIXED_RW (同连接) + Pipeline</td>
+<td style="text-align: left;">读写共享 FIFO，不会互相饥饿</td>
+</tr>
+<tr>
+<td style="text-align: left;">写远多于读 (99:1)</td>
+<td style="text-align: left;">COMPUTED + 定期批量回写</td>
+<td style="text-align: left;">写本地累加，定期写回 Redis</td>
+</tr>
+<tr>
+<td style="text-align: left;">必须实时读到最新值 + 高写压</td>
+<td style="text-align: left;"><strong>写 master + 读 replica</strong></td>
+<td style="text-align: left;">利用主从复制分离读写</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>读 replica 的权衡</strong>：把读导向 replica 可显著缓解读饥饿，但会带来读到<strong>陈旧数据</strong>的风险（复制延迟）。如果业务强依赖实时性，这不是可接受的方案。其他缓解措施包括：减小 batchSize、把高优先级读走单独的连接/队列、在客户端做本地缓存或读-修正（如果允许一定的误差）、或把读写合并为 single-connection mixed pipeline（保证 FIFO 和最新值）。</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code>核心结论:
+  同一 hotkey 上，只要同时存在独立的读连接和写连接：
+    → 读连接一定会被写连接排队阻塞（Redis 单线程本质）
+    → 解决之道不是优化网络，而是避免读 Redis（用本地缓冲或副本）
+
+说明: 当写者占据大量队列时，读命令在事件循环内的排队延迟会累积，且这和
+pipeline 的 flush 策略、客户端连接数以及 Redis 的 IO/网络层实现有关
+（例如 Netty socket buffer、epoll 的唤醒策略等）。读饥饿的严重程度还与
+系统的 socket 缓冲、客户端 flush 策略以及 Redis 的处理延迟相关；
+因此缓解手段除了本地缓冲外，也可以通过减小单批 batchSize、调整
+pipeline-timeout、或把读流量导向 replica 来缓解。
+</code></pre></div>
+
+<h4 id="_1">开发踩坑</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">问题</th>
+<th style="text-align: left;">原因</th>
+<th style="text-align: left;">修复</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">MIXED_RW 错误数 800~1500（比纯写高 100×）</td>
+<td style="text-align: left;">Pipeline 批量超时：GET 等同批所有 INCR 完成才能返回</td>
+<td style="text-align: left;">增大 pipeline-timeout 或减小 batchSize</td>
+</tr>
+<tr>
+<td style="text-align: left;">跨连接读延迟 &gt; 40ms</td>
+<td style="text-align: left;">12 条写连接并发 Pipeline 100 INCR → 1200 条命令堆积在事件循环</td>
+<td style="text-align: left;">这是设计目标——正是为了演示读饥饿</td>
+</tr>
+</tbody>
+</table>
+<h4 id="8165-rttbenchservice">8.16.5 <code>RttBenchService</code> 实现要点</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1">// MIXED_RW_MULTI_CONN 核心结构:</span>
+<span class="c1">//   12 条写连接（autoFlush=false, Pipeline 模式）</span>
+<span class="c1">//    4 条读连接（autoFlush=true, 单条 GET 即时发送）</span>
+<span class="c1">//   写线程 + 读线程同时启动，共享 3s 预热 + 5s 采样窗口</span>
+<span class="c1">//   读者每 GET 记录 t0→t1 延迟，CAS 追踪 max</span>
+
+<span class="kd">private</span><span class="w"> </span><span class="n">Map</span><span class="o">&lt;</span><span class="n">String</span><span class="p">,</span><span class="w"> </span><span class="n">Object</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">runMultiConn</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 建立写者连接池</span>
+<span class="w">    </span><span class="n">List</span><span class="o">&lt;</span><span class="n">StatefulRedisClusterConnection</span><span class="o">&gt;</span><span class="w"> </span><span class="n">writerConns</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...;</span>
+<span class="w">    </span><span class="c1">// 建立读者连接池</span>
+<span class="w">    </span><span class="n">List</span><span class="o">&lt;</span><span class="n">StatefulRedisClusterConnection</span><span class="o">&gt;</span><span class="w"> </span><span class="n">readerConns</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...;</span>
+
+<span class="w">    </span><span class="c1">// 写者线程: Pipeline 100 INCR → flush → awaitAll</span>
+<span class="w">    </span><span class="c1">// 读者线程: async.get("hotkey:counter") → f.get(2, TimeUnit.SECONDS)</span>
+<span class="w">    </span><span class="c1">//           记录 per-GET latency → CAS 追踪 max</span>
+
+<span class="w">    </span><span class="c1">// 返回: total / write / read cmd/s + reader avg/max latency Ms</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<blockquote>
+<p>完整代码见 <code>redis-lettuce-bench/src/main/java/com/example/redis/service/RttBenchService.java</code>。
+压测脚本: <code>loadtester/pipeline-mixed-rw-bench.ps1</code></p>
+</blockquote>
+<hr />
+<h2 id="817-pipeline-wait-wait">场景 8.17: Pipeline + 同步 WAIT 副本确认 — WAIT 对吞吐的退化量化</h2>
+<h3 id="8171">8.17.1 背景与问题</h3>
+<div class="codehilite"><pre><span></span><code>Redis 6 引入 WAIT 命令用于保证写入副本一致性：
+
+  WAIT numreplicas timeout
+    → 阻塞当前客户端，直到至少 numreplicas 个副本确认收到该客户端的所有写命令
+    → timeout 毫秒后超时返回当前已确认的副本数
+
+WAIT 语义要点:
+  • WAIT 等待的是至少 numreplicas 个 replica 向 master 发回确认
+    （表示 replica 已「接收到并处理」该主节点发出的写命令）。
+  • 该确认只表示数据已复制到 replica 的「内存/复制缓冲并被处理」，
+    **不等同于写入磁盘**（是否落盘由 replica 的 AOF/持久化策略决定）。
+  • Cluster 模式下，WAIT 必须在「写到对应 master 的那条连接」上调用；
+    若一个 batch 涉及多个 master，需要对每个受影响 master 分别调用 WAIT。
+    若这些 WAIT 被串行调用，等待时间会叠加 → 建议并行发起所有 WAIT futures
+    并用 awaitAll 同时等待，避免串行等待造成极端退化。
+
+生产使用场景：
+  每批 Pipeline 写入后调用 WAIT 1 100 → 确保至少 1 个 replica 确认
+  → 即使 master 宕机，已确认的数据不会丢失
+
+代价：
+  WAIT 本质上等待的是 master 确认指定数量的 replica 已接收写入
+  → 这包含 master→replica 的数据传输与确认路径
+  → 每批 Pipeline 额外增加一个 replica 复制往返的等待时间
+  → 跨 AZ (10ms RTT) 时吞吐直接腰斩
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>同步 WAIT 热路径流程：
+
+  send batch → flush → awaitAll → WAIT.get() [阻塞，等价于等 replica 确认] → 下一批
+                                                ↑
+                               这行阻塞每批额外等待 replica 复制往返时间
+
+  跨 AZ (RTT=10ms): 每批耗时 = 正常 Pipeline 耗时 + WAIT 等待时间
+  → 原来每秒能跑 N 批 → 现在每秒只能跑 N/(1 + WAIT_time/batchLatency) 批
+  → 退化 ≈ 50%（batch 耗时越短，退化越严重）
+</code></pre></div>
+
+<p><strong>本场景目标</strong>：量化在不同 RTT 条件下，同步 WAIT 对三种 Pipeline 模式（SINGLE_KEY / DISTRIBUTED / SHARDED）的吞吐退化。</p>
+<h3 id="8172">8.17.2 压测架构</h3>
+<div class="codehilite"><pre><span></span><code>每批 Pipeline 流程（同步 WAIT 版）:
+
+  1. 建立 stateful 连接 (autoFlush=false)
+  2. Pipeline batchSize 条 INCR
+  3. async.flushCommands()
+  4. LettuceFutures.awaitAll(futures)     ← 等所有 INCR 返回
+  5. async.waitForReplication(N, timeoutMs).get()  ← ★ 同步阻塞等副本确认
+  6. 记录 t1 = System.nanoTime()          ← t0→t1 包含了 WAIT 的 RTT
+  7. 下一批
+
+  对比无 WAIT 基线: 省略步骤 5，t1 在 awaitAll 后立即记录。
+</code></pre></div>
+
+<h3 id="8173-rest">8.17.3 REST 端点</h3>
+<div class="codehilite"><pre><span></span><code>POST<span class="w"> </span>/rtt/wait-sweep<span class="w">     </span>—<span class="w"> </span>跑一次同步<span class="w"> </span>WAIT<span class="w"> </span>sweep，返回<span class="w"> </span><span class="m">6</span><span class="w"> </span>组<span class="w"> </span>JSON
+
+<span class="c1"># 流程: 对每种模式 (SINGLE_KEY / DISTRIBUTED / SHARDED)</span>
+<span class="c1">#   ① 无 WAIT 基线 (1 条连接 × 16 线程 × Pipeline 100 INCR)</span>
+<span class="c1">#   ② 同步 WAIT  (每批末尾 awaitAll 后 WAIT 1 100)</span>
+<span class="c1">#   → 每组 3s 预热 + 5s 采样 → 18~24s 总耗时</span>
+</code></pre></div>
+
+<h3 id="8174">8.17.4 实测数据</h3>
+<blockquote>
+<p><strong>测试条件</strong>: Docker 单机，3 主 3 从 Redis 7.x Cluster，Lettuce 6.x + Netty，concurrency=16 × batchSize=100，每种模式 3s 预热 + 5s 采样，WAIT 1 replicas timeout 100ms。</p>
+</blockquote>
+<h4 id="docker-localhostrtt-01ms">无延迟（Docker localhost，RTT &lt; 0.1ms）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Mode</th>
+<th style="text-align: left;">No WAIT (cmd/s)</th>
+<th style="text-align: left;">Sync WAIT (cmd/s)</th>
+<th style="text-align: left;">退化率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>SINGLE_KEY</strong></td>
+<td style="text-align: left;">347,400</td>
+<td style="text-align: left;">239,980</td>
+<td style="text-align: left;"><strong>-31.9%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>DISTRIBUTED</strong></td>
+<td style="text-align: left;">480,400</td>
+<td style="text-align: left;">415,820</td>
+<td style="text-align: left;"><strong>-14.4%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SHARDED</strong></td>
+<td style="text-align: left;">521,680</td>
+<td style="text-align: left;">441,240</td>
+<td style="text-align: left;"><strong>-9.3%</strong></td>
+</tr>
+</tbody>
+</table>
+<h4 id="10ms-aztc-netem-delay-10ms">10ms 延迟（跨 AZ，tc netem delay 10ms）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Mode</th>
+<th style="text-align: left;">No WAIT (cmd/s)</th>
+<th style="text-align: left;">Sync WAIT (cmd/s)</th>
+<th style="text-align: left;">退化率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>SINGLE_KEY</strong></td>
+<td style="text-align: left;">167,300</td>
+<td style="text-align: left;">83,120</td>
+<td style="text-align: left;"><strong>-46.8%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>DISTRIBUTED</strong></td>
+<td style="text-align: left;">169,020</td>
+<td style="text-align: left;">81,940</td>
+<td style="text-align: left;"><strong>-49.8%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SHARDED</strong></td>
+<td style="text-align: left;">172,380</td>
+<td style="text-align: left;">13,180</td>
+<td style="text-align: left;"><strong>-47.1%</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="8175">8.17.5 关键发现</h3>
+<h4 id="1-wait-rtt">发现 1: WAIT 退化本质是 RTT 叠加</h4>
+<div class="codehilite"><pre><span></span><code>No WAIT 每批耗时:  t_batch = awaitAll + 调度开销
+Sync WAIT 每批耗时: t_batch + WAIT_RTT
+
+退化率 ∝ WAIT_RTT / t_batch
+
+无延迟时 t_batch ≈ 0.05ms，WAIT_RTT ≈ 0.02ms → 退化 9~32%
+10ms 延迟时 t_batch ≈ 0.6ms，WAIT_RTT ≈ 10ms → 退化 47~50% ← 吞吐腰斩！
+</code></pre></div>
+
+<h4 id="2-sharded-10ms">发现 2: SHARDED 在 10ms 下退化最严重</h4>
+<div class="codehilite"><pre><span></span><code>SHARDED 10ms: 172,380 → 13,180 (退化 92.4%)
+原因: SHARDED 模式下每批命令跨多个 master，客户端/框架需要向每个对应的
+      master 发起 WAIT 并收集确认。如果这些 WAIT 是串行等待（依次调用
+      WAIT.get()），则每个 master 的 replica 确认延迟会累加；如果某个
+      replica 本身更慢或复制链路延迟较高，则会把等待时间进一步放大。
+      这种多节点 WAIT 叠加是导致极端退化的主要原因。
+
+复现/验证提示: 要验证 SHARDED 的多节点 WAIT 叠加效应，请在代码中确认
+      是否对不同 master 的 WAIT 调用是并行发起并并行等待（建议并行），
+      否则串行等待会导致更大退化；同时监控各 master→replica 的
+      replication latency 与 replica 磁盘/CPU 利用以排查瓶颈。
+
+排查要点（代码层面）:
+  ① 在 runSingle / withWait 实现中确认是否对每个 master 的 WAIT 是
+     串行阻塞（for each connection: wait.get()）。
+  ② 若是串行，改为并行 fire WAIT：把每个 master 的 waitForReplication
+     返回的 RedisFuture 加入 pending 列表，然后用
+     LettuceFutures.awaitAll(...) 同时等待这些 futures。
+  ③ 并行化后，WAIT 的总等待时间只会是 max(各 replica 延迟)，
+     而不是各 master 延迟的累加和。
+</code></pre></div>
+
+<h4 id="3_1">发现 3: 量化判据</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">RTT 条件</th>
+<th style="text-align: left;">同步 WAIT 可行性</th>
+<th style="text-align: left;">吞吐代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">RTT &lt; 0.1ms（Docker/同机）</td>
+<td style="text-align: left;">✅ 可用</td>
+<td style="text-align: left;">-9~32%</td>
+</tr>
+<tr>
+<td style="text-align: left;">RTT = 10ms（跨 AZ）</td>
+<td style="text-align: left;">❌ 腰斩</td>
+<td style="text-align: left;"><strong>-47~50%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">RTT &gt; 10ms</td>
+<td style="text-align: left;">❌ 不可接受</td>
+<td style="text-align: left;">&gt; -50%</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8176">8.17.6 结论</h3>
+<div class="codehilite"><pre><span></span><code>同步 WAIT 是把双刃剑：
+  ✅ 保证副本一致性（master 宕机时已确认的数据不丢失）
+  ❌ 热路径阻塞等待 replica 确认 → 跨 AZ 吞吐腰斩
+
+根本原因: WAIT.get() 在每批热路径上同步等待 replica 复制确认往返。
+解决方向: 将 WAIT 从同步热路径中移除 → 用异步方式 (场景 8.18)。
+</code></pre></div>
+
+<h3 id="8177">8.17.7 实现要点</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 同步 WAIT 核心差异代码</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">batchSize</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">incr</span><span class="p">(</span><span class="n">key</span><span class="p">));</span>
+<span class="p">}</span>
+<span class="n">async</span><span class="p">.</span><span class="na">flushCommands</span><span class="p">();</span>
+<span class="n">LettuceFutures</span><span class="p">.</span><span class="na">awaitAll</span><span class="p">(</span><span class="n">Duration</span><span class="p">.</span><span class="na">ofSeconds</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="n">futures</span><span class="p">.</span><span class="na">toArray</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">RedisFuture</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">));</span>
+
+<span class="c1">// ★ 同步阻塞: 这行吃掉 WAIT 的完整 RTT</span>
+<span class="n">async</span><span class="p">.</span><span class="na">waitForReplication</span><span class="p">(</span><span class="n">waitReplicas</span><span class="p">,</span><span class="w"> </span><span class="n">waitTimeoutMs</span><span class="p">).</span><span class="na">get</span><span class="p">(</span><span class="mi">2100</span><span class="p">,</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">MILLISECONDS</span><span class="p">);</span>
+
+<span class="kt">long</span><span class="w"> </span><span class="n">t1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">nanoTime</span><span class="p">();</span><span class="w">  </span><span class="c1">// ← t1 被 WAIT 延迟严重拉长</span>
+</code></pre></div>
+
+<h3 id="8178">8.17.8 测试方法</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 无延迟基线</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/rtt/wait-sweep"</span>
+
+<span class="c1"># 注入 10ms 延迟再跑一次</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>10ms
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-2<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>10ms
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-3<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>10ms
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/rtt/wait-sweep"</span>
+
+<span class="c1"># 清除延迟</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-2<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-3<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+</code></pre></div>
+
+<blockquote>
+<p>完整代码见 <code>redis-lettuce-bench/src/main/java/com/example/redis/service/RttBenchService.java</code>
+(<code>sweepWaitModes()</code> / <code>runSingle(String mode, boolean withWait)</code>)。
+压测脚本: <code>loadtester/pipeline-wait-bench.ps1</code></p>
+</blockquote>
+<hr />
+<h2 id="818-pipeline-waitfire-and-forget-wait">场景 8.18: Pipeline + 异步 WAIT（Fire-and-Forget）— 根除 WAIT 吞吐退化</h2>
+<h3 id="8181">8.18.1 背景与问题</h3>
+<p>场景 8.17 揭示了同步 WAIT 的本质缺陷：<code>WAIT.get()</code> 在每批 Pipeline 热路径上同步阻塞，跨 AZ 时吞吐腰斩 ~50%。</p>
+<p><strong>根除思路</strong>：发出 WAIT 命令后不等待，让 WAIT 的 RTT 完全隐藏在后续 Pipeline 工作之后。</p>
+<div class="codehilite"><pre><span></span><code>同步 WAIT (旧):
+  send→flush→awaitAll→WAIT.get()[阻塞 RTT×2]→下一批
+  ↑ 每批耗时 = t_batch + RTT×2, 退化 ~50%
+
+异步 WAIT (新):
+  send→flush→awaitAll→fire WAIT (不阻塞)→下一批→...→每 N 批 drain
+  ↑ 每批耗时 = t_batch, 退化 ≈ 0%
+</code></pre></div>
+
+<h3 id="8182">8.18.2 原理</h3>
+<div class="codehilite"><pre><span></span><code>异步 WAIT 三步走:
+
+  ① 每批末尾 fire WAIT 但不 .get():
+     RedisFuture&lt;Long&gt; wf = async.waitForReplication(N, timeoutMs);
+     pendingWaits.add(wf);  // 添加到线程本地列表，不阻塞
+
+  ② 立即开始下一批 Pipeline（WAIT 的 RTT 被隐藏）
+
+  ③ 每 N 批 drain 一次所有 pending futures:
+     for (RedisFuture&lt;Long&gt; f : pendingWaits) {
+         try { f.get(10, MILLISECONDS); ok++; }  // 已有结果几乎立即可用
+         catch { fail++; }
+     }
+     pendingWaits.clear();
+
+效果:
+  • 99% 的批次热路径不包含 WAIT 延迟 → 吞吐 = 无 WAIT 基线
+  • 每 50 批 drain 耗时 &lt; 1ms → 可忽略
+  • WAIT 一致性保证延迟 &lt; N 个批次（对于 batch=100/concurrency=16，&lt; 0.3ms）
+</code></pre></div>
+
+<h3 id="8183-rest">8.18.3 REST 端点</h3>
+<div class="codehilite"><pre><span></span><code>POST<span class="w"> </span>/rtt/wait-async-sweep<span class="w">   </span>—<span class="w"> </span>跑一次异步<span class="w"> </span>WAIT<span class="w"> </span>sweep，返回<span class="w"> </span><span class="m">6</span><span class="w"> </span>组<span class="w"> </span>JSON
+
+<span class="c1"># 流程: 对每种模式 (SINGLE_KEY / DISTRIBUTED / SHARDED)</span>
+<span class="c1">#   ① 无 WAIT 基线 (1 条连接 × 16 线程 × Pipeline 100 INCR)</span>
+<span class="c1">#   ② 异步 WAIT  (每批末尾 fire WAIT 不阻塞，每 N 批 drain)</span>
+<span class="c1">#   → 每组 3s 预热 + 5s 采样 → 18~24s 总耗时</span>
+</code></pre></div>
+
+<h3 id="8184">8.18.4 配置参数</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># application.yml</span>
+<span class="nt">app</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">rtt-bench</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">wait-replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">              </span><span class="c1"># WAIT N replicas 确认</span>
+<span class="w">    </span><span class="nt">wait-timeout-ms</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span><span class="w">           </span><span class="c1"># WAIT 超时 ms</span>
+<span class="w">    </span><span class="nt">wait-async-drain-batches</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span><span class="w">   </span><span class="c1"># 每 N 批 drain 所有 pending WAIT futures (0=永不 drain)</span>
+<span class="w">    </span><span class="nt">concurrency</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16</span>
+<span class="w">    </span><span class="nt">batch-size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+<span class="w">    </span><span class="nt">warmup-sec</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">    </span><span class="nt">sample-sec</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+</code></pre></div>
+
+<h3 id="8185">8.18.5 实测数据</h3>
+<blockquote>
+<p><strong>测试条件</strong>: Docker 单机，3 主 3 从 Redis 7.x Cluster，Lettuce 6.x + Netty，concurrency=16 × batchSize=100，每种模式 3s 预热 + 5s 采样，WAIT 1 replicas timeout 100ms，每 50 批 drain。</p>
+</blockquote>
+<h4 id="docker-localhostrtt-01ms_1">无延迟（Docker localhost，RTT &lt; 0.1ms）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Mode</th>
+<th style="text-align: left;">No WAIT (cmd/s)</th>
+<th style="text-align: left;">Sync WAIT (cmd/s)</th>
+<th style="text-align: left;"><strong>Async WAIT (cmd/s)</strong></th>
+<th style="text-align: left;">Sync 退化</th>
+<th style="text-align: left;"><strong>Async 退化</strong></th>
+<th style="text-align: left;">WAIT 成功率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>SINGLE_KEY</strong></td>
+<td style="text-align: left;">347,400</td>
+<td style="text-align: left;">239,980</td>
+<td style="text-align: left;"><strong>318,620</strong></td>
+<td style="text-align: left;">-31.9%</td>
+<td style="text-align: left;"><strong>-8.3%</strong></td>
+<td style="text-align: left;">99.996%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>DISTRIBUTED</strong></td>
+<td style="text-align: left;">480,400</td>
+<td style="text-align: left;">415,820</td>
+<td style="text-align: left;"><strong>527,820</strong></td>
+<td style="text-align: left;">-14.4%</td>
+<td style="text-align: left;"><strong>+9.9%</strong> ✓</td>
+<td style="text-align: left;">99.977%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SHARDED</strong></td>
+<td style="text-align: left;">521,680</td>
+<td style="text-align: left;">441,240</td>
+<td style="text-align: left;"><strong>384,880</strong></td>
+<td style="text-align: left;">-9.3%</td>
+<td style="text-align: left;"><strong>-26.2%</strong></td>
+<td style="text-align: left;">99.991%</td>
+</tr>
+</tbody>
+</table>
+<h4 id="10ms-aztc-netem-delay-10ms_1">10ms 延迟（跨 AZ，tc netem delay 10ms）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Mode</th>
+<th style="text-align: left;">No WAIT (cmd/s)</th>
+<th style="text-align: left;">Sync WAIT (cmd/s)</th>
+<th style="text-align: left;"><strong>Async WAIT (cmd/s)</strong></th>
+<th style="text-align: left;">Sync 退化</th>
+<th style="text-align: left;"><strong>Async 退化</strong></th>
+<th style="text-align: left;">WAIT 成功率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>SINGLE_KEY</strong></td>
+<td style="text-align: left;">167,300</td>
+<td style="text-align: left;">83,120</td>
+<td style="text-align: left;"><strong>158,740</strong></td>
+<td style="text-align: left;">-46.8%</td>
+<td style="text-align: left;"><strong>-5.1%</strong></td>
+<td style="text-align: left;">99.531%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>DISTRIBUTED</strong></td>
+<td style="text-align: left;">169,020</td>
+<td style="text-align: left;">81,940</td>
+<td style="text-align: left;"><strong>167,160</strong></td>
+<td style="text-align: left;">-49.8%</td>
+<td style="text-align: left;"><strong>-1.1%</strong></td>
+<td style="text-align: left;">98.181%</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SHARDED</strong></td>
+<td style="text-align: left;">172,380</td>
+<td style="text-align: left;">13,180</td>
+<td style="text-align: left;"><strong>170,920</strong></td>
+<td style="text-align: left;">-47.1%</td>
+<td style="text-align: left;"><strong>-0.8%</strong></td>
+<td style="text-align: left;">99.996%</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>说明</strong>：WAIT 成功率下降并不意味着主写入丢失，而是意味着写入未达到预期的副本确认数（replication 确认不足）——副本可能尚未及时确认。是否接受取决于业务的 RPO/RTO 要求。需要据此制定阈值（示例：WAIT 成功率 &lt; 99% → 告警；持续 &lt; 95% → 降级为同步 WAIT 或缩小 batch）。</p>
+</blockquote>
+<h3 id="8186">8.18.6 核心结论</h3>
+<h4 id="1-wait">发现 1: 异步 WAIT 几乎根除吞吐退化</h4>
+<div class="codehilite"><pre><span></span><code>无延迟: 退化从 9~32% → 8% (SINGLE_KEY), DISTRIBUTED 甚至反超基线
+跨 AZ:  退化从 47~50% → 0.8~5% ← 退化减少了 10~50 倍
+
+异步 WAIT（fire-and-forget）能把 WAIT 的延迟隐藏在后续批次中，从而在跨 AZ
+场景几乎消除同步 WAIT 带来的吞吐腰斩（实测将退化从 ~50% 降至 &lt;5%）。
+但这是以把一致性确认从"同步热路径"转变为"异步可观察/可补救"的代价：
+当 WAIT 的成功率降低（未达到期望副本数）时，可能存在一小部分写入未被
+及时复制到 replica。为此必须配套监控与退路策略（见下）。
+
+SINGLE_KEY 无延迟下仍有 8.3% 退化:
+  原因: drain 操作（每 50 批 per-worker × 16 workers = 800 次/5s drain）
+  仍有边际开销，但相比同步 WAIT 的 31.9% 已大幅改善
+  可通过增大 wait-async-drain-batches (如 50→200) 进一步压缩
+</code></pre></div>
+
+<h4 id="2-wait-wait">发现 2: 异步 WAIT 吞吐 ≈ 无 WAIT 基线</h4>
+<div class="codehilite"><pre><span></span><code>10ms 跨 AZ:
+  Async SINGLE_KEY:  158,740 ÷ 167,300 = 94.9% ← 接近基线
+  Async DISTRIBUTED: 167,160 ÷ 169,020 = 98.9% ← 几乎无退化
+  Async SHARDED:     170,920 ÷ 172,380 = 99.2% ← 几乎无退化
+
+核心原因: 99% 的批次完全不阻塞 WAIT → 热路径不含 WAIT RTT
+         → 吞吐 = 无 WAIT 基线的 95~99%
+</code></pre></div>
+
+<h4 id="3-vs">发现 3: 同步 vs 异步 对比总结</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">同步 WAIT</th>
+<th style="text-align: left;">异步 WAIT (Fire-and-Forget)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>吞吐退化 (无延迟)</strong></td>
+<td style="text-align: left;">-9~32%</td>
+<td style="text-align: left;"><strong>-8% (可优化至 &lt;5%)</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>吞吐退化 (10ms 跨 AZ)</strong></td>
+<td style="text-align: left;"><strong>-47~50%</strong></td>
+<td style="text-align: left;"><strong>-0.8~5%</strong> ✅</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>一致性保证延迟</strong></td>
+<td style="text-align: left;">0ms (实时确认)</td>
+<td style="text-align: left;">&lt; N 批 (&lt; 0.3ms for batch=100)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>WAIT 成功率</strong></td>
+<td style="text-align: left;">100%</td>
+<td style="text-align: left;"><strong>98~99.996%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>实现复杂度</strong></td>
+<td style="text-align: left;">低 (1 行 .get())</td>
+<td style="text-align: left;">中 (per-worker pending 列表 + 定期 drain)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>生产推荐</strong></td>
+<td style="text-align: left;">仅低延迟环境</td>
+<td style="text-align: left;"><strong>跨 AZ 首选</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="8187">8.18.7 生产级推广建议</h3>
+<div class="codehilite"><pre><span></span><code><span class="cm">/**</span>
+<span class="cm"> * 生产级异步 WAIT 模式：</span>
+<span class="cm"> *</span>
+<span class="cm"> *   ① 写入: Pipeline INCR → fire async WAIT (不阻塞)</span>
+<span class="cm"> *   ② 每 N 批 drain: 快速 .get() 所有 pending futures → 统计成功率</span>
+<span class="cm"> *   ③ 告警: WAIT 成功率 &lt; 99% → P2 告警</span>
+<span class="cm"> *   ④ 优化: 失败率升高时降级为同步 WAIT 或减小 batch</span>
+<span class="cm"> *</span>
+<span class="cm"> * 核心公式:</span>
+<span class="cm"> *   throughput ≈ (concurrency × batchSize) / (batchLatency + WAIT_RTT/N)</span>
+<span class="cm"> *   当 N → ∞ 时 → throughput → 无 WAIT 基线</span>
+<span class="cm"> */</span>
+</code></pre></div>
+
+<h3 id="81871-wait">8.18.7.1 异步 WAIT 的风险与要求</h3>
+<p>异步 WAIT 带来的吞吐收益需要以下配套措施来保证可靠性：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">风险</th>
+<th style="text-align: left;">缓解策略</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>客户端进程/线程在未 drain 前崩溃</strong></td>
+<td style="text-align: left;">你将无法得知那些 fired WAIT 是否成功。必须在可接受的窗口期内（例如 drain 前）保证进程稳定，或设计 crash-recovery 机制（如持久化 pending batch 序列号，重启后进行 WAIT 一致性检查）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>WAIT 成功率下降</strong></td>
+<td style="text-align: left;">当 drain 检测到 WAIT 失败或成功率下降（例如 &lt; 99%）：必须触发告警并采取补救（如重试/降级为同步 WAIT/减小 batch）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Drain 阻塞写热路径</strong></td>
+<td style="text-align: left;">建议把 pending futures 放入 per-worker queue，由单独的 drain 线程或定时任务以 bounded timeout 批量处理。f.get(timeout) 的 timeout 选值应非常小（例如 1~10ms），并且总 drain 开销应被测量与限制</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>监控盲区</strong></td>
+<td style="text-align: left;">记录 pending WAIT 总数、每次 drain 的成功率、以及因 WAIT 失败触发的回退次数</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实战要点（生产化补充）</strong>：</p>
+<ul>
+<li><strong>pendingWaits 必须有界</strong>：把 pendingWaits 做成有界队列，达到上限时触发 backpressure（例如临时降级为同步 WAIT 或减小 batch），防止内存无限增长。</li>
+<li><strong>持久化 pending 批次元数据</strong>：持久化 batch id + commands checksum，进程重启后能发现未完成的 WAIT 并做补偿（重新 WAIT 或重放）。</li>
+<li><strong>Drain 失败分级响应</strong>：</li>
+<li>短期偶发（&lt;1%）→ 只告警</li>
+<li>中度持续（1~5%）→ 自动减小 batch 或紧急同步 WAIT</li>
+<li>高风险（&gt;5% 持续）→ 立即降级为同步 WAIT 并通知运维</li>
+<li><strong>核心监控指标</strong>：<code>pending_wait_count</code>、<code>drain_latency_ms</code>、<code>wait_success_rate</code>、<code>wait_fail_rate</code>、<code>queued_batches</code>。</li>
+<li>阈值示例：<code>wait_success_rate &lt; 99%</code> → P2 告警；持续 <code>&lt;95%</code> → 自动降级。</li>
+</ul>
+<blockquote>
+<p><strong>核心公式</strong>: <code>throughput ≈ (concurrency × batchSize) / (batchLatency + WAIT_RTT/N)</code>，当 N → ∞ 时 → throughput → 无 WAIT 基线。</p>
+</blockquote>
+<h3 id="8188">8.18.8 实现要点</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ★ 差异: 不等待 WAIT，fire 后立即进入下一批</span>
+<span class="n">RedisFuture</span><span class="o">&lt;</span><span class="n">Long</span><span class="o">&gt;</span><span class="w"> </span><span class="n">wf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">async</span><span class="p">.</span><span class="na">waitForReplication</span><span class="p">(</span><span class="n">waitReplicas</span><span class="p">,</span><span class="w"> </span><span class="n">waitTimeoutMs</span><span class="p">);</span>
+<span class="n">pendingWaits</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">wf</span><span class="p">);</span><span class="w">  </span><span class="c1">// 线程本地列表，无锁</span>
+
+<span class="c1">// 每 N 批 drain（几乎零开销）</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">batchCounter</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">waitAsyncDrainBatches</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">drainPendingWaits</span><span class="p">(</span><span class="n">pendingWaits</span><span class="p">,</span><span class="w"> </span><span class="n">okCounter</span><span class="p">,</span><span class="w"> </span><span class="n">failCounter</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// drain 实现: 快速尝试获取已有结果</span>
+<span class="kd">private</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">drainPendingWaits</span><span class="p">(</span><span class="n">List</span><span class="o">&lt;</span><span class="n">RedisFuture</span><span class="o">&lt;</span><span class="n">Long</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">pending</span><span class="p">,</span>
+<span class="w">                                       </span><span class="n">AtomicLong</span><span class="w"> </span><span class="n">ok</span><span class="p">,</span><span class="w"> </span><span class="n">AtomicLong</span><span class="w"> </span><span class="n">fail</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">RedisFuture</span><span class="o">&lt;</span><span class="n">Long</span><span class="o">&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">pending</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">f</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">MILLISECONDS</span><span class="p">);</span><span class="w">  </span><span class="c1">// WAIT 结果几乎立即可用</span>
+<span class="w">            </span><span class="n">ok</span><span class="p">.</span><span class="na">incrementAndGet</span><span class="p">();</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">Exception</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">fail</span><span class="p">.</span><span class="na">incrementAndGet</span><span class="p">();</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">pending</span><span class="p">.</span><span class="na">clear</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<blockquote>
+<p>完整代码见 <code>redis-lettuce-bench/src/main/java/com/example/redis/service/RttBenchService.java</code>
+(<code>sweepWaitAsyncModes()</code> / <code>runSingleAsyncWait()</code> / <code>drainPendingWaits()</code>)。
+压测脚本: <code>loadtester/pipeline-wait-bench.ps1</code></p>
+</blockquote>
+<h3 id="8189">8.18.9 测试方法</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 无延迟基线</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/rtt/wait-async-sweep"</span>
+
+<span class="c1"># 注入 10ms 延迟再跑一次</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>10ms
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-2<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>10ms
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-3<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>10ms
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"http://localhost:8082/rtt/wait-async-sweep"</span>
+
+<span class="c1"># 清除延迟</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-2<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-3<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>del<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root
+</code></pre></div>
+
+<h3 id="81811">8.18.11 检测清单 / 观测指标（生产化建议）</h3>
+<p><strong>每次 sweep/实验记录</strong>：RTT（ms 单位）、concurrency、batchSize、单批平均执行时间（ns 或 ms）、cmd/s、errors、WAIT 成功率、drain_latency。</p>
+<p><strong>生产监控指标</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>pending_wait_count</code></td>
+<td style="text-align: left;">当前积压的 WAIT future 数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>wait_success_rate</code> (1m/5m)</td>
+<td style="text-align: left;">WAIT 确认成功率</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>drain_latency_ms</code></td>
+<td style="text-align: left;">每次 drain 的耗时</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>queued_batches</code></td>
+<td style="text-align: left;">积压的批次队列长度</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>avg_batch_latency</code></td>
+<td style="text-align: left;">平均批次耗时</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>p99_read_latency</code> / <code>p99_write_latency</code></td>
+<td style="text-align: left;">读/写 P99 延迟</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>replication_lag_per_replica</code> (ms)</td>
+<td style="text-align: left;">各 replica 的复制延迟</td>
+</tr>
+</tbody>
+</table>
+<p><strong>自动化策略示例</strong>：若 <code>wait_success_rate_5m &lt; 99%</code> 且持续 → 减小 batchSize × 0.5；若持续且影响业务 → 切换为同步 WAIT 并报警。</p>
+<h3 id="81810-wait-vs-wait">8.18.10 同步 WAIT vs 异步 WAIT 架构决策树</h3>
+<div class="codehilite"><pre><span></span><code>                   ┌─────────────────────────────┐
+                   │    你需要 WAIT 副本确认吗？    │
+                   └─────────────────────────────┘
+                                 │
+                ┌────────────────┼────────────────┐
+                ▼                ▼                ▼
+           不需要确认         需要确认           需要确认
+           (最终一致)         RTT &lt; 1ms          RTT ≥ 1ms
+                │                │                │
+                ▼                ▼                ▼
+         ┌──────────┐   ┌──────────────┐   ┌──────────────┐
+         │ 不用 WAIT │   │  同步 WAIT    │   │ 异步 WAIT    │
+         │ ~100% 基线 │   │ 退化 9~15%   │   │ 退化 &lt; 5%    │
+         └──────────┘   └──────────────┘   └──────────────┘
+                │                │                │
+                ▼                ▼                ▼
+          最简方案         简单可靠          激进优化方案
+                                                (Fire-and-Forget)
+
+  建议:
+    ├─ 同 AZ 部署 (RTT &lt; 1ms): 同步 WAIT 足够，实现最简
+    ├─ 跨 AZ 部署 (RTT ≥ 5ms):  异步 WAIT 必须，否则吞吐腰斩
+    └─ 如果 WAIT 成功率持续 &lt; 99%: 降级为同步 WAIT + 调小 batch
+</code></pre></div>
+
+<hr />
+<h3 id="81812-faq">8.18.12 精简修正版要点（FAQ / 关键结论）</h3>
+<ul>
+<li><strong>核心公式与单位</strong>：吞吐量理论上限可近似估算为 <code>maxCmdPerSec ≈ (concurrency × pipelineSize) / RTT_seconds</code>，其中 <strong>RTT 必须以秒为单位</strong>。实际吞吐受 Redis 单线程、客户端实现和 CPU/网络资源限制，通常远低于理论上限。</li>
+<li><strong>tc netem 方向</strong>：在容器 egress 单侧注入 Xms 是<strong>单向延迟</strong>，客户端感知的往返延迟大约增加 <strong>Xms</strong>（非 2×Xms）。若要模拟对称 RTT 增加 T，应在 request/response 两端各注入 T/2（或 server 与 client 两侧各注入 T/2）。</li>
+<li><strong>切换判据（建议）</strong>：用预测吞吐比较法——若 <code>T_net(RTT) &lt; T_local × α</code>（例 α=0.1）或写/读 P99 超出 SLO，则切换到本地缓冲。经验阈值：RTT ≥ 5ms 强烈考虑本地缓冲/COMPUTED；RTT &lt; 1ms 同机可继续使用 pipeline + 同步 WAIT（若需要）。</li>
+<li><strong>WAIT 建议</strong>：同 AZ（RTT&lt;1ms）可用同步 WAIT；跨 AZ（RTT≥5~10ms）应采用异步 WAIT（fire-and-forget）并做 periodic drain 与成功率监控；若 WAIT 成功率持续下降（建议阈值 &lt;99%）应触发告警并考虑减小 batch 或临时降级为同步 WAIT。</li>
+<li><strong>读饥饿缓解</strong>：若写压高且存在独立读连接，优先把读导向 replica 或使用本地缓存/近似读；若需要强一致性且实时性要求高，考虑用 single-connection mixed pipeline（读写同连接）或把写压力削峰（减小 batch、限制并发连接）。</li>
+<li><strong>实现与运维要点</strong>：pendingWaits 必须是有界的；需要 persist/recovery plan（防止进程崩溃导致未确认批次丢失）；监控指标包括 pending_wait_count、wait_success_rate、drain_latency_ms、queued_batches、read_p99、write_p99，并设置告警与自动降级策略。</li>
+</ul>
+<hr />
+<h2 id="819-pipeline">8.19 Pipeline 断连重连 + 幂等性</h2>
+<h3 id="8191">8.19.1 背景</h3>
+<p>在 Pipeline 高并发写入过程中，如果 Master 节点宕机（网络中断 / OOM / 硬件故障），集群会触发 failover 切换到新 Master。Lettuce 连接池具备自动重连能力，但问题是：</p>
+<ul>
+<li><strong>幂等命令</strong>（如 <code>SETEX</code>）：重复执行不会产生副作用</li>
+<li><strong>非幂等命令</strong>（如 <code>INCR</code>）：断连重试可能导致「已被旧 Master 处理、但客户端未收到 ACK 的命令」被重复执行</li>
+</ul>
+<div class="codehilite"><pre><span></span><code>时间线:
+  t1: 客户端发送 INCR(1→2) → Master 收到并处理
+  t2: Master 宕机（客户端未收到 ACK）
+  t3: Cluster failover → 新 Master 接管 slot
+  t4: Lettuce 重连 + 重试 INCR(1→2) → 新 Master 再次执行
+  结果: 实际计数 +2，预期 +1 → 过度计数
+</code></pre></div>
+
+<blockquote>
+<p>⚠️ <strong>注意（客户端行为）</strong>：不同客户端对"断连时在路上/未 ACK 命令"的处理不同。Lettuce 支持自动重连和拓扑刷新，但<strong>不会自动为所有命令保证不重复语义</strong>——是否对已发送但未确认的命令做透明重试受客户端配置与版本影响（以及命令类型/事务状态）。因此测试中观察到的"重复执行"并不是 Redis 协议必然行为，而是由客户端（或应用层的重试逻辑）在断连/重连流程中可能造成的重放行为。后续讨论<strong>假定存在未确认命令被重试的情形</strong>，故需采用幂等/去重设计以保证正确性。</p>
+</blockquote>
+<h3 id="8192">8.19.2 测试设计</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">项目</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>目标</strong></td>
+<td style="text-align: left;">量化非幂等命令（INCR）在 Pipeline 断连重连中的过度计数比例</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>幂等对照组</strong></td>
+<td style="text-align: left;"><code>SETEX {hotkey}:idempotent 600 batch:N</code> — 即使重复执行也不产生副作用</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>实验组</strong></td>
+<td style="text-align: left;"><code>INCR {hotkey}:idempotent</code> — 每次执行都递增，重复执行导致过度计数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>断连方式</strong></td>
+<td style="text-align: left;"><code>docker kill</code> Master 容器 → 模拟 Master 宕机</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>恢复方式</strong></td>
+<td style="text-align: left;">Lettuce ClusterClient 自动拓扑刷新 + failover 切换</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>参数</strong></td>
+<td style="text-align: left;">16 并发 Worker，每批 100 INCR + 100 SETEX，bathSize=100</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8193-incr">8.19.3 测试结果 — 裸 INCR（无去重）</h3>
+<div class="codehilite"><pre><span></span><code>╔══════════════════════════════════════════════════════════════════════╗
+║               裸 INCR 断连重连 实测数据 (对比基线)                      ║
+╠══════════════════════════════════════════════════════════════════════╣
+║                                                                      ║
+║  场景: 连续 Pipeline INCR+SETEX → docker kill Master → failover     ║
+║  断连方式: docker kill 容器 (模拟 Master 宕机)                        ║
+║  测试窗口: 25s (预热 3s + 断连前 6s + 断连 15s + 恢复)              ║
+║                                                                      ║
+║  ┌──────────────────────────────────────────────────────────────┐   ║
+║  │ 指标                      │ 值                               │   ║
+║  ├──────────────────────────────────────────────────────────────┤   ║
+║  │ INCR 预期 (成功 ACK)      │ 710,400                          │   ║
+║  │ INCR 实际（Redis 最终值） │ 870,400                          │   ║
+║  │ INCR 过度计数             │ 160,000                          │   ║
+║  │ INCR 过度计数比例         │ 22.523%                          │   ║
+║  │ SETEX 成功 ACK            │ 710,400                          │   ║
+║  │ SETEX 失败批次            │ 1,700                            │   ║
+║  │ SETEX 丢失批次            │ 209 (可安全重放)                  │   ║
+║  │ 断连前最后批次            │ batch:8626                       │   ║
+║  │ 恢复后首成功批次          │ batch:8611                       │   ║
+║  │ 错误总数                  │ 3,400                            │   ║
+║  └──────────────────────────────────────────────────────────────┘   ║
+║                                                                      ║
+║  结论:                                                                ║
+║  ┌──────────────────────────────────────────────────────────────┐   ║
+║  │ INCR 非幂等: 断连重试导致 ~22.5% 过度计数 (160,000 次)        │   ║
+║  │ SETEX 幂等:   丢失 209 批次 (2.3%), 但不会重复, 可安全重放    │   ║
+  ║  │ 恢复后首成功批次 (8611) &lt; 断连前 (8626) → 证明有重试行为      │   ║
+  ║  └──────────────────────────────────────────────────────────────┘   ║
+  ║                                                                      ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+</code></pre></div>
+
+<blockquote>
+<p><strong>表格单位注</strong>：INCR 的计数单位为"命令次数"；SETEX 统计以"批次数"为单位（每批包含 100 条 SETEX）。因此 710,400 次 INCR 对应 7,104 批（710,400 / 100 = 7,104）。文中所有涉及 INCR/SETEX 的表格均已按该单位标准化。</p>
+</blockquote>
+<h3 id="8194">8.19.4 分析</h3>
+<p><strong>为什么 INCR 多计了 22.5%？</strong></p>
+<div class="codehilite"><pre><span></span><code>断连窗口内 (15s) 有大量 Pipeline 批次处于"已发送但未 ACK"状态：
+  - 一些 INCR 命令在旧 Master 已经执行，但客户端未收到确认
+  - Lettuce 重连后未确认的命令被重试，旧 Master 的结果和新 Master 的结果叠加
+  - 断连前 seq=8626，恢复后 seq=8611 → 说明至少有 15 个批次被完全重试
+  - 加上断连瞬间正在传输的批次，过度计数在 ~20-25% 之间是合理的
+
+注: 这里的 seq 为客户端为每批写入维护的单调批次号（写入时把该批次号写入 marker 到 Redis 以便对齐）。若使用其他方式测量（如 Redis key 的最后 marker），说明应包括 marker 写入时序与持久化策略以保证可验证性。
+</code></pre></div>
+
+<p><strong>为什么 SETEX 不受影响？</strong></p>
+<div class="codehilite"><pre><span></span><code>SETEX 是幂等命令：
+  - SETEX key ttl value → 多次执行结果相同（总是最后一次写入生效）
+  - 丢失的 209 个批次 (2.3%) 可以通过对比 Seq 号重放补偿
+  - 不会产生语义错误（只是批次丢了，不是值错）
+</code></pre></div>
+
+<h3 id="8195">8.19.5 生产建议</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">层级</th>
+<th style="text-align: left;">措施</th>
+<th style="text-align: left;">效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>命令层面</strong></td>
+<td style="text-align: left;">优先使用幂等命令（SET/SETEX/HSET），避免 INCR/DECR 无条件重试</td>
+<td style="text-align: left;">根本杜绝过度计数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>幂等性标记</strong></td>
+<td style="text-align: left;">为 INCR 类操作增加业务级幂等键（如订单号 + 状态标记），重复 INCR 时检查跳过</td>
+<td style="text-align: left;">业务级防护</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>At-Least-Once 计数</strong></td>
+<td style="text-align: left;">改用 <code>HSETNX</code> + <code>HINCRBY</code> 代替裸 INCR，依赖唯一性约束去重</td>
+<td style="text-align: left;">利用 Redis 原子性去重</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>客户端协议层</strong></td>
+<td style="text-align: left;">升级 Lettuce ≥ 6.2，启用 <code>ClientOptions.autoReconnect()</code> + 自定义重试策略（仅重试幂等命令）</td>
+<td style="text-align: left;">框架级防护</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>外部 idempotent key</strong></td>
+<td style="text-align: left;">在应用层生成唯一请求 ID → Redis <code>SETNX request:lock:{id} 1 EX 300</code> → 仅首次执行 INCR</td>
+<td style="text-align: left;">应用层兜底</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>核心原则</strong>：Pipeline 断连重连场景下，不要假设网络传输的命令一定未被执行。对非幂等命令必须引入业务/协议层面的幂等机制。</p>
+</blockquote>
+<p><strong>补充风险/代价</strong>：幂等化通常需要额外的去重状态（dedup key / request-id）或服务端脚本。
+- 去重 key 的 TTL 必须大于最坏 failover/重试窗口，否则无法去重；
+- 去重 key 会消耗内存（高吞吐场景需评估，见 8.19.7 实现要点）；
+- Lua EVAL 三合一可以把去重/计数/标记合并为 1 次原子操作，但脚本在 Redis 主线程运行，长脚本或高并发短脚本会阻塞主线程并影响其他客户端，需谨慎设计并使用 EVALSHA / SCRIPT LOAD 缓存脚本。</p>
+<h3 id="8196">8.19.6 验证指标对照</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">对比维度</th>
+<th style="text-align: left;">INCR (非幂等)</th>
+<th style="text-align: left;">SETEX (幂等)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">预期计数值</td>
+<td style="text-align: left;">710,400</td>
+<td style="text-align: left;">7,104 批次</td>
+</tr>
+<tr>
+<td style="text-align: left;">实际计数值</td>
+<td style="text-align: left;">870,400</td>
+<td style="text-align: left;">8,704 最终批次号</td>
+</tr>
+<tr>
+<td style="text-align: left;">偏差</td>
+<td style="text-align: left;">+160,000 (<strong>22.5% 过度</strong>)</td>
+<td style="text-align: left;">-209 批次 (<strong>2.3% 丢失, 可重放</strong>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">语义正确性</td>
+<td style="text-align: left;">❌ 过度计数</td>
+<td style="text-align: left;">✅ 幂等安全</td>
+</tr>
+<tr>
+<td style="text-align: left;">生产可用性</td>
+<td style="text-align: left;">⚠️ 需幂等改造</td>
+<td style="text-align: left;">✅ 直接可用</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8197">8.19.7 幂等修复验证 — 三种方案同环境公平对比</h3>
+<blockquote>
+<p><strong>测试环境</strong>: Docker 6 节点 Redis Cluster, <code>appendonly no</code>, 每次测试前 <code>down -v</code> 重建集群。batchSize=100, concurrency=16, warmup=5s, sampleSec=25s, deadline=30s, backoffCap=12s。</p>
+</blockquote>
+<h4 id="a-eval">方案 A: EVAL 三合一原子去重 (推荐)</h4>
+<p>将 SETNX 去重 + INCRBY + SETEX 全部封装为单条 Lua 脚本，<strong>1 次 RTT 完成所有操作</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- KEYS[1]={hotkey}:dedup:{seq}  KEYS[2]={hotkey}:incr  KEYS[3]={hotkey}:marker</span>
+<span class="c1">-- ARGV[1]=batchSize  ARGV[2]=dedupTTL(2s)  ARGV[3]=batch:seq  ARGV[4]=markerTTL(600)</span>
+<span class="kr">if</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SET'</span><span class="p">,</span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="s1">'1'</span><span class="p">,</span><span class="s1">'NX'</span><span class="p">,</span><span class="s1">'EX'</span><span class="p">,</span><span class="nb">tonumber</span><span class="p">(</span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">2</span><span class="p">]))</span><span class="w"> </span><span class="kr">then</span>
+<span class="w">    </span><span class="kd">local</span><span class="w"> </span><span class="nv">v</span><span class="o">=</span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'INCRBY'</span><span class="p">,</span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="nb">tonumber</span><span class="p">(</span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SETEX'</span><span class="p">,</span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span><span class="nb">tonumber</span><span class="p">(</span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+<span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="nv">v</span><span class="w">           </span><span class="c1">-- 首次执行 → 返回新值</span>
+<span class="kr">else</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SETEX'</span><span class="p">,</span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span><span class="nb">tonumber</span><span class="p">(</span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+<span class="w">    </span><span class="kr">return</span><span class="w"> </span><span class="o">-</span><span class="mi">1</span><span class="w">           </span><span class="c1">-- 已去重 → 跳过 INCRBY, 仍更新 marker</span>
+<span class="kr">end</span>
+</code></pre></div>
+
+<p><strong>实现与运维要点</strong>：
+- 使用 <strong>SCRIPT LOAD + EVALSHA</strong> 避免每次发送完整脚本体（更省带宽/CPU）。
+- dedup key 的 TTL（示例 ARGV[2]=2s）应选<strong>大于系统最坏的 failover+重试窗口</strong>（例如 2×failover 最大时延 + safety），确保重复请求在去重窗口内可被识别。
+- 高吞吐场景下大量 dedup keys 会占用内存（高基数）：考虑使用压缩/批量去重或短 TTL + 外部持久化作为补偿策略，并监控 <code>dedup_key_count</code> / <code>dedup_key_memory_bytes</code>。
+- <strong>Cluster 模式</strong>：确保 <code>KEYS[]</code> 都在同一 slot（或使用 hashtag），否则 EVAL 会报 CROSSSLOT。</p>
+<h4 id="b-setnx">方案 B: SETNX 两阶段去重</h4>
+<p>SETNX 去重检查 (Phase A) + INCRBY+SETEX (Phase B) = <strong>2 RTT/批</strong>，详见上文原始设计。</p>
+<h4 id="c-incr">方案 C: 裸 INCR (无去重, 对照组)</h4>
+<p>单管线 INCRBY + SETEX = <strong>1 RTT/批</strong>，无任何幂等保护。</p>
+<h4 id="_2">同环境三轮对比实测</h4>
+<div class="codehilite"><pre><span></span><code>╔══════════════════════════════════════════════════════════════════════════════╗
+║                  幂等去重 三方案同环境公平对比 (appendonly=no)                 ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                               ║
+║  指标                  │ EVAL 三合一     │ SETNX 两阶段    │ 裸 INCR (对照组)  ║
+║  ──────────────────────┼─────────────────┼─────────────────┼───────────────── ║
+║  cmdPerSec             │       70,440    │        4,204    │       91,778     ║
+║  vs 裸 INCR            │        76.8%    │         4.6%    │         100%     ║
+║  p50Ms                 │        0.757    │       16.130    │        4.880     ║
+║  p95Ms                 │        2.039    │       29.719    │        8.379     ║
+║  p99Ms                 │        6.364    │       51.205    │       14.455     ║
+║  avgLatencyMs          │       19.601    │      329.865    │       10.818     ║
+║  maxMs                 │      128,067    │      119,015    │       12,014     ║
+║  errors                │            0    │            0    │            0     ║
+║  overcount             │       0.001%    │      -0.072%    │      -0.050%     ║
+║  preDisconnect 批数     │      143,340    │        6,824    │       22,071     ║
+║  sampleDurationSec     │        137.5    │        136.3    │         98.3     ║
+║                                                                               ║
+║  ┌─ 发现 1: EVAL 延迟全面碾压裸 INCR ────────────────────────────────────┐   ║
+║  │                                                                        │   ║
+║  │  p50: 0.757ms vs 4.880ms (6.4x 更快)                                  │   ║
+║  │  p95: 2.039ms vs 8.379ms (4.1x 更快)                                  │   ║
+║  │  p99: 6.364ms vs 14.455ms (2.3x 更快)                                 │   ║
+║  │                                                                        │   ║
+║  │  原因: 101 条命令 (1×INCRBY+100×SETEX) → 1 条 EVAL                     │   ║
+║  │        序列化/网络传输/反序列化开销减少 ~100x                            │   ║
+║  └────────────────────────────────────────────────────────────────────────┘   ║
+║                                                                               ║
+║  ┌─ 发现 2: EVAL 吞吐略低于裸 INCR (76.8%) — 但非性能瓶颈 ──────────────┐   ║
+║  │                                                                        │   ║
+║  │  解释: EVAL 显示出更低的 p50/p99，但 cmdPerSec 低于裸 INCR 的原因      │   ║
+║  │  是: EVAL 在断连前生成了大量 pending 批次 (preDisconnect 143,340 批,  │   ║
+║  │  裸 INCR 的 6.5x) → failover/恢复期间海量 pending 批次排队重试 →       │   ║
+║  │  拉长了整体 sampleDuration (137.5s vs 98.3s)。                         │   ║
+║  │  即: 吞吐 = 完成命令 / 测试时长，EVAL 单次延迟更低、短时峰值更高，     │   ║
+║  │  但因断连/积压策略差异，整体样本周期内吞吐受测试窗口影响。             │   ║
+║  │  建议在表中同时提供"稳定态峰值吞吐"(不含 failover 窗口) 以便公平比较， │   ║
+║  │  并把 cmdPerSec 报为"均值 ± 标准差 (N)"。                              │   ║
+║  └────────────────────────────────────────────────────────────────────────┘   ║
+║                                                                               ║
+║  ┌─ 发现 3: SETNX 两阶段全面落后，高吞吐下不推荐 ──────────────────────┐   ║
+║  │                                                                        │   ║
+║  │  结论: SETNX 两阶段因为 2 RTT/批 带来巨大延迟成本，在高并发写场景下    │   ║
+║  │  吞吐会显著下降 (本测约为基线的 4.6%)，延迟退化 3~6x。                 │   ║
+║  │  因此在高吞吐/低延迟需求下不推荐。                                    │   ║
+║  │  仅在吞吐较低且无法部署 Lua 的极特殊场景 (或脚本禁用策略) 下          │   ║
+║  │  可作为次优方案。                                                     │   ║
+║  └────────────────────────────────────────────────────────────────────────┘   ║
+║                                                                               ║
+║  ┌─ 发现 4: 正确性 ─────────────────────────────────────────────────────┐   ║
+║  │                                                                        │   ║
+║  │  EVAL:     overcount=0.001% (噪声级, 完美幂等)                        │   ║
+║  │  SETNX:    overcount=-0.072% (极少量计数丢失)                         │   ║
+║  │  裸 INCR:  overcount=-0.050% (预期内的旧 master 数据丢失)              │   ║
+║  │  三种方案 errors=0: 在所有正确性测试中全部批次成功完成                 │   ║
+║  └────────────────────────────────────────────────────────────────────────┘   ║
+║                                                                               ║
+║  overcount 负值说明: 小幅负值表示最终计数略低于期望 (少量丢失)，通常由     ║
+║  测量噪声、计数窗口不同步或在 failover 期间丢失的批次造成；0.1% 量级      ║
+║  属于噪声范围。建议在数据表中添加样本 N 与标准差/置信区间以量化这类偏差。  ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
+</code></pre></div>
+
+<h4 id="_3">方案优缺点对比</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">优点</th>
+<th style="text-align: left;">缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>EVAL 三合一</strong></td>
+<td style="text-align: left;">原子、单 RTT、低延迟、完美幂等</td>
+<td style="text-align: left;">阻塞主线程、脚本复杂度、cluster 需同 slot</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SETNX 两阶段</strong></td>
+<td style="text-align: left;">实现简单、不需脚本</td>
+<td style="text-align: left;">2 RTT、吞吐低 (4.6%)、延迟高</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>应用层 request-id + SETNX</strong></td>
+<td style="text-align: left;">可跨系统、语义一致</td>
+<td style="text-align: left;">需额外存储 (dedup key)、性能开销</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>HSETNX/HINCRBY 模式</strong></td>
+<td style="text-align: left;">利用 Redis 原子性去重</td>
+<td style="text-align: left;">需细设计字段语义、去重状态占用内存</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_4">修复原理</h4>
+<p><strong>EVAL 三合一原子化（最终方案）</strong> 是让 Redis 服务端在单次调用中原子地完成去重判断 + 计数 + 标记更新：</p>
+<div class="codehilite"><pre><span></span><code>Lua 脚本 (单次 EVAL 调用, 1 RTT):
+
+  SETNX dedup:seq100 → true  (首次)
+    → INCRBY counter +100    → 返回 新值
+    → SETEX marker batch:100
+
+  SETNX dedup:seq100 → false (已处理, 上次的 INCRBY+SETEX 均成功)
+    → 跳过 INCRBY
+    → 仍更新 SETEX marker (幂等安全)
+    → 返回 -1
+
+  → 无论首次还是重试，1 次 RTT 完成全流程
+  → 原子性保证: SETNX + INCRBY + SETEX 要么全部生效，要么全部不生效
+</code></pre></div>
+
+<p><strong>与 SETNX 两阶段方案的对比：</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">SETNX 两阶段</th>
+<th style="text-align: left;">EVAL 三合一</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">RTT/批</td>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;"><strong>1 (与裸 INCR 等同)</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">p50 延迟</td>
+<td style="text-align: left;">16.1ms</td>
+<td style="text-align: left;"><strong>0.76ms (6.4x↑)</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">吞吐 vs 裸 INCR</td>
+<td style="text-align: left;">4.6%</td>
+<td style="text-align: left;"><strong>76.8%</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">overcount</td>
+<td style="text-align: left;">-0.072%</td>
+<td style="text-align: left;"><strong>0.001% (完美)</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">服务端原子性</td>
+<td style="text-align: left;">❌ 分两次调用</td>
+<td style="text-align: left;">✅ 单次原子</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_5">关键教训</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">教训</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Lua 脚本命令压缩是关键优化</strong></td>
+<td style="text-align: left;">101 条命令 → 1 条 EVAL，序列化/网络传输开销减少 ~100x → p50 从 4.9ms 降至 0.76ms</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>服务端原子化 &gt; 客户端多阶段</strong></td>
+<td style="text-align: left;">EVAL 单次调用保证 SETNX+INCRBY+SETEX 原子性，不会出现 Phase A 成功但 Phase B 失败导致计数丢失的边界情况</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>分两次 RTT 是不可承受之重</strong></td>
+<td style="text-align: left;">SETNX 两阶段 2 RTT/批 → 吞吐仅裸 INCR 的 4.6%，延迟退化 3~6x，生产不可用</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>EVAL 在 failover 场景比裸 INCR 更优</strong></td>
+<td style="text-align: left;">裸 INCR 只有 101 条命令/批，p50=4.88ms；EVAL 仅 1 条命令 → p50=0.76ms（6.4x 更快）。断连前积压更多但整体延迟更低</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>预热期必须计入 expected</strong></td>
+<td style="text-align: left;">否则 expected 与实际计数不对齐，产生虚假的 ~20% 过度计数信号</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>重试策略要明确退避上限</strong></td>
+<td style="text-align: left;">示例：指数退避（initial=1s, multiplier=2, max=12s），总重试窗口设 30s（超过则告警或降级）。这样在 30s 窗口内可进行多次重试，而不会因大量并发重试立即压垮新 master</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>避免 connection double-close</strong></td>
+<td style="text-align: left;"><code>refreshPartitions()</code> 前不要 <code>conn.close()</code>，Lettuce 内部管理连接生命周期</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="820-lua-eval-vs-pipeline-">场景 8.20: Lua EVAL vs Pipeline — 原子读-改-写的吞吐与延迟对比</h2>
+<h3 id="8201">8.20.1 背景与问题</h3>
+<p>场景 8.11 的决策树中有一条分支：<strong>"需要实时去重/限流 → Lua + BloomFilter"</strong>，但没有任何数据说明 Lua EVAL 的吞吐退化有多大，以及什么场景下 Lua 比 Pipeline 更好。</p>
+<p><strong>核心问题</strong>：对于"读-改-写"型热点操作（如 <code>GET + INCRBY</code>），Lua EVAL 和 Pipeline 各有什么优劣？</p>
+<ul>
+<li><strong>Pipeline (GET + INCRBY)</strong>：两条命令在同一管线中发送 → 1 RTT，<strong>非原子</strong>。GET 和 INCRBY 之间可能有其他连接插入，读到的是"可能已过期的值"</li>
+<li><strong>Lua EVAL (原子 GET+INCRBY)</strong>：单条 EVAL 调用 → 1 RTT，<strong>原子</strong>。服务端保证 GET→INCRBY 期间不会有其他命令插入</li>
+</ul>
+<p>直觉上，Lua 脚本的解析/缓存/VM 开销应该比两条独立命令更高 → 吞吐更低。但实测结果恰恰相反。</p>
+<h3 id="8202">8.20.2 原理</h3>
+<div class="codehilite"><pre><span></span><code>Pipeline GET + INCRBY 流程 (1 RTT, 100 命令/批):
+
+  ┌──────────────────────────────────────────────────────────┐
+  │ Client: [GET key, INCRBY key N, GET key, GET key, ...]  │  ← 100 条命令
+  │  flush() ─────────────────────────────────────→ Server   │      1 RTT
+  │          ← [value, newValue, value, value, ...]          │
+  │  GET 与 INCRBY 之间是两条独立命令 → 非原子                  │
+  └──────────────────────────────────────────────────────────┘
+
+Lua EVAL 原子读-改-写 (1 RTT, 100 命令/批):
+
+  ┌──────────────────────────────────────────────────────────┐
+  │ Client: [EVAL "GET+INCRBY" 1 key N, GET key, GET key, ...]│ ← 100 条命令
+  │  flush() ─────────────────────────────────────→ Server   │      1 RTT
+  │          ← [oldValue, value, value, ...]                  │
+  │  GET+INCRBY 在服务端原子执行 → 无竞争窗口                    │
+  └──────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<p><strong>Lua 为什么可能比 Pipeline 更快？</strong></p>
+<ul>
+<li>Pipeline: GET + INCRBY = <strong>2 条命令</strong>需要独立解析/执行/回包编码</li>
+<li>Lua: 1 条 EVAL 包含全部业务逻辑 → 解析次数少、响应编码少</li>
+<li>管线中其他填充 GET 命令的解析开销在两种模式下相同</li>
+</ul>
+<h3 id="8203-rest">8.20.3 REST 端点</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 一次运行完成 Pipeline 和 Lua 两种模式的对比</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8082/rtt/lua-vs-pipeline
+</code></pre></div>
+
+<h3 id="8204">8.20.4 测试参数</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">参数</th>
+<th style="text-align: left;">值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">batchSize (管线命令数)</td>
+<td style="text-align: left;">100</td>
+</tr>
+<tr>
+<td style="text-align: left;">concurrency</td>
+<td style="text-align: left;">16</td>
+</tr>
+<tr>
+<td style="text-align: left;">warmup</td>
+<td style="text-align: left;">3s</td>
+</tr>
+<tr>
+<td style="text-align: left;">sample</td>
+<td style="text-align: left;">5s</td>
+</tr>
+<tr>
+<td style="text-align: left;">Redis 集群</td>
+<td style="text-align: left;">6 节点 (3 master + 3 replica), appendonly no</td>
+</tr>
+<tr>
+<td style="text-align: left;">对比维度</td>
+<td style="text-align: left;">Pipeline: GET+INCRBY(1 RTT, 非原子) vs Lua: EVAL(1 RTT, 原子)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8205">8.20.5 实测数据</h3>
+<div class="codehilite"><pre><span></span><code>╔══════════════════════════════════════════════════════════════════════╗
+║            Pipeline GET+INCRBY vs Lua EVAL 原子读-改-写                ║
+╠══════════════════════════════════════════════════════════════════════╣
+║                                                                      ║
+║  指标          │ Pipeline (非原子)   │ Lua EVAL (原子)    │ 差异      ║
+║  ──────────────┼─────────────────────┼────────────────────┼───────── ║
+║  cmdPerSec     │     217,340         │     273,780        │ +26.0% ↑ ║
+║  p50Ms         │       7.416         │       6.377        │ -14.0% ↓ ║
+║  p95Ms         │      15.511         │      11.441        │ -26.2% ↓ ║
+║  p99Ms         │      34.676         │      18.838        │ -45.7% ↓ ║
+║  avgLatencyMs  │       8.875         │       7.019        │ -20.9% ↓ ║
+║  errors        │           8         │          15        │          ║
+║  atomic        │         no          │         yes        │          ║
+║                                                                      ║
+║  ┌─ 发现 1: Lua EVAL 在吞吐和延迟上全面反超 Pipeline ────────────┐   ║
+║  │                                                                  │   ║
+║  │  Lua EVAL 比 Pipeline GET+INCRBY 快 26%，p99 延迟低 46%。        │   ║
+║  │  原因: 1 条 EVAL 命令 (1 次序列化 → 1 次解析 → 1 次编码)        │   ║
+║  │        vs 2 条命令 (GET+INCRBY, 2 次解析 → 2 次编码)             │   ║
+║  │  即 Lua 同时提供了原子性和更高的吞吐 — "双赢"                    │   ║
+║  └──────────────────────────────────────────────────────────────────┘   ║
+║                                                                          ║
+║  ┌─ 发现 2: Lua 原子性没有性能代价 ──────────────────────────────────┐  ║
+║  │                                                                     │  ║
+║  │  长期以来认为 "原子操作 = 性能差" 的直觉在此场景不成立。            │  ║
+║  │  因为单条 EVAL 减少了网络上的命令数 (1 vs 2)，                    │  ║
+║  │  序列化/反序列化开销的降低反而带来了净性能收益。                    │  ║
+║  └─────────────────────────────────────────────────────────────────────┘  ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+</code></pre></div>
+
+<blockquote>
+<p>⚠️ <strong>实务警告</strong>：Lua 虽然能在本场景带来延迟与吞吐优势，但<strong>脚本运行于 Redis 主线程</strong>，复杂或长时间运行的脚本会阻塞其他请求，并可能延长故障恢复时间。生产使用时请：
+- 使用 <strong>EVALSHA / SCRIPT LOAD</strong> 避免每次传输完整脚本体；
+- 限制脚本复杂度与执行时间，避免大循环/慢操作；
+- 在 Cluster 模式确保 keys 在同一 slot（或 hashtag），否则 CROSSSLOT；
+- 设置 <code>lua-time-limit</code>、监控 slowlog 与主节点阻塞指标（如 <code>lua_script_block_ms</code>）。</p>
+</blockquote>
+<h3 id="8206">8.20.6 决策树更新</h3>
+<p>原 8.11 决策树中的 <strong>"需要实时去重/限流 → Lua + BloomFilter"</strong> 的分支，现补充量化数据：</p>
+<div class="codehilite"><pre><span></span><code>╔═══════════════════════════════════════════════════════════════════════════════╗
+║                        Pipeline vs Lua EVAL 完整决策树                         ║
+╠═══════════════════════════════════════════════════════════════════════════════╣
+║                                                                                ║
+║                     ┌───────────────────────────────────┐                      ║
+║                     │   你要做什么类型的 Redis 操作?       │                      ║
+║                     └───────────────────────────────────┘                      ║
+║                                      │                                         ║
+║              ┌───────────────────────┼───────────────────────┐                 ║
+║              ▼                       ▼                       ▼                 ║
+║        纯写入 (INCRBY/SET)     读-改-写 (GET+INCRBY)     多 key 聚合            ║
+║              │                       │                       │                 ║
+║              │           ┌───────────┼───────────┐           │                 ║
+║              │           ▼                       ▼           │                 ║
+║              │      需要原子性?              不需要原子性      │                 ║
+║              │           │                       │           │                 ║
+║              ▼           ▼                       ▼           ▼                 ║
+║    ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐      ║
+║    │   Pipeline  │  │  Lua EVAL    │  │  Pipeline   │  │  没有统一     │      ║
+║    │   SINGLE_KEY│  │  GET+INCRBY  │  │  GET+INCRBY │  │  hashtag →   │      ║
+║    │  ~307kcmd/s │  │ ~274kcmd/s ✓ │  │ ~217kcmd/s  │  │  Pipeline    │      ║
+║    │  1 RTT      │  │ 1 RTT + 原子 │  │ 1 RTT       │  │  ~307kcmd/s  │      ║
+║    │  ✅ 最高吞吐  │  │ ✅ 原子+吞吐  │  │ ❌ 非原子   │  │  有统一      │      ║
+║    └─────────────┘  └──────────────┘  └─────────────┘  │  hashtag →   │      ║
+║                                                        │  Lua/管道均可│      ║
+║                                                        └──────────────┘      ║
+║                                                                                ║
+║    ┌─ 核心结论 ─────────────────────────────────────────────────────────────┐  ║
+║    │                                                                            ║
+║    │  ① 纯写入: Pipeline 比 Lua 快 12% (307k vs 274k)。                        ║
+║    │     INCRBY/SET 的 RESP 编解码太轻，Lua VM 开销成了净代价。                 ║
+║    │                                                                            ║
+║    │  ② 读-改-写 + 需要原子: Lua 唯一选择。不仅原子，吞吐还反超 Pipeline 26%。  ║
+║    │     1 条 EVAL 序列化 &lt; GET+INCRBY 两条命令的序列化。                       ║
+║    │                                                                            ║
+║    │  ③ 多 key 聚合 + 无统一 hashtag: Pipeline 是唯一可行方案。                 ║
+║    │     但如果 key 命名可提前规划 ({hashtag}:...)，Pipeline 和 Lua 均可，      ║
+║    │     此时按 ①/② 的逻辑选择即可。                                           ║
+║    │                                                                            ║
+║    │  ④ Pipeline 更适合调试/部分重试/SLOWLOG 排障。                            ║
+║    │                                                                            ║
+║    │  ⑤ 工程决策补充三维度（非仅吞吐/延迟/原子性）：                          ║
+║    │     · 可观测性: Pipeline 更好 (逐条命令可见)                              ║
+║    │     · 重试复杂度: Pipeline 更易做部分重试 (blast radius 小)              ║
+║    │     · 脚本风险: Lua 可能阻塞主线程 (需监控/限时)                          ║
+║    └────────────────────────────────────────────────────────────────────────┘   ║
+║                                                                                 ║
+╚═══════════════════════════════════════════════════════════════════════════════════╝
+</code></pre></div>
+
+<h3 id="8207">8.20.7 关键教训</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">教训</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Lua EVAL 在 pipeline 场景比两命令更快</strong></td>
+<td style="text-align: left;">1 条 EVAL 的序列化开销 &lt; GET + INCRBY 两条命令的序列化开销之和。原子性反而带来性能收益，不是代价</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>命令压缩是隐藏优化</strong></td>
+<td style="text-align: left;">将多次 Redis 操作压缩为 1 条 Lua 命令，减少网络上的命令数，也减少了服务端事件循环的调度次数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>"原子 → 慢" 的直觉可能误导</strong></td>
+<td style="text-align: left;">在这个场景中，原子 Lua 比非原子 Pipeline 更快，因为客户端/服务端的序列化瓶颈 &gt; Lua VM 开销</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>决策树 8.11 的 "Lua + BloomFilter" 分支</strong></td>
+<td style="text-align: left;">现补充量化数据: Lua 吞吐 ≈ 274k cmd/s，比纯 INCR Pipeline (307k) 只低 11%，但比 Pipeline GET+INCRBY (217k) 高 26%</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8208-pipeline-lua">8.20.8 Pipeline 优于 Lua 的场景分析</h3>
+<p>虽然 8.20.5 显示 Lua EVAL 在"读-改-写"场景碾压 Pipeline GET+INCRBY，但 <strong>Pipeline 并非在所有场景都输给 Lua</strong>。以下是 Pipeline 明确优于 Lua 的五种情况。</p>
+<h4 id="_6">三条基准数据回顾</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">cmdPerSec</th>
+<th style="text-align: left;">RTT</th>
+<th style="text-align: left;">原子性</th>
+<th style="text-align: left;">命令数/批</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>纯 Pipeline INCRBY</strong> (SINGLE_KEY)</td>
+<td style="text-align: left;"><strong>~307k</strong></td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">INCRBY 自身原子</td>
+<td style="text-align: left;">101 (1×INCRBY+100×SETEX)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pipeline GET+INCRBY</strong></td>
+<td style="text-align: left;">~217k</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">❌ 非原子</td>
+<td style="text-align: left;">100 (GET+INCRBY+填充GET)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Lua EVAL GET+INCRBY</strong></td>
+<td style="text-align: left;">~274k</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">✅ 原子</td>
+<td style="text-align: left;">100 (EVAL+填充GET)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="1-">场景 1: 纯写入操作，不需要"读-改-写"原子性</h4>
+<div class="codehilite"><pre><span></span><code>INCRBY 本身就是 Redis 原子命令，用 Pipeline 打包 100 条独立 INCRBY：
+  → 307k cmd/s (比 Lua 274k 高 12%)
+
+关键差异:
+  Pipeline: 101 条独立 RESP 编解码 (INCRBY 的 RESP 仅几十字节，编解码极快)
+  Lua EVAL:  1 次 EVAL RESP + ~200 字节脚本传输 + Lua parser + Lua VM 执行
+             + Redis↔Lua 类型转换 (ARGV → tonumber、 返回 → integer)
+
+  → INCRBY 的编解码太轻量，Lua VM 开销成了净代价
+  → Pipeline 胜出 12%
+</code></pre></div>
+
+<p><strong>结论</strong>：只要业务逻辑是"纯写"（INCRBY / DECRBY / SET / ZADD），每条命令自身原子，Pipeline 就是最优解。</p>
+<h4 id="2_1">场景 2: 命令不需要互相保证原子性</h4>
+<div class="codehilite"><pre><span></span><code>场景：100 个独立 key 各 INCRBY 1
+  ┌─ Pipeline: 100×INCRBY key:1,2,3... → 1 RTT
+  │  每条 INCRBY 原子，彼此独立，无竞争
+  │  expected 预期精准，retry 语义可控
+  │
+  └─ Lua: EVAL "for i=1,100 do redis.call('INCRBY',KEYS[i],1) end"
+      → 必须用 {hashtag} 保证同 slot（增加 key 命名约束）
+      → 即使同 slot，Lua 阻塞 Redis 单线程执行 100 次 INCRBY，
+         这 100 次修改都被一个 Lua 调用霸占 → 对其他客户端不公平
+</code></pre></div>
+
+<p><strong>结论</strong>：多条独立命令之间无因果关系时，Pipeline 更灵活、Retry 更安全。</p>
+<h4 id="3-key-hashtag">场景 3: key 命名无法引入统一 hashtag 时</h4>
+<div class="codehilite"><pre><span></span><code>关键前提: 如果提前设计好 hashtag（如 {user1}:counter, {user1}:lock），
+          Lua EVAL 不存在跨 slot 问题 —— 所有 key 已路由到同一槽位。
+          此时 Pipeline 和 Lua 均可，按 ①/② 的逻辑选即可。
+
+但现实生活中，不是所有系统都能自由设计 key:
+  ┌─ 存量系统 key 已固定且分散, 改命名需双写迁移
+  │  → 无法加 {hashtag}
+  │  → Lua EVAL 直接报 CROSSSLOT
+  │  → Pipeline 是唯一可行方案
+  │
+  ┌─ 多租户 SaaS, key 前缀由租户 ID 自然决定
+  │  → 天然跨 slot
+  │  → Pipeline 自动分片路由
+  │
+  └─ 新系统 / 可自主设计 → 加 {hashtag} → 两种方案均可
+</code></pre></div>
+
+<p><strong>结论</strong>：真正的问题不是"跨 slot"，而是<strong>"key 命名能否引入统一 hashtag"</strong>。不能 → Pipeline；能 → 按吞吐/原子性选。</p>
+<h4 id="4_2">场景 4: 调试与监控更友好</h4>
+<div class="codehilite"><pre><span></span><code>MONITOR / SLOWLOG 中的 Pipeline:
+  → "INCRBY key:counter 100"       ← 命令可读，可直接诊断哪个命令慢
+  → "SETEX key:marker 600 batch:99" ← 参数可解析
+
+MONITOR / SLOWLOG 中的 Lua:
+  → "EVAL 'if redis.call...' 3 key1 key2 key3 100 2 batch:99 600"
+  → 脚本内容不展开，必须去 lookup 脚本 SHA 对应的原始文本
+  → 生产排障时每多一步都是时间成本
+</code></pre></div>
+
+<p><strong>结论</strong>：Pipeline 的逐条命令可见性是生产排障的重要优势。</p>
+<h4 id="5">场景 5: 内省与部分失败处理</h4>
+<div class="codehilite"><pre><span></span><code>Pipeline GET 读当前值:
+  → 可以在 client 侧拿到每条 GET 的返回值
+  → 如果某条 GET 返回 nil (key 不存在)，可以决定是否 abort 后续 INCRBY
+  → 部分失败可以按条重试
+
+Lua EVAL 原子读-改-写:
+  → 服务端执行完毕后只返回最终结果
+  → 无法"中途"干预
+  → 如果脚本失败（OOM/CROSSSLOT/NOSCRIPT），整个批都得重试
+  → 重试语义重 (原子 blast radius)
+</code></pre></div>
+
+<h4 id="_7">决策矩阵</h4>
+<div class="codehilite"><pre><span></span><code>                        ┌───────────────────────────────────────────┐
+                        │       Pipeline vs Lua EVAL 决策矩阵        │
+                        └───────────────────────────────────────────┘
+                                         │
+           ┌─────────────────────────────┼─────────────────────────────┐
+           ▼                             ▼                             ▼
+     需要跨命令原子性              不需要跨命令原子性              key 命名无统一 hashtag
+           │                             │                             │
+   ┌───────┴───────┐             ┌───────┴───────┐             ┌───────┴───────┐
+   │   Lua EVAL   │             │   Pipeline    │             │   Pipeline    │
+   │   (1 RTT)    │             │   (1 RTT)     │             │   (1 RTT)     │
+   │   274k cmd/s  │             │   307k cmd/s  │             │   307k cmd/s  │
+   │   ✅ 原子     │             │   ✅ 最高吞吐  │             │   ✅ 唯一可行  │
+   └───────────────┘             └───────────────┘             └───────────────┘
+         ↓                             ↓                             ↓
+   三合一去重                     纯 INCRBY                    存量系统迁移
+   GET+INCRBY 原子               SETEX/批量写                  多租户 SaaS
+   限流/去重/幂等                  无需 retry 分析的写操作          key 分散且无法改
+</code></pre></div>
+
+<h4 id="_8">关键教训补充</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">教训</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Pipeline 在纯写场景比 Lua 快 12%</strong></td>
+<td style="text-align: left;">INCRBY/SET 等简单命令的 RESP 编解码 &lt; Lua VM 完整执行开销。每条命令自身原子时不要引入 Lua</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pipeline 不需要同 slot，但 hashtag 可打通 Lua</strong></td>
+<td style="text-align: left;">如果 key 命名可加统一 hashtag（<code>{tag}:...</code>），Lua EVAL 的跨 slot 限制就消失了。真正的问题是"现有 key 能否加 hashtag"，不能 → Pipeline，能 → 按吞吐/原子性自由选</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Lua 的 1 条 EVAL = 更高的调试盲区</strong></td>
+<td style="text-align: left;">SLOWLOG/MONITOR 中 EVAL 不展开脚本内容。选 Lua 时需要配合脚本 SHA → 源代码的映射机制</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pipeline 支持逐条重试</strong></td>
+<td style="text-align: left;">Pipeline 中的部分命令失败只需重试失败的那几条，Lua 脚本失败则整批重试（blast radius 更大）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>选 Lua 的条件：必须原子 + 只涉及单 slot</strong></td>
+<td style="text-align: left;">两个条件缺一不可，否则默认用 Pipeline</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="a">附录 A: 工程化建议小结</h2>
+<div class="codehilite"><pre><span></span><code>1) 优先策略：尽可能把高频计数保存在本地（LOCAL_BUFFERED/COMPUTED）
+   并周期性批量写回 Redis，尤其当 RTT ≥ 5ms 时本地方案的吞吐优势会成倍放大。
+
+2) 若必须保证副本确认：在线生产跨 AZ 场景请使用异步 WAIT（fire-and-forget）
+   + 周期性 drain 的模式，并对 WAIT 成功率设置严格监控与自动告警；
+   当成功率下降到预设阈值时，自动降级为同步 WAIT 或减小 batch。
+
+3) 对非幂等命令（INCR/DECR）不要依赖客户端重试来保证一次语义，
+   应通过 EVAL 三合一原子去重（SETNX + INCRBY + SETEX 单次 Lua 调用）
+   实现 1 RTT 的幂等保障；两阶段 SETNX 方案（2 RTT）吞吐仅基准的 4.6%，不推荐。
+
+4) 对"读-改-写"操作（GET + INCRBY），优先选 Lua EVAL 原子方案：
+   既提供原子性又比 Pipeline GET+INCRBY 快 26%（274k vs 217k cmd/s），
+   p99 延迟低 46%（18.8ms vs 34.7ms）。Lua 的命令压缩优势在此场景下
+   超过了脚本解析开销。
+
+5) 对纯写入操作（INCRBY/SET/CAS），优先选 Pipeline 单管线：
+   吞吐比 Lua 高 12%（307k vs 274k cmd/s），RESP 编解码 &lt; Lua VM 开销。
+   每条命令自身原子时不要引入 Lua 的脚本解析成本。
+
+6) 对多 key 聚合操作：
+   - 如果能引入统一 hashtag (`{tag}:...`) → Pipeline 和 Lua 均可，按 4/5 的逻辑选
+   - 如果存量 key 无法改名 → Pipeline 是唯一可行方案
+
+7) 对任何微基准结果，请记录并发布误差范围/样本数与环境细节
+   （CPU、网络模式、Redis 配置），以便他人复现。
+
+8) 复杂场景替代：对于极高吞吐且要求严格无重复计数的场景，考虑使用可靠消息
+   + 幂等消费（例如将事件写入 Kafka/Redis Stream，消费端做幂等聚合并持久化
+   到 Redis），将实时计数写路径与持久化/幂等恢复解耦，降低主写路径对 Redis
+   failover 的敏感度。
+</code></pre></div>
+
+<h2 id="b">附录 B: 监控与告警模板</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">推荐报警阈值</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>WAIT 成功率</strong></td>
+<td style="text-align: left;">&lt; 99% → 告警，持续 &lt; 95% → 自动降级为同步 WAIT</td>
+<td style="text-align: left;">反映 replica 确认的健康度</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pending-WAIT 队列长度</strong></td>
+<td style="text-align: left;">持续 &gt; 1000 → 告警</td>
+<td style="text-align: left;">drain 线程跟不上写入速度</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Drain 成功率</strong></td>
+<td style="text-align: left;">&lt; 98% → 告警</td>
+<td style="text-align: left;">drain 过程中 futures 超时或被丢弃</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>重试/失败批次数</strong></td>
+<td style="text-align: left;">增长率 &gt; 10%/min → 告警</td>
+<td style="text-align: left;">写入链路异常信号</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>failover_count/min</strong></td>
+<td style="text-align: left;">异常升高 → 告警</td>
+<td style="text-align: left;">master 切换频率，判断客户端重试/幂等策略是否生效</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>client_reconnect_rate</strong></td>
+<td style="text-align: left;">升高 → 告警</td>
+<td style="text-align: left;">重连频率，反映网络/拓扑稳定性</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>pending_command_count</strong></td>
+<td style="text-align: left;">持续偏高 → 告警</td>
+<td style="text-align: left;">客户端积压的未确认命令数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>avg_pending_wait_ms</strong></td>
+<td style="text-align: left;">升高 → 告警</td>
+<td style="text-align: left;">未确认命令平均等待时间</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>dedup_key_count / dedup_key_memory_bytes</strong></td>
+<td style="text-align: left;">内存占用 &gt; Redis 5% → 告警</td>
+<td style="text-align: left;">去重 key 的高基数成本</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Backpressure 策略</strong>：当 pendingWaits 达到阈值（例如 10k）时，应立即降级写入模式（减小 batch / 暂停写入并切换为同步 WAIT / 开启同期持久化），并报警。</p>
+<h3 id="b1">附录 B.1: 进程崩溃重启恢复流程（示例）</h3>
+<p>当进程在未 drain 前崩溃时，仅持久化 pending batch 元数据还不够，建议按以下流程恢复：</p>
+<div class="codehilite"><pre><span></span><code>1. 进程重启时读取本地持久化的 pending batch 列表 (batch id + checksum + commands)
+2. 对每个 pending batch 在当前 master 上执行 EVAL 去重检查（或 WAIT）以确认是否已被执行
+3. 对未确认的 batch 做重放或人工审查（按业务要求决定是否重放）
+4. 记录恢复操作的 audit log 与监控事件
+</code></pre></div>
+
+<h2 id="c">附录 C: 实验测量误差与可复现性</h2>
+<blockquote>
+<p>当前数据表中未标注方差/标准差。建议每次 sweep 重复 N 次（例如 3~5 次）取均值 ± 标准差，以降低单次噪声（目前个别点出现 &gt;10% 的波动）。
+数据格式建议：<code>均值 ± 标准差 (N=5)</code>, 例如 <code>307,820 ± 12,300 (N=5)</code>。</p>
+</blockquote>
+<h2 id="d">附录 D: 环境细节补充</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">项目</th>
+<th style="text-align: left;">规格 / 说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Redis 版本</strong></td>
+<td style="text-align: left;">Redis 7.x Cluster，AOF 关闭 (appendonly no, 8.19 对比测试环境)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>客户端</strong></td>
+<td style="text-align: left;">Lettuce 6.x + Netty，<code>RedisClusterClient</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>容器 NIC 模式</strong></td>
+<td style="text-align: left;">Docker bridge（独立 <code>cluster-net</code> 网络）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>CPU</strong></td>
+<td style="text-align: left;">主机 CPU 型号 / 容器 CPU 限制（建议补充）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>JVM 参数</strong></td>
+<td style="text-align: left;"><code>-Xms512m -Xmx1g</code>（建议补充 GC 策略，如 <code>-XX:+UseG1GC</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>AOF fsync 策略</strong></td>
+<td style="text-align: left;">默认 everysec（对高并发写入有影响，建议注明）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="e">附录 E: 网络模拟精确性说明</h2>
+<p>模拟双向 RTT 的精确做法：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 在 client 端也注入 egress 延迟（使 request 和 response 各增加 T/2）</span>
+<span class="c1"># client 端:</span>
+tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>5ms
+
+<span class="c1"># server 端（已有的 master egress 注入）:</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>5ms
+
+<span class="c1"># 或者使用 netem 的 delay jitter 和 loss 参数模拟真实丢包/乱序环境：</span>
+docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>redis-cluster-1<span class="w"> </span>tc<span class="w"> </span>qdisc<span class="w"> </span>add<span class="w"> </span>dev<span class="w"> </span>eth0<span class="w"> </span>root<span class="w"> </span>netem<span class="w"> </span>delay<span class="w"> </span>10ms<span class="w"> </span>1ms<span class="w"> </span>loss<span class="w"> </span><span class="m">0</span>.1%
+</code></pre></div>
+
+<p>记录项：
+- 注入位置：ingress / egress（已在本文中说明）
+- <code>tc qdisc</code> 确切参数（delay, jitter, loss）
+- 延迟模拟的拓扑（仅 server egress，或同时 client egress）</p>
+<h2 id="f-drain">附录 F: Drain 实现注意事项</h2>
+<ul>
+<li>使用非阻塞/有界队列保存 pending futures，避免内存无限增长</li>
+<li>在专门的单线程/线程池中做 drain，避免写线程在 drain 时卡住</li>
+<li>对 <code>f.get(timeout)</code> 的 timeout 值做实验调优（建议对比 1ms / 5ms / 10ms 三档）</li>
+<li>记录 drain 耗时（P50/P99），确保每次 drain &lt; 1ms（热路径要求）</li>
+</ul>
+<h2 id="g">附录 G: 并发/连接数术语说明</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">术语</th>
+<th style="text-align: left;">本文中的含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>concurrency</strong></td>
+<td style="text-align: left;">并发 worker/线程数（每线程独立执行 Pipeline 循环）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>连接数</strong></td>
+<td style="text-align: left;">不同模式不同：<code>runSingle()</code> 用 1 条共享连接（autoFlush=false），<code>runMultiConn()</code> 中写连接 = <code>writeConcurrency</code>、读连接 = <code>readConcurrency</code>，分别独立建立</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>pipelineSize (batchSize)</strong></td>
+<td style="text-align: left;">每次 <code>flushCommands()</code> 前积攒的命令数</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>worker 内部循环</strong></td>
+<td style="text-align: left;">每个并发线程自己的 while 循环，共享 <code>running/workersStopped</code> 标志但不共享其他状态（除 AtomicLong 计数器）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="821-pipeline-eval">场景 8.21: Pipeline 内循环调用 EVAL 嵌套执行（已实测 ✅）</h2>
+<p>2026-08-04 实测，NESTED / MERGED / RAW 三种模式 × 三个 batchSize（100/500/1000）共 9 轮对比。</p>
+<h3 id="8211">8.21.1 背景与问题</h3>
+<div class="codehilite"><pre><span></span><code>场景 8.20 对比了"Pipeline 二选一"：一条 Pipeline vs 一条 EVAL。
+但生产代码里常见另一种模式——"嵌套"：
+
+  for (int i = 0; i &lt; batchSize; i++) {
+      pipeline.eval("return redis.call('INCRBY', KEYS[1], ARGV[1])", ...);
+  }
+  pipeline.flushCommands();
+  pipeline.awaitAll();
+
+本质: 一条 Pipeline 里塞了 batchSize 个 EVAL 命令
+→ 每个 EVAL 都是一个独立的小脚本，但都是同一个主线程串行执行
+→ Pipeline flush 后，batchSize 个 EVAL 在 Redis 主线程上**连续排队执行**
+</code></pre></div>
+
+<p><strong>与场景 8.20 的关键区别</strong>：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th style="text-align: center;">8.20 对比</th>
+<th style="text-align: center;">本场景 (嵌套)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一次请求</td>
+<td style="text-align: center;">1 个 EVAL 脚本（内做循环）</td>
+<td style="text-align: center;">batchSize 个独立 EVAL</td>
+</tr>
+<tr>
+<td>网络 RTT</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1（Pipeline 压缩）</td>
+</tr>
+<tr>
+<td>Redis 解析次数</td>
+<td style="text-align: center;">1 条 EVAL</td>
+<td style="text-align: center;">batchSize 条 EVAL（每条都要解析脚本体）</td>
+</tr>
+<tr>
+<td>主线程行为</td>
+<td style="text-align: center;">1 次调度</td>
+<td style="text-align: center;">batchSize 次调度，<strong>连续占用</strong></td>
+</tr>
+<tr>
+<td>对其他命令的影响</td>
+<td style="text-align: center;">仅在 EVAL 执行期间阻塞</td>
+<td style="text-align: center;">在全部 batchSize 个 EVAL 完成前持续阻塞</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8212-eval-eval">8.21.2 理论分析：为什么嵌套 EVAL 比单 EVAL 危害大</h3>
+<div class="codehilite"><pre><span></span><code>Redis 主线程视角（batchSize=100, 每个 EVAL 耗时 0.01ms）:
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 时间轴                                                               │
+│                                                                     │
+│ 单 EVAL（8.20）:                                                     │
+│   [其他命令] → [EVAL 0.01ms] → [其他命令] → [其他命令] → ...       │
+│   阻塞窗口: 0.01ms                                                   │
+│                                                                     │
+│ Pipeline 嵌套 EVAL（本场景）:                                         │
+│   [其他命令] → [EVAL₁] → [EVAL₂] → ... → [EVAL₁₀₀] → [其他命令]     │
+│                 └─── 连续占用 100 × 0.01ms = 1ms ──────────────┘     │
+│   阻塞窗口: 1ms（放大 100 倍）                                        │
+│                                                                     │
+│ 在此期间，ANY 其他连接的命令全部排队:                                   │
+│   HGETALL / SET / INCR / PUBLISH / EXPIRE / ...                    │
+│   → 全局命令延迟均匀飙升                                              │
+│   → 如果 batchSize=500，阻塞 5ms → P99 从 1ms 跳到 5ms+             │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<p><strong>根因</strong>：
+1. 每条 EVAL 在慢日志中只记录一行 <code>EVAL</code>，看不到脚本体（排查盲区）
+2. batchSize 个 EVAL 连续执行时，主线程在"解析脚本体 → 执行 → 返回"循环，其间不处理任何其他连接
+3. 如果脚本体内有循环/阻塞操作（如大 key 操作），每个 EVAL 耗时从 0.01ms 变为几十 ms，阻塞窗口指数级放大</p>
+<h3 id="8213">8.21.3 理论影响预估</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">batchSize</th>
+<th style="text-align: center;">单 EVAL 耗时</th>
+<th style="text-align: center;">总阻塞窗口</th>
+<th style="text-align: center;">P50 退化</th>
+<th style="text-align: center;">P99 退化</th>
+<th style="text-align: center;">风险等级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: center;">0.005ms (简单 INCR)</td>
+<td style="text-align: center;">0.5ms</td>
+<td style="text-align: center;">+0.5ms</td>
+<td style="text-align: center;">+0.5ms</td>
+<td style="text-align: center;">⚠️ 低</td>
+</tr>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: center;">0.1ms (复杂 Lua)</td>
+<td style="text-align: center;">10ms</td>
+<td style="text-align: center;">+10ms</td>
+<td style="text-align: center;">+10ms</td>
+<td style="text-align: center;">🔴 高</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: center;">0.005ms</td>
+<td style="text-align: center;">2.5ms</td>
+<td style="text-align: center;">+2.5ms</td>
+<td style="text-align: center;">+2.5ms</td>
+<td style="text-align: center;">⚠️ 中</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: center;">0.1ms</td>
+<td style="text-align: center;">50ms</td>
+<td style="text-align: center;">+50ms</td>
+<td style="text-align: center;">+50ms</td>
+<td style="text-align: center;">🔴 致命</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td style="text-align: center;">0.1ms</td>
+<td style="text-align: center;">100ms</td>
+<td style="text-align: center;">+100ms</td>
+<td style="text-align: center;">+100ms</td>
+<td style="text-align: center;">🔴 致命</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><code>单 EVAL 耗时</code> 取决于脚本逻辑复杂度和 key/value 大小。上表为理论推测值。</p>
+</blockquote>
+<h3 id="8214">8.21.4 规避方案</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">优先级</th>
+<th>方案</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td><strong>合并为单 EVAL</strong></td>
+<td>把 N 个独立 EVAL 的循环逻辑移入 <strong>1 个 EVAL 脚本内部</strong>——Lua 内做 for 循环，Redis 只调度 1 次，阻塞窗口 = 1 次 EVAL 耗时</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td><strong>拆散 Pipeline 中的 EVAL 密度</strong></td>
+<td>如果必须多个 EVAL，不要连续发——在 batch 中交错普通命令（SET/INCR），给主线程间歇处理其他连接的机会</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td><strong>限制 batchSize × EVAL 复杂度</strong></td>
+<td>设置 <code>maxBatchSize ≤ maxSafeBlockMs / avgEvalMs</code>，如目标阻塞 &lt;1ms，每个 EVAL 耗时 &lt;0.01ms，则 batchSize ≤ 100</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td><strong>Lua 脚本瘦身</strong></td>
+<td>确保每个 EVAL 脚本 O(1) 或 O(logN)，禁止循环、大 key HGETALL/SMEMBERS</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td><strong>监控告警</strong></td>
+<td>监控 <code>slowlog</code> 中 EVAL 命令的 max latency，若发现 EVAL 慢查询数量激增，排查是否是由嵌套 EVAL pool 导致的</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- ❌ 反模式: Pipeline 中 batchSize 个 EVAL（每条 EVAL 只做简单加）</span>
+<span class="c1">-- Pipeline flush 后，Redis 连续执行 100 个 EVAL 脚本解析 + 执行</span>
+
+<span class="c1">-- ✅ 改造: 合并为 1 个 EVAL，单次调度</span>
+<span class="kd">local</span><span class="w"> </span><span class="nv">total</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="kr">for</span><span class="w"> </span><span class="nv">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">#</span><span class="nv">KEYS</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="nv">total</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">total</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'INCRBY'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="nv">i</span><span class="p">],</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="nv">i</span><span class="p">])</span>
+<span class="kr">end</span>
+<span class="kr">return</span><span class="w"> </span><span class="nv">total</span>
+</code></pre></div>
+
+<h3 id="8215-nested-vs-merged-vs-raw3-3-sweep">8.21.5 实测：NESTED vs MERGED vs RAW（3 × 3 Sweep）</h3>
+<p><strong>测试环境</strong>：concurrency=16, keySpace=10000, warmup=10s + sample=15s。每轮独立 <code>FLUSHDB</code>。Side-channel 使用独立连接每 5ms 发一次 <code>HGETALL</code> 探测全局延迟。</p>
+<p><strong>三种模式定义</strong>：</p>
+<div class="codehilite"><pre><span></span><code>NESTED: Pipeline 中 batchSize 个独立 EVAL（每个 EVAL 1 次 INCRBY）
+   → Redis 主线程排队执行 batchSize 个小脚本，中间可被其他连接命令穿插
+
+MERGED: Pipeline 中 1 个 EVAL 脚本内 for 循环 batchSize 次 INCRBY
+   → Redis 主线程被 1 个大脚本独占，连续执行所有 INCRBY 后才放行
+
+RAW:    Pipeline 中 batchSize 个独立 INCRBY（零脚本，基线对比）
+   → 原生命令，无 Lua VM 解析/执行开销
+</code></pre></div>
+
+<p><strong>9 轮结果</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">batchSize</th>
+<th>模式</th>
+<th style="text-align: right;">ops/s</th>
+<th>p99</th>
+<th>sideP99</th>
+<th style="text-align: center;">slowlogΔ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><strong>100</strong></td>
+<td><strong>NESTED</strong></td>
+<td style="text-align: right;"><strong>191,044</strong></td>
+<td>20.60ms</td>
+<td>18.99ms</td>
+<td style="text-align: center;">6</td>
+</tr>
+<tr>
+<td style="text-align: center;">100</td>
+<td>MERGED</td>
+<td style="text-align: right;">4,660</td>
+<td>12.60ms</td>
+<td>12.75ms</td>
+<td style="text-align: center;">20</td>
+</tr>
+<tr>
+<td style="text-align: center;">100</td>
+<td>RAW</td>
+<td style="text-align: right;">455,483</td>
+<td>15.40ms</td>
+<td>14.95ms</td>
+<td style="text-align: center;">5</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>500</strong></td>
+<td><strong>NESTED</strong></td>
+<td style="text-align: right;"><strong>207,264</strong></td>
+<td>85.40ms</td>
+<td><strong>45.80ms</strong></td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td>MERGED</td>
+<td style="text-align: right;">1,281</td>
+<td>27.90ms</td>
+<td>28.28ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td>RAW</td>
+<td style="text-align: right;">575,859</td>
+<td>35.90ms</td>
+<td>23.21ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>1000</strong></td>
+<td><strong>NESTED</strong></td>
+<td style="text-align: right;"><strong>196,931</strong></td>
+<td>149.60ms</td>
+<td><strong>49.73ms</strong></td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td>MERGED</td>
+<td style="text-align: right;">600</td>
+<td>75.80ms</td>
+<td><strong>55.37ms</strong></td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td>RAW</td>
+<td style="text-align: right;">588,261</td>
+<td>70.50ms</td>
+<td>32.50ms</td>
+<td style="text-align: center;">0</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注意</strong>：MERGED 的 <code>ops/s</code> 是"批次数/秒"（每批仅 1 个 future），不是"命令数/秒"。等效 INCRBY 操作数 = ops/s × batchSize。如 MERGED B1000 实际等效约 <code>600 × 1000 = 600K</code> 次 INCRBY/s，超过 NESTED 的 197K，但代价是全局 sideP99 最差。</p>
+</blockquote>
+<h3 id="8216">8.21.6 关键发现</h3>
+<p><strong>1. NESTED 吞吐远超 MERGED（但算法收益倒挂）</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">batchSize</th>
+<th style="text-align: center;">NESTED (ops/s)</th>
+<th style="text-align: center;">MERGED (ops/s)</th>
+<th style="text-align: center;">倍率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: center;">191K</td>
+<td style="text-align: center;">4.6K</td>
+<td style="text-align: center;"><strong>41x</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: center;">207K</td>
+<td style="text-align: center;">1.3K</td>
+<td style="text-align: center;"><strong>162x</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td style="text-align: center;">197K</td>
+<td style="text-align: center;">600</td>
+<td style="text-align: center;"><strong>328x</strong></td>
+</tr>
+</tbody>
+</table>
+<p>MERGED 的 <code>ops/s</code> 看起来极低，但<strong>等效 INCRBY 操作数其实不低</strong>。</p>
+<p>以 B1000 为例：
+- MERGED: 600 批/s × 1000 次 INCRBY/批 = <strong>600K 次 INCRBY/s</strong>（等效 &gt; NESTED 的 197K）
+- 代价：1 次 EVAL 独占主线程 1000 次循环 → <strong>全局 sideP99 = 55.37ms</strong>（最差）</p>
+<p><strong>NESTED 的优势不是"更快"，而是"不独占"</strong>——Pipeline 中的 1000 个独立 EVAL 在 Redis 主线程上排队执行，中间可以被其他连接的命令穿插，全局延迟影响更平缓。</p>
+<p><strong>2. Side-channel P99 揭示真相</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">batchSize</th>
+<th style="text-align: center;">NESTED sideP99</th>
+<th style="text-align: center;">MERGED sideP99</th>
+<th style="text-align: center;">RAW sideP99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: center;"><strong>18.99ms</strong></td>
+<td style="text-align: center;">12.75ms</td>
+<td style="text-align: center;">14.95ms</td>
+</tr>
+<tr>
+<td style="text-align: center;">500</td>
+<td style="text-align: center;">45.80ms</td>
+<td style="text-align: center;"><strong>28.28ms</strong></td>
+<td style="text-align: center;">23.21ms</td>
+</tr>
+<tr>
+<td style="text-align: center;">1000</td>
+<td style="text-align: center;"><strong>49.73ms</strong></td>
+<td style="text-align: center;"><strong>55.37ms</strong> ※</td>
+<td style="text-align: center;">32.50ms</td>
+</tr>
+</tbody>
+</table>
+<p>※ <strong>B1000 时 MERGED sideP99 反超 NESTED</strong>：单个大 EVAL 独占主线程 1000 次循环的伤害，超过了 1000 个独立小 EVAL 排队。</p>
+<p><strong>MERGED 的 sideP99 随 batchSize 增长的斜率更大</strong>：</p>
+<div class="codehilite"><pre><span></span><code>sideP99 增长:
+  RAW:    15ms → 23ms → 33ms   (线性，斜率 ≈ 1.5x per step)
+  NESTED: 19ms → 46ms → 50ms   (渐近收敛，斜率递减)
+  MERGED: 13ms → 28ms → 55ms   (超线性，斜率递增)  ← 危险信号
+</code></pre></div>
+
+<p><strong>3. RAW Pipeline INCRBY 是绝对基线</strong></p>
+<p>三个 batchSize 下 RAW 都是最快的，且 sideP99 最低。<strong>零脚本开销是王道</strong>——能不用 EVAL 就不用。</p>
+<p><strong>4. MERGED slowlog 在 batchSize=100 时最差（Δ=20）</strong></p>
+<p>B100 时 MERGED 有 20 条慢查询，而 B500/B1000 反而为 0。原因：B100 时 Lua 脚本的循环次数少（100 次），每次调度耗时 0.07ms（=<code>1000ms / 4.6K ops/s</code>），恰好在 slowlog 阈值边缘。B500/B1000 时单次 EVAL 执行时间虽更长，但总调度次数少，巧合地避开了 slowlog 采样。</p>
+<h3 id="8217">8.21.7 实测结论</h3>
+<div class="codehilite"><pre><span></span><code>实测结论（c=16, batchSize=100/500/1000）:
+  1. NESTED EVAL 可行：吞吐稳定 190-207K ops/s，sideP99 控制在 19-50ms
+  2. MERGED EVAL 危险：sideP99 随 batchSize 超线性增长，B1000 时 sideP99=55ms（反超 NESTED）
+  3. RAW 最佳：零脚本开销，吞吐 455-588K，sideP99 最低（15-33ms）
+  4. 分界点约在 batch=100：超过后 MERGED 的全局阻塞伤害开始超过 NESTED 的脚本解析开销
+  5. 能不用 EVAL 就不用：3 个 batchSize 下 RAW 吞吐是 NESTED 的 2.4-3.0 倍
+</code></pre></div>
+
+<h3 id="8218">8.21.8 更新后的规避方案</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">优先级</th>
+<th>方案</th>
+<th>调整</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td><strong>优先考虑 RAW 原生命令</strong></td>
+<td>✅ 实测：吞吐 3x NESTED，sideP99 最低，能用 INCRBY/HSET/SET 就别用 EVAL</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td><strong>合并为单 EVAL（MERGED）</strong></td>
+<td>⚠️ 实测：仅 batchSize ≤ 100 可用，超线后 sideP99 反超 NESTED，造成全局延迟恶化</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td><strong>拆散 EVAL 密度（NESTED）</strong></td>
+<td>✅ 实测：P99 随 batchSize 渐近收敛，sideP99 低于 MERGED，是妥协方案</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td><strong>限制 batchSize ≤ 100</strong></td>
+<td>✅ 实测：100 以内 NESTED sideP99=19ms，MERGE sideP99=13ms，均可控</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td><strong>Lua 脚本瘦身</strong></td>
+<td>理论仍成立：O(1) 脚本、禁循环、禁大 key 操作</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最终推荐</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ✅ 最优：RAW 原生命令（零脚本，最高吞吐）</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">batchSize</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">incrby</span><span class="p">(</span><span class="n">keys</span><span class="o">[</span><span class="n">i</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="n">vals</span><span class="o">[</span><span class="n">i</span><span class="o">]</span><span class="p">));</span><span class="w">  </span><span class="c1">// 455-588K ops/s</span>
+<span class="p">}</span>
+
+<span class="c1">// ⚠️ 妥协：NESTED EVAL（batchSize ≤ 100，需要 Lua 原子性时）</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">100</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">eval</span><span class="p">(</span><span class="n">lua</span><span class="p">,</span><span class="w"> </span><span class="n">keys</span><span class="o">[</span><span class="n">i</span><span class="o">]</span><span class="p">,</span><span class="w"> </span><span class="n">vals</span><span class="o">[</span><span class="n">i</span><span class="o">]</span><span class="p">));</span><span class="w">  </span><span class="c1">// ~191K ops/s</span>
+<span class="p">}</span>
+
+<span class="c1">// ❌ 高风险：MERGED EVAL（batchSize &gt; 100 时 sideP99 恶化）</span>
+<span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">eval</span><span class="p">(</span><span class="n">mergedLua</span><span class="p">,</span><span class="w"> </span><span class="n">allKeys</span><span class="p">,</span><span class="w"> </span><span class="n">allArgs</span><span class="p">));</span><span class="w">  </span><span class="c1">// 全局阻塞，sideP99 55ms+</span>
+</code></pre></div>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>高并发写入测试总结 · 小番茄程序猿</title>
+<meta name="description" content="高并发写入测试总结 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>高并发写入测试总结</h1>
+  </div>
+  <article class="prose">
+<h1 id="_1">高并发写入测试总结</h1>
+<blockquote>
+<p>日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka</p>
+</blockquote>
+<hr />
+<h2 id="_2">〇、独立存储测试（四轮，模拟生产分机部署）</h2>
+<blockquote>
+<p><strong>目的</strong>: 生产环境各存储独立物理机，当前 4C/8T 挤在一起测的是 CPU 争抢下限。
+分别测每个存储单独写入的极限，对应"某台机器上某个存储能接多少流量"。</p>
+</blockquote>
+<h3 id="_3">测试方法</h3>
+<p>每轮注释掉其他三个存储的写入，只保留一个：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">轮次</th>
+<th>写入目标</th>
+<th>模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td><strong>仅 MySQL</strong></td>
+<td>sync（消费者线程直接 batchInsert）</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td><strong>仅 Redis</strong></td>
+<td>async（taskExecutor 异步 pipeline）</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td><strong>仅 ES</strong></td>
+<td>async（taskExecutor → bulk processor）</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td><strong>仅 Mongo</strong></td>
+<td>async（taskExecutor 批量写入）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="qps">独立存储 QPS 数据</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">并发</th>
+<th style="text-align: center;">MySQL (sync)</th>
+<th style="text-align: center;">Redis (async)</th>
+<th style="text-align: center;">ES (async)</th>
+<th style="text-align: center;">Mongo (async)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: center;">3,169</td>
+<td style="text-align: center;">3,347</td>
+<td style="text-align: center;">4,210</td>
+<td style="text-align: center;"><strong>5,110</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">150</td>
+<td style="text-align: center;">6,057</td>
+<td style="text-align: center;">4,856</td>
+<td style="text-align: center;">6,110</td>
+<td style="text-align: center;"><strong>6,789</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">200</td>
+<td style="text-align: center;">6,216</td>
+<td style="text-align: center;">5,294</td>
+<td style="text-align: center;">6,522</td>
+<td style="text-align: center;"><strong>7,135</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">250</td>
+<td style="text-align: center;">7,623</td>
+<td style="text-align: center;">5,688</td>
+<td style="text-align: center;">6,582</td>
+<td style="text-align: center;"><strong>7,627</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">300</td>
+<td style="text-align: center;"><strong>8,437</strong></td>
+<td style="text-align: center;">5,967</td>
+<td style="text-align: center;">6,678</td>
+<td style="text-align: center;">7,845</td>
+</tr>
+</tbody>
+</table>
+<h3 id="p95-300">P95 延迟对比 @ 300 并发</h3>
+<table>
+<thead>
+<tr>
+<th>存储</th>
+<th style="text-align: center;">峰值 QPS</th>
+<th style="text-align: center;">P95 延迟</th>
+<th style="text-align: center;">平均延迟</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MySQL</td>
+<td style="text-align: center;"><strong>8,437</strong></td>
+<td style="text-align: center;">~47ms</td>
+<td style="text-align: center;">~11ms</td>
+</tr>
+<tr>
+<td>Mongo</td>
+<td style="text-align: center;">7,845</td>
+<td style="text-align: center;">49.8ms</td>
+<td style="text-align: center;">15.0ms</td>
+</tr>
+<tr>
+<td>ES</td>
+<td style="text-align: center;">6,678</td>
+<td style="text-align: center;">61.4ms</td>
+<td style="text-align: center;">18.3ms</td>
+</tr>
+<tr>
+<td>Redis</td>
+<td style="text-align: center;">5,967</td>
+<td style="text-align: center;">~68ms</td>
+<td style="text-align: center;">~22ms</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vs">独立测试 vs 全量写入对比</h3>
+<div class="codehilite"><pre><span></span><code>全量写入 (版本 C, 四个存储一起): 峰值 6,826 QPS @ 250 并发
+独立 MySQL 写入:                 峰值 8,437 QPS @ 300 并发  (+24%)
+独立 Mongo 写入:                 峰值 7,845 QPS @ 300 并发  (+15%)
+独立 ES 写入:                    峰值 6,678 QPS @ 300 并发  (接近全量)
+独立 Redis 写入:                 峰值 5,967 QPS @ 300 并发  (-13% vs 全量!)
+</code></pre></div>
+
+<h3 id="_4">关键发现</h3>
+<ol>
+<li><strong>MySQL sync 才是真天花板</strong>: 消费者线程直接 batchInsert，零调度开销，单存储撑到 <strong>8,437 QPS</strong></li>
+<li><strong>Mongo 异步最为均衡</strong>: 7,845 QPS + P95 仅 49.8ms，稳定性和吞吐都是一流</li>
+<li><strong>Redis "最快"的神话被打碎</strong>: async 模式下 5,967 QPS 垫底，线程调度开销反超 I/O 收益</li>
+<li><strong>ES 是全量写入的"锚点"</strong>: 独立 6,678 接近全量 6,826，说明 ES 的 bulk processor 是整个链路的主要瓶颈</li>
+<li><strong>分机部署预估</strong>: 如果四个存储各独立部署 4C+，Java 应用 4C，预计可冲到 <strong>10,000~12,000 QPS</strong></li>
+</ol>
+<hr />
+<h2 id="_5">一、架构概览</h2>
+<div class="codehilite"><pre><span></span><code>HTTP → Controller → 拆分 user[] → RingBuffer → Producer → Kafka (4 partition)
+                                                                    ↓
+                                                    3 个 Kafka Consumer (并发消费)
+                                                       ↓
+                                                    写入 4 个存储
+</code></pre></div>
+
+<p><strong>关键组件:</strong>
+- <code>KafkaBatchConsumer</code>: 3 个消费者线程，批拉 + 分库写入
+- <code>taskExecutor</code>: 线程池 core=16 / max=32 / 队列=1000 / <strong>CallerRunsPolicy</strong></p>
+<hr />
+<h2 id="_6">二、测试的三个版本</h2>
+<h3 id="a-es-3-round-1">版本 A: ES 同步 + 3 异步 (Round 1)</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">CasUtil</span><span class="p">.</span><span class="na">runSafe</span><span class="p">(()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">bulkProcessorESService</span><span class="p">.</span><span class="na">batchBulkWrite</span><span class="p">(</span><span class="n">list</span><span class="p">));</span><span class="w">  </span><span class="c1">// ES 同步，阻塞消费者</span>
+
+<span class="n">CompletableFuture</span><span class="p">.</span><span class="na">allOf</span><span class="p">(</span>
+<span class="w">    </span><span class="n">Redis</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">,</span><span class="w">   </span><span class="c1">// 异步</span>
+<span class="w">    </span><span class="n">MySQL</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">,</span><span class="w">   </span><span class="c1">// 异步</span>
+<span class="w">    </span><span class="n">Mongo</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="w">    </span><span class="c1">// 异步</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<h3 id="b-4-round-2">版本 B: 全部 4 异步 (Round 2)</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">CompletableFuture</span><span class="p">.</span><span class="na">allOf</span><span class="p">(</span>
+<span class="w">    </span><span class="n">Redis</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">,</span><span class="w">   </span><span class="c1">// 异步</span>
+<span class="w">    </span><span class="n">MySQL</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">,</span><span class="w">   </span><span class="c1">// 异步</span>
+<span class="w">    </span><span class="n">ES</span><span class="w">     </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">,</span><span class="w">   </span><span class="c1">// 异步</span>
+<span class="w">    </span><span class="n">Mongo</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="w">    </span><span class="c1">// 异步</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<h3 id="c-mysql-3-round-3">版本 C: MySQL 同步 + 3 异步 (Round 3, 原始版, 最终最优)</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">CasUtil</span><span class="p">.</span><span class="na">runSafe</span><span class="p">(()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">batchInsertService</span><span class="p">.</span><span class="na">batchInsert</span><span class="p">(</span><span class="n">list</span><span class="p">));</span><span class="w">  </span><span class="c1">// MySQL 同步，阻塞消费者</span>
+
+<span class="n">CompletableFuture</span><span class="p">.</span><span class="na">allOf</span><span class="p">(</span>
+<span class="w">    </span><span class="n">Redis</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">,</span><span class="w">   </span><span class="c1">// 异步</span>
+<span class="w">    </span><span class="n">ES</span><span class="w">     </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="p">,</span><span class="w">   </span><span class="c1">// 异步</span>
+<span class="w">    </span><span class="n">Mongo</span><span class="w">  </span><span class="err">→</span><span class="w"> </span><span class="n">taskExecutor</span><span class="w">    </span><span class="c1">// 异步</span>
+<span class="p">);</span>
+</code></pre></div>
+
+<hr />
+<h2 id="_7">三、逐版本数据</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">并发</th>
+<th style="text-align: center;">版本 A (ES 同步)</th>
+<th style="text-align: center;">版本 B (4 异步)</th>
+<th style="text-align: center;">版本 C (MySQL 同步, 最优)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">100</td>
+<td style="text-align: center;">3,708</td>
+<td style="text-align: center;">3,374</td>
+<td style="text-align: center;"><strong>4,466</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">150</td>
+<td style="text-align: center;">4,054</td>
+<td style="text-align: center;">4,427</td>
+<td style="text-align: center;"><strong>6,541</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">200</td>
+<td style="text-align: center;">5,263</td>
+<td style="text-align: center;">5,008</td>
+<td style="text-align: center;"><strong>6,797</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">250</td>
+<td style="text-align: center;">4,781</td>
+<td style="text-align: center;">5,544</td>
+<td style="text-align: center;"><strong>6,826</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">300</td>
+<td style="text-align: center;">5,530</td>
+<td style="text-align: center;">5,372</td>
+<td style="text-align: center;"><strong>6,534</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>峰值</strong></td>
+<td style="text-align: center;"><strong>5,530</strong></td>
+<td style="text-align: center;"><strong>5,544</strong></td>
+<td style="text-align: center;"><strong>6,826</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">四、拖慢因素分析</h2>
+<h3 id="1-casutilrunsafe">因素 1: <code>CasUtil.runSafe</code> 同步阻塞消费者线程</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>机制</th>
+<th>耗时</th>
+<th>影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ES sync</strong> (版本 A)</td>
+<td>Kafka 消费者线程调 <code>bulkAsync().get()</code>，等 HTTP 返回</td>
+<td>~10-30ms/批</td>
+<td>3 个消费者线程每批都要等，消费吞吐被压 ~40%</td>
+</tr>
+<tr>
+<td><strong>MySQL sync</strong> (版本 C)</td>
+<td>Kafka 消费者线程调 <code>userMapper.batchInsert()</code>，等 DB 返回</td>
+<td>~2-5ms/批</td>
+<td>阻塞微小，不影响整体吞吐</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>版本 A 为什么差:
+  3 个消费者线程 × 每批阻塞 10-30ms → 每个消费者每秒少处理 30-50 批
+  → RingBuffer 释放变慢 → Producer 端反压 → 整体 QPS 跌 40%
+</code></pre></div>
+
+<h3 id="2-callerrunspolicy">因素 2: CallerRunsPolicy — 线程池退化为同步 (核心杀手)</h3>
+<div class="codehilite"><pre><span></span><code>taskExecutor 配置:
+  core=16, max=32, queue=1000, CallerRunsPolicy
+
+当 16 个核心线程全忙 + 队列 1000 满 → 新任务由调用者线程直接执行
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th>taskExecutor 并发需求</th>
+<th>CallerRuns 触发频率</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>版本 A (3 async)</td>
+<td>3 消费者 × 3 任务 = 9</td>
+<td>低</td>
+<td>偶尔退化</td>
+</tr>
+<tr>
+<td>版本 B (4 async)</td>
+<td>3 消费者 × 4 任务 = 12</td>
+<td><strong>高</strong></td>
+<td>频繁退化</td>
+</tr>
+<tr>
+<td>版本 C (3 async)</td>
+<td>3 消费者 × 3 任务 = 9</td>
+<td>低</td>
+<td>偶尔退化</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>版本 B 为什么会退化:
+  4 个 async 任务 ÷ 16 core 线程 = 看似够用
+  但 Redis/ES/Mongo/MySQL 都是 I/O 密集型，线程在等网络 I/O 时不释放 CPU
+  → 16 个线程 × 60s keepAlive = 线程长期占用
+  → 新批次到达 → queue(1000) 快速填满 → CallerRuns 触发
+  → Kafka 消费者线程被迫同步执行 ES/Redis/Mongo 写入 ❌
+  → 等于又在消费者线程上同步等 I/O，和版本 A 一样的悲剧
+</code></pre></div>
+
+<h3 id="3-4c8t">因素 3: 4C/8T 物理天花板</h3>
+<div class="codehilite"><pre><span></span><code>CPU 核心: 4 核 8 线程 (含超线程)
+线程总数: Kafka 3 消费者 + taskExecutor 16 core + GC + 系统 ≈ 20+
+CPU 绑定的极限: ~5,000-5,500 QPS (版本 A/B 反复撞)
+版本 C 突破: ~6,800 QPS
+
+版本 C 为什么能突破天花板?
+  MySQL sync 在消费者线程做，不走 taskExecutor
+  → 减少了 3 个 taskExecutor 争抢 (12 → 9)
+  → CallerRuns 大幅减少
+  → 消费者线程虽然同步等 MySQL，但 MySQL 是本地 Docker，延迟极低
+  → 用 ~3ms 的"等"换来了 taskExecutor 的充分释放
+</code></pre></div>
+
+<h3 id="4-batchinsert-db-queueoffer">因素 4: <code>batchInsert()</code> 是真实 DB 写，不是 <code>queue.offer()</code></h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// BatchInsertService.java line 67-71</span>
+<span class="nd">@Transactional</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">batchInsert</span><span class="p">(</span><span class="n">List</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="w"> </span><span class="n">userList</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">userMapper</span><span class="p">.</span><span class="na">batchInsert</span><span class="p">(</span><span class="n">userList</span><span class="p">);</span><span class="w">  </span><span class="c1">// ← 真正的 DB 批量 insert，不是入队！</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>这个发现很重要:
+  - 版本 C 的 MySQL "同步" = 真的同步执行 DB insert，不是 queue.offer
+  - 但它比"4 异步"版本反而更快
+  - 说明: 在有限资源下，减少线程调度开销 &gt; 消除 I/O 阻塞
+
+  如果改成 queue.offer() 入队 + 定时刷盘，理论上还能更快，
+  但版本 C 已经是实测最优。
+</code></pre></div>
+
+<hr />
+<h2 id="_9">五、设计原则总结</h2>
+<table>
+<thead>
+<tr>
+<th>原则</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>异步 ≠ 更快</strong></td>
+<td>当一个有限线程池被多个 I/O 任务打满，异步的线程切换开销 + CallerRuns 反噬会抵消异步收益</td>
+</tr>
+<tr>
+<td><strong>CallerRunsPolicy 是把双刃剑</strong></td>
+<td>防止 OOM (拒绝任务) 但会在高负载时把异步拉回同步，形成正反馈恶化</td>
+</tr>
+<tr>
+<td><strong>减少 taskExecutor 并发任务数是关键</strong></td>
+<td>从 4→3 个任务，QPS 提升了 +27%</td>
+</tr>
+<tr>
+<td><strong>消费者线程做低成本同步操作是可接受的</strong></td>
+<td>MySQL 本地批量 insert (~3ms) 在消费者线程做，比扔进过载线程池 + 上下文切换更高效</td>
+</tr>
+<tr>
+<td><strong>4C/8T 物理极限 ~6,800 QPS</strong></td>
+<td>当前架构在这个硬件上的天花板</td>
+</tr>
+<tr>
+<td><strong>独立存储测试验证了"同步不一定慢"</strong></td>
+<td>MySQL sync 8,437 &gt; Redis async 5,967，线程调度开销在 CPU 紧张时远大于 I/O 阻塞</td>
+</tr>
+<tr>
+<td><strong>生产环境预估 10,000+ QPS</strong></td>
+<td>四存储分离部署 + Java 独立，解除 CPU 争抢后预期可达 10,000~12,000 QPS</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_10">六、如果要继续优化</h2>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>预期收益</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>分离部署</strong> (各存储独立物理机)</td>
+<td><strong>10,000~12,000 QPS</strong></td>
+<td>独立测试 MySQL 8,437 + 释放 CPU 争抢</td>
+</tr>
+<tr>
+<td><strong>更多 CPU 核心</strong> (8C/16T 以上)</td>
+<td>直接提高物理天花板</td>
+<td>当前 4C/8T 是绝对瓶颈</td>
+</tr>
+<tr>
+<td><strong>Mongo/ES/Redis 都改成 sync</strong></td>
+<td>+15~20% 吞吐</td>
+<td>sync 消除了 taskExecutor 线程调度开销</td>
+</tr>
+<tr>
+<td><strong>拆分线程池</strong> (每个存储独立线程池)</td>
+<td>避免争抢，隔离故障</td>
+<td>当前共享 taskExecutor 是一刀切</td>
+</tr>
+<tr>
+<td><strong>MySQL 改为 queue.offer 入队模式</strong></td>
+<td>彻底消除消费者线程阻塞</td>
+<td>但版本 C 已经够快，增益有限</td>
+</tr>
+<tr>
+<td><strong>增加 Kafka 消费者线程数</strong> (3→6)</td>
+<td>提速消费</td>
+<td>需要更多 CPU 支撑</td>
+</tr>
+<tr>
+<td><strong>ES: 不用 bulk processor，改 sync</strong></td>
+<td>消除 BulkProcessor 内部调度开销</td>
+<td>独立 ES 6,678 低于 Mongo 7,845</td>
+</tr>
+</tbody>
+</table>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

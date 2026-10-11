@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>补测B9：连接泄漏与长连接治理 · 小番茄程序猿</title>
+<meta name="description" content="补测B9：连接泄漏与长连接治理 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>补测B9：连接泄漏与长连接治理</h1>
+  </div>
+  <article class="prose">
+<h1 id="b9">补测B9：连接泄漏与长连接治理</h1>
+<h2 id="_1">一、问题背景</h2>
+<p><strong>连接泄漏</strong>：获取数据库连接后忘记释放，连接池/数据库连接被<strong>慢性耗尽</strong>，最终报 <code>Too many connections</code> 雪崩。是生产环境最常见的"隐藏故障"（进程运行几天/几周后连接缓慢涨满）。</p>
+<h2 id="_2">二、原理</h2>
+<div class="codehilite"><pre><span></span><code>复用(正确释放)                        泄漏(忘记释放)
+try (Connection c = pool.get()) {      Connection c = pool.get();  // 不关闭
+    ...                                ...
+}   // 自动 close，连接回池复用         // 永不释放，连接一直占用
+
+连接数稳定                             连接数持续增长
+                                       → 连接池耗尽 → Too many connections 雪崩
+</code></pre></div>
+
+<ul>
+<li><strong>长连接复用</strong>：try-with-resources 正确释放，连接回池复用，连接数稳定。</li>
+<li><strong>连接泄漏</strong>：获取不释放，连接永久占用，慢性耗尽。</li>
+</ul>
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始连接状态</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/compare"</span>
+
+<span class="c1"># 2. 长连接复用（正确释放,50次）— 连接数应稳定</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/reuse?count=50"</span>
+
+<span class="c1"># 3. 模拟泄漏（50个不释放）— 连接数应 +50</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/leak?count=50"</span>
+
+<span class="c1"># 4. 泄漏后对比（连接数增长、使用率攀升）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/compare"</span>
+
+<span class="c1"># 5. 治理:释放泄漏连接</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/recover"</span>
+
+<span class="c1"># 6. 治理后对比（连接回落）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn-leak/compare"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>连接数变化</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>初始</td>
+<td>9（使用率0.9%）</td>
+<td>健康</td>
+</tr>
+<tr>
+<td><strong>复用</strong>（正确释放50次）</td>
+<td><strong>9 → 9（+0）</strong></td>
+<td>连接池复用，不增长</td>
+</tr>
+<tr>
+<td><strong>泄漏</strong>（50个不释放）</td>
+<td><strong>9 → 59（+50）</strong></td>
+<td>连接慢性耗尽</td>
+</tr>
+<tr>
+<td>泄漏后</td>
+<td>59（使用率5.9%）</td>
+<td>连接池被占用</td>
+</tr>
+<tr>
+<td><strong>治理</strong>（释放）</td>
+<td><strong>→ 9</strong></td>
+<td>连接回落，恢复健康</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心对比</strong>：复用 50 次连接数 <strong>+0</strong>，泄漏 50 个连接数 <strong>+50</strong>。泄漏会慢性耗尽连接池，正确释放（复用）是根治。</p>
+<h2 id="_5">五、治理方案</h2>
+<ol>
+<li><strong>try-with-resources</strong>：Java 用 try-with-resources 保证连接自动释放，杜绝泄漏。</li>
+<li><strong>连接池生命周期</strong>：设 <code>max-lifetime</code>（如 30 分钟）、<code>idle-timeout</code>，过期/空闲连接自动回收。</li>
+<li><strong>监控告警</strong>：监控 <code>Threads_connected</code>，使用率超 80% 告警，提前发现泄漏。</li>
+<li><strong>泄漏检测</strong>：HikariCP <code>leakDetectionThreshold</code> 检测连接泄漏并告警。</li>
+<li><strong>快速失败</strong>：连接池 <code>connectionTimeout</code> 快速失败，不无限等待。</li>
+<li><strong>代码审查</strong>：排查所有获取连接未释放的路径（异常分支尤其容易漏）。</li>
+</ol>
+<h2 id="_6">六、面试简述</h2>
+<blockquote>
+<p><strong>连接泄漏治理</strong>：获取连接不释放会慢性耗尽连接池，最终 Too many connections 雪崩。实测复用（try-with-resources）50 次连接数 0 增长，泄漏 50 个连接数 +50。治理：try-with-resources 保证释放、连接池设 max-lifetime/leakDetectionThreshold、监控 Threads_connected 使用率超 80% 告警、快速失败。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

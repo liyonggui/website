@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>我发出去的文章里有一句承重墙是错的（第 4 篇更正） · 小番茄程序猿</title>
+<meta name="description" content="我发出去的文章里有一句承重墙是错的（第 4 篇更正） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../assets/css/style.css"/>
+<link rel="stylesheet" href="../assets/css/article.css"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../index.html">首页</a>
+      <a href="../projects.html">项目</a>
+      <a href="../blog.html" class="active">博客</a>
+      <a href="../deep.html">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../blog.html">← 返回博客索引</a>
+    <h1>我发出去的文章里有一句承重墙是错的（第 4 篇更正）</h1>
+  </div>
+  <article class="prose">
+<h1 id="4">我发出去的文章里有一句承重墙是错的（第 4 篇更正）</h1>
+<blockquote>
+<p>「高并发实测」系列 · 第 4 篇更正。</p>
+<p>第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条评论：<strong>"后续若能公开 gold 样例及逐题相关块标注，会更方便读者复算 0.55 的来源。"</strong></p>
+<p>我去查代码准备材料，然后发现：<strong>0.55 确实可以复算，但一复算，我文章里那句解释和它在算术上直接矛盾；再往下查，我用来宣布"核心结论安全"的那句"零噪声"，也是错的。</strong></p>
+<p><strong>这篇是更正。三处，一层比一层深。</strong></p>
+</blockquote>
+<h2 id="_1">〇、一分钟带走版</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>第 4 篇里的原话</th>
+<th>真相</th>
+<th>怎么查出来的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>①</td>
+<td>"每道题的答案只落在 <strong>1 个块</strong>，保留 4 块，所以 precision@4 被压死"</td>
+<td><strong>11/20 = 0.55，平均每题 2.2 块被判相关，不是 1 块。</strong> 若真只有 1 块，读数应该是 0.25</td>
+<td>读 <code>contextPrecision</code> 的实现，反算分母</td>
+</tr>
+<tr>
+<td>②</td>
+<td>"hit@1 / MRR……<strong>不经过任何模型裁判，零噪声</strong>"</td>
+<td><strong>MRR 的相关性标签就是 LLM 打的</strong>（<code>relevanceLabels</code> 调裁判）。确定性只存在于"拿到标签之后"那一步</td>
+<td>读 <code>relevanceLabels</code></td>
+</tr>
+<tr>
+<td>③</td>
+<td>（这句我<strong>没写</strong>，但它才是正解）</td>
+<td><strong>语料库总共 10 块，topK=4 就是交出去 40% 的库。</strong> precision@4 在这个设置下测的是<strong>语料库的属性</strong>，不是检索器的质量</td>
+<td><code>run.log</code>：入库 10 个语料块</td>
+</tr>
+</tbody>
+</table>
+<p><strong>第 4 篇的结论收缩成一句</strong>：<strong>检索没坏。</strong> 而"MRR 才是对的尺子"这句要降级——<strong>那把尺子也歪，只是歪在不同的方向。</strong></p>
+<blockquote>
+<p>全文关键词：RAG 评测、precision@k、MRR、LLM-as-judge、指标可复算性、自我更正。</p>
+</blockquote>
+<h2 id="_2">一、先说这条评论为什么对</h2>
+<p>我写第 4 篇的时候，"局限"那一节自己列了一条：</p>
+<blockquote>
+<p><strong>我没有重新推导 RAGAS 的 precision@k 加权公式。</strong> 文中只说"答案占几块会压低它"这个方向性结论，具体 0.55 是怎么加权出来的我没有逐题复算。</p>
+</blockquote>
+<p><strong>这位读者做的正是我说我没做的那件事</strong>——他说"把逐题标注放出来，我们复算一下 0.55"。</p>
+<p><strong>而我的代码其实支持复算</strong>，因为我的实现根本不是 RAGAS 那个带排名加权的版本。这是我没料到的：<strong>我复刻了指标的名字，没复刻它的算法，然后在文章里用了 RAGAS 的名义。</strong></p>
+<h2 id="055-1120">二、第一层：0.55 = 11/20，一复算就和我自己的解释打架</h2>
+<p><code>RagEvalService.java:220</code> 的实现：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">private</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="nf">contextPrecision</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">q</span><span class="p">,</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">chunks</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">JsonNode</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">askJudge</span><span class="p">(</span><span class="s">"对每个编号片段判断是否与【问题】相关，只输出JSON：{\"labels\":[0或1按序]}。"</span>
+<span class="w">            </span><span class="o">+</span><span class="w"> </span><span class="s">"\n【问题】"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">q</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"\n【片段】\n"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">sb</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">rel</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">JsonNode</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">labels</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="p">.</span><span class="na">asInt</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="n">rel</span><span class="o">++</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="w"> </span><span class="n">rel</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">chunks</span><span class="p">.</span><span class="na">size</span><span class="p">();</span><span class="w">     </span><span class="c1">// ← 就这一行</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong><code>相关块数 ÷ 保留块数</code>，没有排名加权。</strong> topK=4、5 道题，分母恒为 <strong>20</strong>。于是所有可能的读数都必须是 <code>整数 / 20</code>：</p>
+<table>
+<thead>
+<tr>
+<th>读数</th>
+<th style="text-align: right;">等价于</th>
+<th style="text-align: center;">是否整数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>0.55</strong></td>
+<td style="text-align: right;"><strong>11 / 20</strong></td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td>0.50（run3）</td>
+<td style="text-align: right;">10 / 20</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td>0.25（我文中提到的难题）</td>
+<td style="text-align: right;">1 / 4</td>
+<td style="text-align: center;">✅</td>
+</tr>
+</tbody>
+</table>
+<p><strong>闭合了。0.55 完全可以复算，这位读者要的东西是存在的。</strong></p>
+<p><strong>但 11/20 同时说明：平均每题有 2.2 块被裁判判成"相关"，不是 1 块。</strong></p>
+<p>我在第 4 篇<strong>第二节</strong>写的是"<strong>每道题的答案只落在 1 个块</strong>，而我保留了 4 个块"——<strong>如果那是对的，读数应该是 0.25，不可能是 0.55。</strong> 我写的解释和它要解释的那个数字，<strong>在算术上直接矛盾</strong>。</p>
+<p><strong>为什么会判到 2.2 块？</strong> 因为裁判判的是"<strong>是否与问题相关</strong>"，不是"<strong>是否含答案</strong>"。这是两个完全不同的标准：事故复盘里讲"错峰"的那一段，和"错峰安排在几点"这个问题<strong>确实主题相关</strong>，但只有含具体时刻的那一块才是答案。</p>
+<p><strong>所以 0.55 反映的是主题相关度，不是答案定位能力。</strong> 这跟我原文说的机制<strong>根本是两回事</strong>——而且我那个版本还更不成立。</p>
+<h3 id="_3">⬜ 待填：逐题计数表</h3>
+<table>
+<thead>
+<tr>
+<th>题号</th>
+<th style="text-align: right;">保留块数</th>
+<th style="text-align: right;">被判相关</th>
+<th style="text-align: right;">该题 precision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1–5</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">⬜</td>
+<td style="text-align: right;">⬜</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td style="text-align: right;"><strong>20</strong></td>
+<td style="text-align: right;"><strong>⬜（应=11）</strong></td>
+<td style="text-align: right;"><strong>⬜（应=0.55）</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>这张表现在还不存在。</strong> <code>RagEvalService.java:105</code> 是 <code>sP += contextPrecision(...)</code>——<strong>只累加，不落盘</strong>，所以 <code>eval-median.json</code> 里只有聚合值。要出这张表得改代码加 per-case 输出再重跑。</p>
+<p><strong>在它填上之前，这篇不发布。</strong> 理由很直接：<strong>一篇主张"别把没跑出来的东西写成结论"的文章，自己不能带着一张没跑的表发出去。</strong></p>
+<h2 id="_4">三、第二层：那句"零噪声"是错的，我用来护住核心结论的那句话塌了</h2>
+<p>第 4 篇<strong>第五节</strong>我写了：</p>
+<blockquote>
+<p>"<code>hit@1=1.0</code>、<code>mrr=1.0</code>、逐 case 首现排名全为 1——<strong>这些是数排名算出来的，不经过任何模型裁判，零噪声。</strong>"</p>
+</blockquote>
+<p><strong>而且同一句话还出现在第 4 篇开头的"一分钟带走版"表里</strong>（"排序质量，确定性计算，零噪声"）——<strong>也就是说，最先被读者看到的那一格里，错得最干脆。</strong></p>
+<p><strong>不成立。</strong> <code>RagEvalService.java:164</code>：</p>
+<div class="codehilite"><pre><span></span><code><span class="kd">private</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">relevanceLabels</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">q</span><span class="p">,</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">Document</span><span class="o">&gt;</span><span class="w"> </span><span class="n">pool</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">JsonNode</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">askJudge</span><span class="p">(</span><span class="s">"对下列【编号从0】片段逐条判断是否与【问题】相关，只输出JSON："</span>
+<span class="w">            </span><span class="o">+</span><span class="w"> </span><span class="s">"{\"labels\":[0或1，按编号顺序，长度=片段数]}。…"</span><span class="p">);</span>
+</code></pre></div>
+
+<p><strong>MRR 的相关性标签就是这个裁判打的。</strong> 后面的 <code>firstRelevantRank()</code> 和 <code>mrr()</code> 确实确定性——<strong>但那是"给定标签之后"确定性。</strong></p>
+<p>准确的说法是：<strong>MRR = LLM 判定标签 + 确定性排名计算。</strong> 它和 precision@k <strong>共享同一个宽松裁判</strong>，区别只在于拿标签做什么（数个数 vs 看首位排名），<strong>不在于用不用标签。</strong></p>
+<p><strong>而且这个宽松裁判对 MRR 的侵蚀比对 precision 更隐蔽。</strong> <code>vectorFirstRelevantRank = 1</code> 我一直读成"答案块排在第 1"，<strong>但它真正的含义只是"第一条被裁判认定为主题相关"</strong>——<strong>而向量检索拿到这个结论几乎是免费的。</strong></p>
+<blockquote>
+<p><strong>所以第 4 篇那个反转，比我写的弱得多。</strong> 原文的骨架是"precision 是坏尺子、MRR 是好尺子"。真相是：<strong>两把尺子共享同一个宽松标签，它们读数的差异只说明"同一批标签被拿去做不同的事"，说明不了哪把对。</strong></p>
+</blockquote>
+<h2 id="_5">四、第三层：这一条我原文根本没写，但它才是最该用的解释</h2>
+<p><code>run.log</code> 里那行字：</p>
+<div class="codehilite"><pre><span></span><code>入库完成：10 个语料块来自 2 个文件
+</code></pre></div>
+
+<p><strong>整个语料库 10 块。而 topK=4——每次交出 40% 的库。</strong></p>
+<p>在这个设置下问"这 4 块里有几块相关"，<strong>答案主要由语料库本身的主题集中度决定，而不是由检索器好坏决定。</strong> 一份只有 10 块、主题就那两件事的库，随便取 4 块，"相关"的比例都不会低。</p>
+<p><strong>这才是 precision@4 = 0.55 难看而 MRR = 1.0 满分的真正原因</strong>，比我在第 4 篇给的解释干净得多：<strong>它是算术，不是观点。</strong></p>
+<p>（顺带：第 4 篇<strong>第三节</strong>那张"precision@k vs hit@1/MRR"对比表里，"天花板被 k 压死"这一格也一并作废——<strong>同一个错误我写了三遍。</strong>）</p>
+<p>而且它顺带说明另一件事——<strong><code>/evalrank</code> 的 <code>pool=10</code> 意味着候选池就是全库</strong>，所谓"排序质量满分"，是在一个 10 项的列表上排第一。<strong>这个 1.0 的分量，远比我文章里暗示的要轻。</strong></p>
+<h2 id="4_1">五、那第 4 篇还剩什么</h2>
+<table>
+<thead>
+<tr>
+<th>第 4 篇的结论</th>
+<th>更正后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>检索没坏</td>
+<td>✅ <strong>仍然成立</strong>，而且这是唯一一条不受影响的</td>
+</tr>
+<tr>
+<td>precision@4=0.55 是"指标假象"，不是检索差</td>
+<td>🟡 <strong>方向对，理由错</strong>。真实理由是"宽松裁判 + 40% 库占比"，不是"答案只占 1 块"</td>
+</tr>
+<tr>
+<td>MRR 才是对的尺子，它零噪声</td>
+<td>❌ <strong>降级</strong>。同一个宽松标签，只是用法不同</td>
+</tr>
+<tr>
+<td>rerank 让 precision 0.55→0.50 是噪声</td>
+<td>✅ <strong>反而更稳</strong>。<code>eval-median.json</code> 显示<strong>同一批次内</strong> CP 就在 0.55/0.55/0.50 之间摆，0.05 的差连组内都没跨过</td>
+</tr>
+<tr>
+<td>跨批次 relevancy 范围 0.11 是组内 spread 的 2.2 倍</td>
+<td>✅ 成立，且 <code>eval-median.json</code> 佐证了组内确实是 0.05（min 0.86 / max 0.91）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句总结：第 4 篇最大的问题不是算错，是它用一把我以为是好的尺子，去否定另一把尺子——而两把尺子共享同一个刻度误差。</strong></p>
+<h2 id="gold">六、关于"公开 gold 集"：我答应复算路径，但不原样贴题目</h2>
+<p>我在评论里承诺了"gold 集和逐题标注会连同更正一起放出"。这里把边界说清楚，因为它涉及别人的东西。</p>
+<p><strong>语料是两个文件</strong>：一份 Redis 编码笔记，<strong>一份内部事故复盘</strong>。5 道 gold 题里有 3 道出自那份复盘——<strong>它们分别是一个运维时间窗、一次生产事故的根因、一个性能指标。</strong></p>
+<p><strong>这些不是我的信息，原样贴出来就是泄露。</strong> 而且这比我在别处删掉的框架名、项目名具体得多。</p>
+<p><strong>但复算 0.55 根本不需要题目原文，只需要那张逐题计数表。</strong> 所以我打算公开的是：</p>
+<ul>
+<li>✅ 指标实现（本文第二节已贴）</li>
+<li>✅ 分母构成（topK=4 × 5 题 = 20）</li>
+<li>✅ 逐题相关块计数（重跑后补）</li>
+<li>✅ <code>eval-median.json</code> 全文（<strong>里面只有数字，不含任何语料内容</strong>）</li>
+<li>✅ 语料构成说明：<strong>2 个文件、10 个块，一份通用编码笔记 + 一份不外发的内部复盘</strong></li>
+<li>❌ gold 题目原文、chunk 正文</li>
+</ul>
+<p><strong>这样读者的诉求被完整满足，客户的内容不外流。</strong> 而且"3/5 道题来自事故复盘、复盘文档主题集中"这句话本身，就是第四节那个解释的一部分——<strong>它比原文更有信息量。</strong></p>
+<h2 id="_6">七、机制：我为什么会犯，以及怎么防</h2>
+<p><strong>根因只有一句：我继承了来源的解释，没有自己复算。</strong></p>
+<p><code>phase2-rag/README.md</code> 里写着"小语料每题答案只落在 1 块"。我读到它，觉得合理，就写进了文章。<strong>而 0.55 = 11/20 这件事，看一眼 <code>contextPrecision</code> 那行 <code>return rel / chunks.size()</code> 就能在 30 秒内发现矛盾。</strong></p>
+<p><strong>更难看的是：我在"局限"里明明写了"我没有逐题复算"。</strong> 我把风险披露了，然后照样用了那个结论。<strong>披露不等于豁免——它只是让你错得有名目。</strong></p>
+<p>三条现在落到流程里的防线：</p>
+<ol>
+<li><strong>凡引用一个指标读数，先读它的实现代码，再反算一次分母分子。</strong> 反算不出整数（或不出合理离散值）就说明你对它的理解有问题。</li>
+<li><strong>"零噪声 / 不经过模型"这类断言，必须能指到具体那一行代码。</strong> 我当时要是去查 <code>mrr()</code> 的输入从哪来，第一眼就会看到 <code>askJudge</code>。</li>
+<li><strong>样本量要写进指标名字里。</strong> "10 块的库取 4 块"这种事实，应该在第一次报 precision@4 时就跟着数字出现，而不是等到别人来问。</li>
+</ol>
+<h2 id="_7">八、局限（这篇也一样先说）</h2>
+<ul>
+<li><strong>本文的三处更正，全部基于读代码和读已有产物，没有重跑。</strong> 逐题计数表（第二节）是<strong>待填状态</strong>，填上之前这篇不发。</li>
+<li><strong>我没有改 <code>contextPrecision</code> 去实现真正的 RAGAS 排名加权版本。</strong> 所以"我的实现和 RAGAS 不同名同实"这个批评，我只能承认，不能反驳——<strong>文章里用"RAGAS 四指标"这个名字，本身就不够准确，应该写成"RAGAS 风格的自实现四指标"。</strong></li>
+<li><strong><code>relevanceLabels</code> 的宽松程度我没有量化。</strong> 比如让裁判在"是否含答案"和"是否主题相关"两种问法下各跑一遍，看标签差多少——<strong>这个实验没做，所以第三、四节的机制解释是推理，不是测量。</strong></li>
+<li><strong>10 块语料 / topK=4 这个设置下的结论，不能外推到正常规模的库。</strong> 换成 500 块取 5 块，precision@k 立刻有意义。</li>
+</ul>
+<h2 id="_8">写在最后</h2>
+<p>这个系列的名字叫"结论只能被跑出来"。</p>
+<p><strong>第 4 篇是我自己写的一篇，违反了自己的标题。</strong> 我用了一个没复算的数字、一把没查过来源的尺子，还专门在"局限"里写了一句"我没复算"，然后照常把结论发了出去。</p>
+<p>抓出来它的不是我自己，<strong>是一条 45 个字的人类评论</strong>。</p>
+<p>所以这篇真正想留下来的，不是那三处更正的具体内容，而是这件事：<strong>把可复算的材料摊开，让别人有机会不同意你——这比自己检查一遍更有效。</strong> 我写了四篇"要复算"，最后是别人要求我复算，才发现我自己在最核心的地方没复算。</p>
+<p>八股可以被背，结论只能被跑出来。这篇是第 4 篇的更正，也是这个系列第一次把刀口对着自己。</p>
+<hr />
+<p><strong>系列目录（「高并发实测」）</strong></p>
+<table>
+<thead>
+<tr>
+<th>篇</th>
+<th>标题</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>别再死背 44 字节了：Redis String 三种编码压测</td>
+<td>已发</td>
+</tr>
+<tr>
+<td>2</td>
+<td>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</td>
+<td>已发</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Agent 工程化实测：p95 从 836ms 降到 12ms</td>
+<td>已发</td>
+</tr>
+<tr>
+<td>4</td>
+<td>RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</td>
+<td>已发，<strong>本文更正其第二、三、五节</strong></td>
+</tr>
+<tr>
+<td>5</td>
+<td>我发出去的文章里有一句承重墙是错的（第 4 篇更正）</td>
+<td><strong>本文</strong></td>
+</tr>
+</tbody>
+</table>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

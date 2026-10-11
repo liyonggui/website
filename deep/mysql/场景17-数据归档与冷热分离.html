@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景17：数据归档与冷热分离 · 小番茄程序猿</title>
+<meta name="description" content="场景17：数据归档与冷热分离 —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景17：数据归档与冷热分离</h1>
+  </div>
+  <article class="prose">
+<h1 id="17">场景17：数据归档与冷热分离</h1>
+<h2 id="_1">一、问题背景</h2>
+<p>业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致：
+- 查询需扫全表（含大量历史冷数据），<strong>性能下降</strong>
+- 索引变大，缓存命中率降低
+- 备份、迁移、统计耗时</p>
+<p><strong>冷热分离归档</strong>：把超期历史<strong>冷数据</strong>搬到归档表，热表只保留近期高频数据，实现"热表瘦身 → 查询快"。</p>
+<h2 id="_2">二、核心思路</h2>
+<div class="codehilite"><pre><span></span><code>订单大表（冷热混合，180000行）
+        │  按时间归档（30天前=冷数据）
+        ├──&gt; t_order_archive（归档表，冷数据，量大，少访问）
+        └──&gt; t_order_data（热表，近期热数据，瘦身，高频访问）
+</code></pre></div>
+
+<h2 id="_3">三、演示接口</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 初始化冷热混合数据（12个月，每天500行，近30天为热）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/archive/init?months=12&amp;perDay=500&amp;hotDays=30"</span>
+
+<span class="c1"># 2. 冷热分布分析（按月统计，识别冷热边界）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/archive/analyze"</span>
+
+<span class="c1"># 3. 执行冷热分离归档（30天前为冷数据）</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/archive/archive?archiveDays=30"</span>
+
+<span class="c1"># 4. 冷热表状态概览</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/archive/status"</span>
+
+<span class="c1"># 5. 冷热查询性能对比</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/archive/bench?concurrency=50&amp;total=10000"</span>
+
+<span class="c1"># 6. 重置</span>
+curl<span class="w"> </span><span class="s2">"http://localhost:8080/archive/reset"</span>
+</code></pre></div>
+
+<h2 id="_4">四、实测结果</h2>
+<h3 id="1">1. 初始化与归档</h3>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>热表行数</th>
+<th>归档表行数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>归档前（冷热混合）</td>
+<td>180000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>归档后（30天前为冷）</td>
+<td><strong>15500</strong>（瘦身 11.6 倍）</td>
+<td>164500</td>
+</tr>
+</tbody>
+</table>
+<p>归档 164500 条冷数据，热表从 18 万瘦身到 1.55 万行。</p>
+<h3 id="2-50">2. 冷热查询性能对比（并发50）</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>QPS</th>
+<th>p99Ms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>归档表（冷数据，量大 164500 行）</strong></td>
+<td>108</td>
+<td>1998</td>
+</tr>
+<tr>
+<td><strong>热表（瘦身后，量小 15500 行）</strong></td>
+<td><strong>1223</strong></td>
+<td>148</td>
+</tr>
+<tr>
+<td><strong>提升</strong></td>
+<td><strong>约 11 倍</strong></td>
+<td>13 倍</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>数据量小 → 索引有效 + 缓存命中高 → 查询快。冷热分离把高频热数据单独存放，是典型的"以空间/管理成本换查询性能"。</p>
+</blockquote>
+<h2 id="_5">五、工程要点</h2>
+<ol>
+<li><strong>冷热边界按业务定</strong>：如订单 90 天、日志 30 天、交易流水按账期。</li>
+<li><strong>归档方式</strong>：<code>INSERT INTO 归档表 SELECT ... WHERE create_time &lt; 边界</code> + 删除热表冷数据，放<strong>事务/分批</strong>执行。</li>
+<li><strong>归档表设计</strong>：与热表同构 + <code>archive_time</code> 记录归档时间，冷数据按需查询。</li>
+<li><strong>更优方案</strong>：<strong>MySQL 分区表</strong>（按时间分区，DROP 过期分区），或归档到<strong>数仓/OSS/ES</strong>。</li>
+<li><strong>冷数据访问</strong>：归档后从归档表/数仓查历史，热表只服务高频实时查询。</li>
+<li><strong>定时任务</strong>：用定时任务（cron/XXL-JOB）周期归档，避免一次性大事务。</li>
+</ol>
+<h2 id="_6">六、面试简述</h2>
+<blockquote>
+<p><strong>冷热分离归档</strong>：数据累积导致大表查询慢，把超期冷数据归档到归档表、热表瘦身。实测 18 万行订单表归档 30 天前冷数据后，热表瘦身到 1.55 万行（11.6 倍），查询吞吐从 108 提到 1223（约 11 倍），p99 从 1998ms 降到 148ms。原理：数据量小→索引有效+缓存命中高。工程上用定时任务按业务边界归档，或 MySQL 分区表 DROP 过期分区，冷数据放数仓/OSS 按需查询。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

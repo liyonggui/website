@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等） · 小番茄程序猿</title>
+<meta name="description" content="场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</h1>
+  </div>
+  <article class="prose">
+<h1 id="4-innodb-sx">场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</h1>
+<p>在"间隙锁 / Next-Key Lock"基础上，补齐 InnoDB 锁体系的其余核心技术点。所有演示基于 <code>t_gap_lock</code> 表。</p>
+<h2 id="vs-sx">一、共享锁 vs 排他锁（S/X）</h2>
+<table>
+<thead>
+<tr>
+<th>锁类型</th>
+<th>SQL</th>
+<th>特性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>共享锁（S）</td>
+<td><code>SELECT ... LOCK IN SHARE MODE</code></td>
+<td>兼容，多个事务可同时持有</td>
+</tr>
+<tr>
+<td>排他锁（X）</td>
+<td><code>SELECT ... FOR UPDATE</code> / UPDATE / DELETE</td>
+<td>互斥</td>
+</tr>
+</tbody>
+</table>
+<p><strong>兼容矩阵（实测 <code>/innodb-lock/sx</code>）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>A 持有</th>
+<th>B 尝试</th>
+<th>B 等待实测</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>X</td>
+<td>X</td>
+<td><strong>1501ms</strong></td>
+<td>互斥</td>
+</tr>
+<tr>
+<td>S</td>
+<td>X</td>
+<td><strong>1501ms</strong></td>
+<td>冲突（S 锁不兼容 X）</td>
+</tr>
+<tr>
+<td>S</td>
+<td>S</td>
+<td><strong>2ms</strong></td>
+<td>兼容（可并发读）</td>
+</tr>
+</tbody>
+</table>
+<p>并发共享锁（<code>/innodb-lock/sx/concurrent-shared</code>）：两个事务同时持 S 锁均成功（S+S 兼容）。</p>
+<h2 id="vs-innodb-locksnapshot-current">二、当前读 vs 快照读（<code>/innodb-lock/snapshot-current</code>）</h2>
+<p>实测（REPEATABLE READ 下）：</p>
+<div class="codehilite"><pre><span></span><code>snapshotBefore: "A-10"           ← 事务B第一次快照读，建立快照
+snapshotAfter:  "A-10"           ← A提交修改后，B快照读仍读旧值（MVCC快照）
+currentRead:    "MODIFIED-BY-A"  ← B当前读(FOR UPDATE)读最新已提交值
+</code></pre></div>
+
+<p><strong>核心</strong>：
+- <strong>快照读</strong>（普通 SELECT）：走 MVCC，事务内第一次读固定快照，不加锁
+- <strong>当前读</strong>（<code>FOR UPDATE</code>/<code>LOCK IN SHARE MODE</code>/UPDATE）：读最新已提交值 + 加锁</p>
+<h2 id="innodb-lockno-index-fulltable">三、无索引条件全表锁（<code>/innodb-lock/no-index-fulltable</code>）</h2>
+<p>事务 A 用无索引条件（<code>note</code>）UPDATE 一行，实测：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B 插入任意新行</td>
+<td><strong>被阻塞约 2001ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：无索引条件的 UPDATE/DELETE 会<strong>锁全表所有间隙</strong>，即使插入位置与更新行无关，也会被阻塞。生产应避免大范围无索引 UPDATE。</p>
+<h2 id="innodb-lockinsert-intention">四、插入意向锁（<code>/innodb-lock/insert-intention</code>）</h2>
+<ul>
+<li>A 锁 category='A' 间隙后，B/C 往该间隙插入被阻塞（等待 A 释放）</li>
+<li>A 释放后，B/C <strong>可并发插入不同位置</strong>（插入意向锁之间兼容）</li>
+</ul>
+<p>实测：B/C 均等待约 10 秒后插入成功（被 A 间隙锁阻塞；A 释放后并发插入）。</p>
+<h2 id="innodb-lockdiagnose">五、锁等待诊断（<code>/innodb-lock/diagnose</code>）</h2>
+<p>制造 A 持排他锁，诊断当前锁与事务：</p>
+<div class="codehilite"><pre><span></span><code>locks: [TABLE IX, RECORD X,REC_NOT_GAP]   ← 意向排他锁 + 排他记录锁
+trx:   [id=..., state=RUNNING]            ← 事务状态
+</code></pre></div>
+
+<p><strong>说明</strong>：事务加行锁前先在表上加<strong>意向锁（IX/IS）</strong>，与表锁高效判断兼容性；通过 <code>data_locks</code>/<code>innodb_trx</code> 可诊断锁与事务状态。</p>
+<h2 id="isix">六、意向锁（IS/IX）兼容矩阵（理论）</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>IS</th>
+<th>IX</th>
+<th>S</th>
+<th>X</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IS</td>
+<td>兼容</td>
+<td>兼容</td>
+<td>兼容</td>
+<td>冲突</td>
+</tr>
+<tr>
+<td>IX</td>
+<td>兼容</td>
+<td>兼容</td>
+<td>冲突</td>
+<td>冲突</td>
+</tr>
+<tr>
+<td>S</td>
+<td>兼容</td>
+<td>冲突</td>
+<td>兼容</td>
+<td>冲突</td>
+</tr>
+<tr>
+<td>X</td>
+<td>冲突</td>
+<td>冲突</td>
+<td>冲突</td>
+<td>冲突</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键</strong>：IX/IX 兼容（多事务可同时加行锁）；S（表锁）与 IX 冲突——即 <code>LOCK TABLES READ</code> 会阻塞行级写。</p>
+<h2 id="_1">七、完整锁技术点清单</h2>
+<table>
+<thead>
+<tr>
+<th>技术点</th>
+<th>演示</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>记录锁 / 间隙锁 / Next-Key Lock</td>
+<td><code>/gaplock/*</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>间隙锁阻塞插入</td>
+<td><code>/gaplock/insert-block</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>间隙锁死锁</td>
+<td><code>/gaplock/deadlock</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Next-Key 锁范围</td>
+<td><code>/gaplock/locks</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>S/X 锁兼容矩阵</td>
+<td><code>/innodb-lock/sx</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>当前读 vs 快照读</td>
+<td><code>/innodb-lock/snapshot-current</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>无索引全表锁</td>
+<td><code>/innodb-lock/no-index-fulltable</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>插入意向锁</td>
+<td><code>/innodb-lock/insert-intention</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>锁等待诊断</td>
+<td><code>/innodb-lock/diagnose</code></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">八、面试简述</h2>
+<blockquote>
+<p><strong>InnoDB 锁完整体系</strong>：行锁分 S（共享）/X（排他），S/S 兼容、S/X 与 X/X 互斥（实测 X/X、S/X 阻塞 1.5s，S/S 立即）；行锁前加表级意向锁（IS/IX），IX/IX 兼容、S 与 IX 冲突。锁分记录锁、间隙锁、Next-Key Lock：主键等值只锁记录，非唯一索引/范围查询锁间隙防幻读，无索引条件锁全表。普通 SELECT 走 MVCC 快照读不加锁，FOR UPDATE 走当前读加锁（实测快照读读旧值、当前读读最新值）。</p>
+</blockquote>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>

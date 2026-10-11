@@ -1,0 +1,2365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>功能正确性验证（Windows PowerShell） · 小番茄程序猿</title>
+<meta name="description" content="功能正确性验证（Windows PowerShell） —— 小番茄程序猿的技术文章。"/>
+<link rel="stylesheet" href="../../assets/css/style.css"/>
+<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/pygments.css"/>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">小番茄程序猿<span>.</span>dev</div>
+    <nav class="nav-links" id="navLinks">
+      <a href="../../index.html">首页</a>
+      <a href="../../projects.html">项目</a>
+      <a href="../../blog.html">博客</a>
+      <a href="../../deep.html" class="active">深度</a>
+    </nav>
+    <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  </div>
+</header>
+<main>
+  <div class="article-head">
+    <a class="back" href="../../deep.html">← 返回深度技术</a>
+    <h1>功能正确性验证（Windows PowerShell）</h1>
+  </div>
+  <article class="prose">
+<h2 id="9">场景 9: 集合运算（合并/交集/差集）高并发压测</h2>
+<h3 id="91">9.1 背景与问题</h3>
+<div class="codehilite"><pre><span></span><code>Redis Set 集合运算（SINTER/SUNION/SDIFF）复杂度：
+
+  SINTER k1 k2 ... kk  →  Redis 会选择最小的输入集合作为遍历基准，
+                          遍历其 S 个 member，对其它集合做 O(1) 哈希查找，
+                          总体复杂度约 O(S * (k-1))，S = size(最小集合)，k = 输入集合数
+  SUNION k1 k2 ... kk  →  将所有集合的 member 全部合并、去重后返回 → O(sum Ni)
+  SDIFF k1 k2 ... kk   →  遍历第一个集合（同 SINTER 策略），排除其它集合中存在的 → O(N1 + sum(N2..Nk))
+
+  注意：若客户端总是把大集合放在第一个参数，会放大成本；
+        部分客户端/库可能自动重排以最小集合优先，但多数不保证此行为。
+
+  当 ① 集合 size 大 且 ② 并发连接多 时：
+
+  Worker-1 ── SINTER big:set:1 big:set:2 ─┐
+  Worker-2 ── SUNION big:set:1 big:set:3 ─┤
+  Worker-3 ── SDIFF big:set:2 big:set:4 ──┤ → 全部排队在 Redis 命令执行主线程
+  Worker-4 ── SINTERSTORE dst big:set:1... ─┘
+
+  → Redis 命令执行主线程 CPU 迅速饱和
+  → 集合越大、并发越高，吞吐反降
+  → 需要找到吞吐天花板 vs 集合大小的拐点
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>Redis 命令执行模型:
+  - 命令逻辑在主线程串行执行（command execution 单线程）
+  - Redis 6+ 可开启 I/O 线程并行化网络读写，但不并行执行命令逻辑
+  - Redis Modules 和某些后台任务可能使用线程，但普通命令仍按主线程串行处理
+  - 结论：CPU 密集型集合运算仍受主线程瓶颈限制
+
+（以下为本次测试环境观测值，具体数值依赖 CPU 型号、Redis 版本、网络延迟、数据编码等）:
+  - 10K 成员集合上的 SINTER 单次耗时约 ~0.3ms
+  - 100 并发时全部排队 → P50 从 &lt;1ms 恶化到 &gt;30ms
+  - 50 并发 × 10K 成员时吞吐仅 ~5K ops/sec
+</code></pre></div>
+
+<p><strong>集合运算是 CPU 密集型命令中最危险的一类——小集合时毫秒级，大集合时秒级，极易触发 slowlog。</strong></p>
+<hr />
+<h3 id="911">9.1.1 实际应用场景</h3>
+<blockquote>
+<p>集合运算并非 Redis 的冷门功能——在社交、电商、广告、风控、推荐等核心业务中广泛使用。</p>
+</blockquote>
+<h4 id="_1">社交关系</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>共同好友</strong></td>
+<td style="text-align: left;"><code>SINTER user:A:friends user:B:friends</code></td>
+<td style="text-align: left;">微信"你们共同的好友"、脉脉共同人脉</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>你可能认识的人</strong></td>
+<td style="text-align: left;"><code>SDIFF user:B:friends user:A:friends</code></td>
+<td style="text-align: left;">B 的好友中 A 不认识的 → 推荐给 A</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>全部社交圈</strong></td>
+<td style="text-align: left;"><code>SUNION user:A:friends user:B:friends</code></td>
+<td style="text-align: left;">两人的好友并集 → 推荐来源池</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>群聊成员分析</strong></td>
+<td style="text-align: left;"><code>SINTER group:tech:members group:product:members</code></td>
+<td style="text-align: left;">同时在两个群的人</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>增量维护</strong></td>
+<td style="text-align: left;">实时 <code>SADD user:xxx:friends "zhangsan"</code></td>
+<td style="text-align: left;">每次加好友 &lt; 1μs，无需异步</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_2">电商 / 标签系统</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>多标签筛选</strong></td>
+<td style="text-align: left;"><code>SINTER tag:手机 tag:5G tag:性价比</code></td>
+<td style="text-align: left;">同时满足三个标签的商品</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>同类推荐</strong></td>
+<td style="text-align: left;"><code>SDIFF tag:商品B tag:商品A</code></td>
+<td style="text-align: left;">商品 B 有但 A 没有的标签 → 推荐理由</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>用户兴趣汇总</strong></td>
+<td style="text-align: left;"><code>SUNION user:1:interests user:2:interests</code></td>
+<td style="text-align: left;">两人兴趣并集 → 内容候选池</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_3">广告投放 / 精准营销</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>多条件受众定向</strong></td>
+<td style="text-align: left;"><code>SINTER age:25-35 city:tier1 has_car active:7d</code></td>
+<td style="text-align: left;">四条人群包求交集</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>排除已转化用户</strong></td>
+<td style="text-align: left;"><code>SDIFF target already:bought already:clicked</code></td>
+<td style="text-align: left;">待投放 - 已购买 - 已点击</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>全量覆盖池</strong></td>
+<td style="text-align: left;"><code>SUNION segment:tech segment:elite segment:parents</code></td>
+<td style="text-align: left;">多个细分人群合并</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_4">权限与风控</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>权限校验</strong></td>
+<td style="text-align: left;"><code>SINTER user:perms resource:/api/admin:req</code></td>
+<td style="text-align: left;">用户权限 ∩ 接口所需 → 不为空则放行</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>黑名单过滤</strong></td>
+<td style="text-align: left;"><code>SDIFF pending:approve blacklist:users</code></td>
+<td style="text-align: left;">待放行 - 黑名单</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>风控多维度拦截</strong></td>
+<td style="text-align: left;"><code>SINTER risk:diff_city risk:pwd_change risk:serial_register</code></td>
+<td style="text-align: left;">同时命中三个风险维度 → 高危</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_5">内容推荐 / 协同过滤</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>协同过滤</strong></td>
+<td style="text-align: left;"><code>SINTER video:123:viewers video:456:viewers</code></td>
+<td style="text-align: left;">看过同一批视频的用户 → 兴趣相似</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>去重推荐</strong></td>
+<td style="text-align: left;"><code>SDIFF candidates user:123:viewed user:123:disliked</code></td>
+<td style="text-align: left;">候选 - 已看 - 已踩</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>内容池合并</strong></td>
+<td style="text-align: left;"><code>SUNION hot:today friends:read channel:tech:new</code></td>
+<td style="text-align: left;">多来源内容合并去重</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_6">物流 / 运营 / 游戏</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>多仓现货</strong></td>
+<td style="text-align: left;"><code>SINTER wh:beijing wh:shanghai wh:shenzhen</code></td>
+<td style="text-align: left;">三仓都有货的 SKU</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>活动发奖</strong></td>
+<td style="text-align: left;"><code>SDIFF (SINTER signin:7d share:article) reward:claimed</code></td>
+<td style="text-align: left;">签到+分享 - 已领奖</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>共同战绩</strong></td>
+<td style="text-align: left;"><code>SINTER player:A:cleared player:B:cleared</code></td>
+<td style="text-align: left;">两玩家都通关的关卡</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>爬虫去重</strong></td>
+<td style="text-align: left;"><code>SDIFF crawl:new_urls crawl:history</code></td>
+<td style="text-align: left;">新 URL - 历史已抓</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_7">三个核心模式总结</h4>
+<div class="codehilite"><pre><span></span><code>SINTER  →  "同时满足 A 且 B 且 C"  →  共同好友、多标签筛选、多条件定向、权限校验
+SDIFF   →  "有 A 但没有 B"         →  推荐新人、排除已转化、去重、缺货、黑名单过滤
+SUNION  →  "A 加上 B 的合集"      →  全量覆盖池、多来源合并、多仓储汇总
+</code></pre></div>
+
+<p>这些场景的共同特征：<strong>需要快速判断某个 member 是否属于某个集合</strong>——这正是 Set 哈希结构 O(1) 查找的核心优势。</p>
+<h3 id="92">9.2 测试目标</h3>
+<p>验证 Redis 在真实并发压力下，各类集合运算的正确性与性能天花板：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">维度</th>
+<th style="text-align: left;">目标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>功能正确性</strong></td>
+<td style="text-align: left;">SINTER/SUNION/SDIFF + Store 变体 + Sorted Set ZUNION/ZINTER + SSCAN/ZSCAN 等全部返回正确结果</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>吞吐天花板</strong></td>
+<td style="text-align: left;">不同集合大小 × 不同并发度下的最大 ops/sec</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>延迟分布</strong></td>
+<td style="text-align: left;">集合大小对 P50/P99 的影响</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SMOVE/SSCAN 等辅助命令</strong></td>
+<td style="text-align: left;">跨 key 原子操作在高并发下的稳定性</td>
+</tr>
+</tbody>
+</table>
+<h3 id="93-26">9.3 功能正确性验证（单线程，26 项全部通过）</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">测例</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">预期</th>
+<th style="text-align: left;">结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">2-key 交集</td>
+<td style="text-align: left;"><code>SINTER k1 k2</code> (a,b,c ∩ b,c,d)</td>
+<td style="text-align: left;">{b,c}</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;">2-key 并集</td>
+<td style="text-align: left;"><code>SUNION k1 k2</code></td>
+<td style="text-align: left;">{a,b,c,d}</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">2-key 差集</td>
+<td style="text-align: left;"><code>SDIFF k1 k2</code> k1-k2</td>
+<td style="text-align: left;">{a}</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">4</td>
+<td style="text-align: left;">交集存储</td>
+<td style="text-align: left;"><code>SINTERSTORE dst k1 k2</code></td>
+<td style="text-align: left;">count=2</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">并集存储</td>
+<td style="text-align: left;"><code>SUNIONSTORE dst k1 k2</code></td>
+<td style="text-align: left;">count=4</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">6</td>
+<td style="text-align: left;">差集存储</td>
+<td style="text-align: left;"><code>SDIFFSTORE dst k1 k2</code></td>
+<td style="text-align: left;">count=1</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">7</td>
+<td style="text-align: left;">3-key 交集</td>
+<td style="text-align: left;"><code>SINTER k1 k2 k3</code> (a,b,c,d ∩ b,c,e ∩ b,c,f)</td>
+<td style="text-align: left;">{b,c}</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">8</td>
+<td style="text-align: left;">3-key 并集</td>
+<td style="text-align: left;"><code>SUNION k1 k2 k3</code></td>
+<td style="text-align: left;">含 a,d,e,f</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">9</td>
+<td style="text-align: left;">3-key 差集</td>
+<td style="text-align: left;"><code>SDIFF k1 k2 k3</code> k1-k2-k3</td>
+<td style="text-align: left;">{a,d}</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">10</td>
+<td style="text-align: left;">3-key 交集存储</td>
+<td style="text-align: left;"><code>SINTERSTORE dst k1 k2 k3</code></td>
+<td style="text-align: left;">count=2</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">11</td>
+<td style="text-align: left;">3-key 并集存储</td>
+<td style="text-align: left;"><code>SUNIONSTORE dst k1 k2 k3</code></td>
+<td style="text-align: left;">count=6</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">12</td>
+<td style="text-align: left;">3-key 差集存储</td>
+<td style="text-align: left;"><code>SDIFFSTORE dst k1 k2 k3</code></td>
+<td style="text-align: left;">count=2</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">13</td>
+<td style="text-align: left;">移动存在成员</td>
+<td style="text-align: left;"><code>SMOVE src dst m1</code></td>
+<td style="text-align: left;">返回 1, src 消失, dst 新增</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">14</td>
+<td style="text-align: left;">移动不存在成员</td>
+<td style="text-align: left;"><code>SMOVE src dst ghost</code></td>
+<td style="text-align: left;">返回 0</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">15</td>
+<td style="text-align: left;">SSCAN 分页遍历</td>
+<td style="text-align: left;"><code>SSCAN scan 0 COUNT 20</code> ×N</td>
+<td style="text-align: left;">完整遍历 50 个 item</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">16</td>
+<td style="text-align: left;">ZUNION SUM</td>
+<td style="text-align: left;"><code>ZUNIONSTORE dst 2 z1 z2 AGGREGATE SUM</code></td>
+<td style="text-align: left;">count=3 (a:10, b:50, c:40)</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">17</td>
+<td style="text-align: left;">ZUNION MIN</td>
+<td style="text-align: left;"><code>ZUNIONSTORE dst 2 z1 z2 AGGREGATE MIN</code></td>
+<td style="text-align: left;">取每 key 最小值</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">18</td>
+<td style="text-align: left;">ZUNION MAX</td>
+<td style="text-align: left;"><code>ZUNIONSTORE dst 2 z1 z2 AGGREGATE MAX</code></td>
+<td style="text-align: left;">取每 key 最大值</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">19</td>
+<td style="text-align: left;">ZINTER SUM</td>
+<td style="text-align: left;"><code>ZINTERSTORE dst 2 z1 z2 AGGREGATE SUM</code></td>
+<td style="text-align: left;">count=2 (交集 a:110, c:230)</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">20</td>
+<td style="text-align: left;">ZINTER MIN</td>
+<td style="text-align: left;"><code>ZINTERSTORE dst 2 z1 z2 AGGREGATE MIN</code></td>
+<td style="text-align: left;">取每 key 最小值</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">21</td>
+<td style="text-align: left;">ZINTER MAX</td>
+<td style="text-align: left;"><code>ZINTERSTORE dst 2 z1 z2 AGGREGATE MAX</code></td>
+<td style="text-align: left;">取每 key 最大值</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">22</td>
+<td style="text-align: left;">ZCOUNT 区间</td>
+<td style="text-align: left;"><code>ZCOUNT zp 10 50</code> / <code>ZCOUNT zp (10 50</code> / <code>ZCOUNT zp 10 (50</code></td>
+<td style="text-align: left;">覆盖开闭区间</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">23</td>
+<td style="text-align: left;">ZPOPMIN</td>
+<td style="text-align: left;"><code>ZPOPMIN zp 2</code></td>
+<td style="text-align: left;">弹出最小 2 个</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">24</td>
+<td style="text-align: left;">ZPOPMAX</td>
+<td style="text-align: left;"><code>ZPOPMAX zp 1</code></td>
+<td style="text-align: left;">弹出最大 1 个</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">25</td>
+<td style="text-align: left;">RPOPLPUSH</td>
+<td style="text-align: left;"><code>RPOPLPUSH l1 l2</code></td>
+<td style="text-align: left;">跨列表原子转移</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">26</td>
+<td style="text-align: left;">SDIFF 空结果</td>
+<td style="text-align: left;"><code>SDIFF k2 k1</code> all members exist in k1</td>
+<td style="text-align: left;">{}</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论：所有集合运算功能完全正确，边界条件（空集、全员差分、不存在的 member 移动）全部覆盖。</strong></p>
+<h3 id="94">9.4 高并发压测架构</h3>
+<div class="codehilite"><pre><span></span><code>┌──────────────────────────────────────────────────────────────────────┐
+│                       压测架构                                        │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  PowerShell 脚本 (setop-concur.ps1)                                  │
+│  │                                                                   │
+│  ├─ 预装阶段:                                                         │
+│  │   创建 5 个 Set key (k1~k5)，各含 N 个 member (如 item:0..N-1)     │
+│  │   k1 与 k2 完全重叠 (100%)                                         │
+│  │   k1 与 k3 部分重叠 (30%)                                          │
+│  │   k2 与 k4 部分重叠 (50%)                                          │
+│  │   k3 与 k5 低重叠 (≈15%)                                          │
+│  │                                                                   │
+│  └─ 压测阶段:                                                         │
+│     启动 C 个工作线程，每线程直连 Redis (127.0.0.1:6379)               │
+│     每轮发送 6 条命令: SINTER, SUNION, SDIFF + 组合                   │
+│     持续 T 秒，统计: 总命令数 / ops/sec / 错误数 / 耗时               │
+│                                                                      │
+│  六种集合运算 (每轮):                                                 │
+│    SINTER k1 k2    (100% 重合 → result = N)                          │
+│    SUNION k1 k3    (30% 重合 → result ≈ 1.7N)                        │
+│    SDIFF k1 k2     (100% 重合 → result = 0)                          │
+│    SINTER k2 k4    (50% 重合 → result = 0.5N)                        │
+│    SUNION k1 k5    (低重合 → result ≈ 2N)                            │
+│    SDIFF k3 k5     (15% 重合 → result = 0.85N)                       │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h3 id="95">9.5 梯度压测结果</h3>
+<p><strong>测试环境</strong>: 单体 Redis 7-alpine (Docker)，本地 TCP 直连 (127.0.0.1:6379)，PowerShell 多线程客户端。以下数值为本次环境观测值，不同 CPU/网络/数据编码下会有波动，仅作容量估算参考。</p>
+<p><strong>4 梯度对比（零错误，全部稳定运行）：</strong></p>
+<table>
+<thead>
+<tr>
+<th>集合大小</th>
+<th>并发数</th>
+<th>持续时间</th>
+<th>吞吐量 (ops/sec)</th>
+<th>每线程 ops</th>
+<th>结果集特征</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>500</strong></td>
+<td>10</td>
+<td>10s</td>
+<td><strong>30,499</strong></td>
+<td>3,050</td>
+<td>小集合，CPU 充裕</td>
+</tr>
+<tr>
+<td><strong>1,000</strong></td>
+<td>20</td>
+<td>15s</td>
+<td><strong>38,031</strong> ⭐</td>
+<td>1,902</td>
+<td>甜蜜点，吞吐峰值</td>
+</tr>
+<tr>
+<td><strong>5,000</strong></td>
+<td>30</td>
+<td>15s</td>
+<td><strong>18,050</strong></td>
+<td>602</td>
+<td>CPU 开始紧张</td>
+</tr>
+<tr>
+<td><strong>10,000</strong></td>
+<td>50</td>
+<td>15s</td>
+<td><strong>5,184</strong></td>
+<td>104</td>
+<td>CPU 饱和，反噬</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>吞吐量 vs 集合大小
+
+  40000 ┤            ★ 38,031 (1K)
+        │
+  30000 ┤  ★ 30,499 (500)
+        │
+  20000 ┤
+        │          ★ 18,050 (5K)
+  10000 ┤
+        │                    ★ 5,184 (10K)
+      0 ┼──────┬────────┬────────┬────────
+        500    1K       5K       10K
+
+甜蜜点: 1000 成员 × 20 并发 = 38K ops/sec
+拐点:   5000 成员起吞吐开始骤降 (-53% vs 1K)
+天花板: 10K 成员 × 50 并发 → 仅 5.2K ops/sec
+</code></pre></div>
+
+<h3 id="96">9.6 关键发现</h3>
+<h4 id="961-38k-opssec">9.6.1 吞吐天花板在 ~38K ops/sec（本次环境）</h4>
+<div class="codehilite"><pre><span></span><code>本次测试环境观测峰值: 38,031 ops/sec（1K members × 20 workers）。
+该值随机器型号、Redis 版本、网络与数据编码显著波动，仅作容量估算参考。
+
+超过此点 → 增加并发或扩大集合 → 吞吐反而下降：
+
+  - 1K → 5K members: 吞吐降低 52%（38K → 18K）
+  - 5K → 10K members: 吞吐再降 71%（18K → 5.2K）
+</code></pre></div>
+
+<p><strong>原因</strong>：每轮 6 条集合运算命令中，每条 SINTER/SUNION/SDIFF 都需要遍历集合数据。10K 成员时单次 SINTER 就消耗 ~0.3ms Redis CPU（本次环境），50 个 worker 同时请求 → 排队延迟快速累积。</p>
+<h4 id="962">9.6.2 不同重叠度影响</h4>
+<div class="codehilite"><pre><span></span><code>压测中覆盖了四种重叠度：
+
+  k1 与 k2 = 100%  → SINTER 遍历最小集合 → 结果集 = N（最大返回）
+  k1 与 k3 = 30%   → SINTER 遍历最小集合 → 结果集 = 0.3N
+  k2 与 k4 = 50%   → SINTER 遍历最小集合 → 结果集 = 0.5N
+  k3 与 k5 ≈ 15%   → SINTER 遍历最小集合 → 结果集 = 0.15N（最小返回）
+
+关键认知: Redis 会选择最小的输入集合作为遍历基准，
+对它的每个 member 在其余集合中做 O(1) 哈希查找。
+无论最终交集是多少，遍历开销是固定的（由最小集合的大小决定）。
+结果集大小影响的是网络传输与结果处理，不影响 Redis 服务端遍历 CPU。
+SDIFF/SUNION 类似——SUNION 合并所有集合 member 去重，复杂度 O(sum Ni)；
+SDIFF 遍历第一个集合（或最小集合），排除其它集合存在的 member。
+</code></pre></div>
+
+<h4 id="963-store">9.6.3 Store 变体的区别</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">内存开销</th>
+<th style="text-align: left;">CPU 开销</th>
+<th style="text-align: left;">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>SINTER</code></td>
+<td style="text-align: left;">仅返回结果</td>
+<td style="text-align: left;">O(N) 遍历</td>
+<td style="text-align: left;">客户端直接使用结果</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SINTERSTORE</code></td>
+<td style="text-align: left;">写入新 key</td>
+<td style="text-align: left;">O(N) 遍历 + O(M) 写入</td>
+<td style="text-align: left;">后续多用结果、缓存快照</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SUNION</code></td>
+<td style="text-align: left;">返回全部</td>
+<td style="text-align: left;">O(N+M)</td>
+<td style="text-align: left;">合并视图</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SUNIONSTORE</code></td>
+<td style="text-align: left;">写入新 key</td>
+<td style="text-align: left;">O(N+M) + 写入</td>
+<td style="text-align: left;">持久化合并结果</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SDIFF</code></td>
+<td style="text-align: left;">返回差集</td>
+<td style="text-align: left;">O(N)</td>
+<td style="text-align: left;">增量/差异检测</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>SDIFFSTORE</code></td>
+<td style="text-align: left;">写入新 key</td>
+<td style="text-align: left;">O(N) + 写入</td>
+<td style="text-align: left;">快照差异</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>性能结论: STORE 变体比只读变体多了写入和内存管理开销
+（创建/覆盖目标 key、增删元素、内存分配与回收）。
+在本环境观测中，high overlap (100%) 场景下 SINTERSTORE 比 SINTER 额外约 20% CPU，
+但该比例会随结果集大小、写入策略（overwrite vs create）、Redis 内存碎片状态等波动。
+在真实场景中，若结果需多次复用，STORE 变体以一次写入换多次读取，性价比高。
+仅一次性使用时 SINTER 更优——省去写入开销且网络传输结果集即可。
+</code></pre></div>
+
+<h3 id="97-smove">9.7 SMOVE 原子性优势</h3>
+<div class="codehilite"><pre><span></span><code>SMOVE src dst member → 在一条 Redis 命令中完成:
+  ① SREM src member
+  ② SADD dst member
+
+这是「先取再删再写」的原子替代方案，不需要 WATCH+MULTI/EXEC 事务：
+  非原子做法: WATCH src → SMEMBERS src → SREM src m → SADD dst m → EXEC
+  原子做法:  SMOVE src dst m  （一条命令，天然原子）
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">特性</th>
+<th style="text-align: left;">WATCH+MULTI</th>
+<th style="text-align: left;">SMOVE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">原子性</td>
+<td style="text-align: left;">CAS 乐观锁，可能重试</td>
+<td style="text-align: left;">命令级原子，无需重试</td>
+</tr>
+<tr>
+<td style="text-align: left;">RTT</td>
+<td style="text-align: left;">最少 4 次</td>
+<td style="text-align: left;">1 次</td>
+</tr>
+<tr>
+<td style="text-align: left;">错误处理</td>
+<td style="text-align: left;">需处理 retry/abort</td>
+<td style="text-align: left;">返回 0/1，语义清晰</td>
+</tr>
+<tr>
+<td style="text-align: left;">与 Pipeline 配合</td>
+<td style="text-align: left;">不支持事务内 pipeline</td>
+<td style="text-align: left;">可放入 Pipeline 减少 RTT，但不保证多 SMOVE 整体原子性</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注意</strong>: Pipeline 只是批量发送命令以减少 RTT，不保证多命令整体原子性。若需要多条 SMOVE 原子执行，需用 MULTI/EXEC 包裹。单条 SMOVE 可在 Pipeline 中安全使用——它本身是服务端原子命令。与 WATCH+MULTI 对比的核心优势是：<strong>单条命令直接完成 SREM+SADD，一劳永逸，无需重试循环。</strong></p>
+</blockquote>
+<h3 id="98-zunionstore-zinterstore">9.8 ZUNIONSTORE / ZINTERSTORE 聚合策略选择</h3>
+<div class="codehilite"><pre><span></span><code>ZUNIONSTORE dst 2 z1 z2 AGGREGATE &lt;SUM|MIN|MAX&gt;
+
+  SUM: score 相加         → 业务默认值（如积分汇总）
+  MIN: 取最小 score       → 如「最低库存」
+  MAX: 取最大 score       → 如「最高优先级」
+
+ZINTERSTORE dst 2 z1 z2 AGGREGATE &lt;SUM|MIN|MAX&gt;
+
+  SUM: 交集 score 相加    → 如「共同兴趣的加权总分」
+  MIN: 取最小 score       → 如「最低活跃度」
+  MAX: 取最大 score       → 如「最高消费额」
+</code></pre></div>
+
+<p><strong>所有 6 种聚合组合均通过验证，选择建议</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">推荐聚合</th>
+<th style="text-align: left;">理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">多维度总分排名</td>
+<td style="text-align: left;">SUM</td>
+<td style="text-align: left;">累加各项得分</td>
+</tr>
+<tr>
+<td style="text-align: left;">取最低分安全排名</td>
+<td style="text-align: left;">MIN</td>
+<td style="text-align: left;">宁可低估不虚高</td>
+</tr>
+<tr>
+<td style="text-align: left;">最高分特征提取</td>
+<td style="text-align: left;">MAX</td>
+<td style="text-align: left;">提取每个用户的最优表现</td>
+</tr>
+<tr>
+<td style="text-align: left;">去重合并多集合</td>
+<td style="text-align: left;">SUM with weight=1</td>
+<td style="text-align: left;">等效于 Set 的 SUNION</td>
+</tr>
+</tbody>
+</table>
+<h3 id="99-sscan">9.9 SSCAN 遍历经验</h3>
+<div class="codehilite"><pre><span></span><code>SSCAN key cursor COUNT N
+
+  - cursor 从 0 开始，返回 0 表示遍历结束
+  - COUNT 是 hint，非精确值，单次可能返回少于或多于 COUNT 条
+  - ⚠️ SSCAN 不是快照隔离：遍历期间若有并发 SADD/SREM，可能遗漏或重复返回元素
+  - 大集合必须用 SSCAN，严禁 SMEMBERS
+
+SSCAN 最佳实践:
+  在本次测试环境下 COUNT=200 单次耗时 &lt;1ms
+  COUNT=1000 接近 SMEMBERS 行为，单次阻塞风险加剧
+  客户端必须去重: 用 Set/HashSet 累积结果并消除重复
+  设置 max rounds 与超时保护: 遍历超过 N 轮或 T 秒强制终止
+  若需强一致性快照：在无写入的时间窗口遍历，或先 SINTERSTORE 导出到不可变 key 再遍历
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code><span class="c1">// 推荐遍历模式</span>
+<span class="kd">public</span><span class="w"> </span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">sScanAllSafe</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">count</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">HashSet</span><span class="o">&lt;&gt;</span><span class="p">();</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">cursor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"0"</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">maxRounds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1000</span><span class="p">;</span>
+<span class="w">    </span><span class="k">do</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">ScanArgs</span><span class="w"> </span><span class="n">args</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ScanArgs</span><span class="p">.</span><span class="na">Builder</span><span class="p">.</span><span class="na">limit</span><span class="p">(</span><span class="n">count</span><span class="p">);</span>
+<span class="w">        </span><span class="n">ScannedSet</span><span class="w"> </span><span class="n">scan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">commands</span><span class="p">.</span><span class="na">sscan</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">cursor</span><span class="p">,</span><span class="w"> </span><span class="n">args</span><span class="p">);</span>
+<span class="w">        </span><span class="n">result</span><span class="p">.</span><span class="na">addAll</span><span class="p">(</span><span class="n">scan</span><span class="p">.</span><span class="na">getValues</span><span class="p">());</span>
+<span class="w">        </span><span class="n">cursor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scan</span><span class="p">.</span><span class="na">getCursor</span><span class="p">();</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">--</span><span class="n">maxRounds</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">TimeoutException</span><span class="p">(</span><span class="s">"SSCAN too many rounds"</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="s">"0"</span><span class="p">.</span><span class="na">equals</span><span class="p">(</span><span class="n">cursor</span><span class="p">));</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">result</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="910">9.10 生产建议</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">建议</th>
+<th style="text-align: left;">详情</th>
+<th style="text-align: left;">优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>限制集合大小</strong></td>
+<td style="text-align: left;">单 Set 建议目标上限 ≤ 5000 member（需结合业务 RPS/延迟 SLA 做容量评估）。超限应考虑分片存储或换用 HyperLogLog/BloomFilter</td>
+<td style="text-align: left;">P0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>使用 STORE 变体缓存</strong></td>
+<td style="text-align: left;">高频交集/并集场景用 <code>SINTERSTORE/SUNIONSTORE</code> + TTL 预计算结果，异步定时刷新，避免每次请求全量遍历</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>增量维护索引</strong></td>
+<td style="text-align: left;">写入时（SADD/SREM）以 Lua 原子脚本或事务维护热的交集/计数索引，牺牲写入复杂度换取读时低延迟</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SSCAN 遍历大集合</strong></td>
+<td style="text-align: left;">严禁 <code>SMEMBERS</code>，用 <code>SSCAN</code> 分页 + 客户端去重 + max rounds/超时保护；并发写入时注意不是快照隔离</td>
+<td style="text-align: left;">P0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SMOVE 代替事务</strong></td>
+<td style="text-align: left;">跨 Set 移动 member 时优先 <code>SMOVE</code>（单命令原子），避免 WATCH/MULTI/EXEC 重试开销</td>
+<td style="text-align: left;">P1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>避免热点集合运算</strong></td>
+<td style="text-align: left;">多服务频繁对同一对大集合做 SINTER/SUNION → CPU 热点。考虑本地缓存算好的结果或预计算缓存</td>
+<td style="text-align: left;">P2</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>监控 slowlog</strong></td>
+<td style="text-align: left;"><code>slowlog-log-slower-than 10000</code>（单位 <strong>microseconds</strong>，即 10ms），同时建议配置 <code>slowlog-max-len</code> 与定期导出 slowlog 到集中式监控/告警系统</td>
+<td style="text-align: left;">P0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>监控命令延迟与 CPU</strong></td>
+<td style="text-align: left;">监控 <code>instantaneous_ops_per_sec</code>、<code>used_cpu_sys</code>/<code>used_cpu_user</code>、<code>blocked_clients</code>、<code>LATENCY DOCTOR</code>、<code>CLIENT LIST</code> 与 <code>INFO commandstats</code> 的集合命令调用量与延迟</td>
+<td style="text-align: left;">P0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>定时巡检 Set 编码</strong></td>
+<td style="text-align: left;">用 <code>redis-cli --bigkeys</code>、<code>OBJECT ENCODING</code>、<code>MEMORY USAGE</code> 定期扫描，统计 intset/listpack 编码的 Set 数量与占比，结合单集合 member 数与内存基线设定告警阈值（不固定死某个百分比，而是基于实际容量评估）</td>
+<td style="text-align: left;">P2</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>评估概率替代方案</strong></td>
+<td style="text-align: left;">只需近似结果的场景考虑 BloomFilter / HyperLogLog / CMS 代替全集合运算；离线大规模计算考虑 Spark 等外部引擎</td>
+<td style="text-align: left;">P3</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>避免手动取模跨分片</strong></td>
+<td style="text-align: left;">手动分片跨节点 SINTER 不报错但静默返回错误结果——必须通过 key 命名约束或运行时校验杜绝</td>
+<td style="text-align: left;">P0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="911_1">9.11 压测结论总结</h3>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────────┐
+│                  场景 9 最终结论（修订版）                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  功能正确性:    ✅ 26/26 PASS (零失败，本次测试环境与数据分布下)        │
+│                                                                     │
+│  吞吐天花板（环境相关）:                                              │
+│    本环境观测峰值 ≈ 38,031 ops/sec (1K members × 20 workers)         │
+│    该值随机器型号、Redis 版本、网络与数据编码显著波动，仅作容量参考     │
+│                                                                     │
+│  甜蜜点/拐点:                                                        │
+│    甜蜜点: 约 1,000 members × 20 并发吞吐最佳（观测 38K ops/sec）    │
+│    拐点:   ≈5,000 members 处吞吐开始明显下滑（本次观测 ~52% 下跌）    │
+│    天花板: 10K × 高并发时主线程 CPU 饱和，吞吐骤降                    │
+│                                                                     │
+│  集合大小 (N)    吞吐 (ops/sec)    【环境相关，非绝对值】              │
+│  ─────────────────────────────────────────────                      │
+│      500              30,499                                          │
+│    1,000 ⭐           38,031                                          │
+│    5,000              18,050                                          │
+│   10,000               5,184                                          │
+│                                                                     │
+│  核心经验（修订）:                                                    │
+│  ① SINTER 以最小输入集合为遍历基准，复杂度 O(S*(k-1))                  │
+│     SUNION 复杂度 O(sum Ni)，SDIFF 遍历第一个集合并排除               │
+│  ② 参数顺序影响成本——将小集合放在前面（若客户端/库支持重排）           │
+│  ③ Redis 命令执行主线程为单线程（I/O 可多线程但不并行执行命令）        │
+│  ④ SMOVE 是单命令原子方案；Pipeline 减少 RTT 但不保证多命令原子性     │
+│  ⑤ SSCAN 遍历必须去重 + max rounds/超时；非快照隔离，并发写可遗漏     │
+│  ⑥ slowlog-log-slower-than 单位 microseconds（10000 = 10ms）         │
+│  ⑦ 手动取模跨分片 SINTER 不报错但静默错误——必须 hashtag 或校验       │
+│  ⑧ 单 Redis 拆小 key 不会减少 SINTER 遍历总量（遍历量不变）           │
+│                                                                     │
+│  产出文件:                                                          │
+│    loadtester/setop-bench.ps1        — 功能验证 (26 项, PASS=26)     │
+│    loadtester/setop-concur.ps1       — 高并发压测 (TCP 直连梯度)     │
+│    loadtester/setop-bench.sh         — Linux bash 功能验证           │
+│    loadtester/setop-bench.bat        — Windows CMD 功能验证          │
+│    redis-common/.../RedisSetOpUtilTest.java  — JUnit 集成测试       │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h3 id="912">9.12 压测命令</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 功能正确性验证（Windows PowerShell）</span>
+<span class="nb">cd</span><span class="w"> </span>redis-project
+powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/setop-bench.ps1
+
+<span class="c1"># 高并发压测（可调参数）</span>
+powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/setop-concur.ps1<span class="w"> </span>-Members<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-Concurrency<span class="w"> </span><span class="m">20</span><span class="w"> </span>-Duration<span class="w"> </span><span class="m">30</span>
+
+<span class="c1"># 参数说明:</span>
+<span class="c1">#   -Members     : 每个 Set 的 member 数量 (默认 10000)</span>
+<span class="c1">#   -Concurrency : 并发工作线程数 (默认 50)</span>
+<span class="c1">#   -Duration    : 压测持续时间，秒 (默认 30)</span>
+</code></pre></div>
+
+<h3 id="913">9.13 相关文件</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">文件</th>
+<th style="text-align: left;">类型</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>loadtester/setop-bench.ps1</code></td>
+<td style="text-align: left;">PowerShell</td>
+<td style="text-align: left;">功能正确性验证脚本，26 项断言</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>loadtester/setop-concur.ps1</code></td>
+<td style="text-align: left;">PowerShell</td>
+<td style="text-align: left;">高并发 TCP 直连压测脚本</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>loadtester/setop-bench.sh</code></td>
+<td style="text-align: left;">Bash</td>
+<td style="text-align: left;">Linux 环境功能验证脚本</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>loadtester/setop-bench.bat</code></td>
+<td style="text-align: left;">Batch</td>
+<td style="text-align: left;">Windows CMD 功能验证脚本</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>loadtester/prob-bench.ps1</code></td>
+<td style="text-align: left;">PowerShell</td>
+<td style="text-align: left;">概率结构功能验证 (HLL/BF/CMS, 13 项)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>loadtester/prob-concur.ps1</code></td>
+<td style="text-align: left;">PowerShell</td>
+<td style="text-align: left;">概率结构 vs Set 控制变量性能对比</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>loadtester/prob-run.ps1</code></td>
+<td style="text-align: left;">PowerShell</td>
+<td style="text-align: left;">一键运行 (打包 → 启动 → 压测)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>redis-common/src/test/java/.../RedisSetOpUtilTest.java</code></td>
+<td style="text-align: left;">JUnit</td>
+<td style="text-align: left;">19 个集成测试用例</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="914-slot">9.14 架构策略：同 Slot + 分布式信号量管控</h3>
+<blockquote>
+<p>本节从架构层面总结集合运算的<strong>写入管控</strong>和<strong>查询优化</strong>策略，确保 Cluster 兼容性与性能天花板可控。</p>
+</blockquote>
+<h4 id="9141">9.14.1 不同分片模式下集合运算的兼容性</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">架构模式</th>
+<th style="text-align: left;">slot 概念</th>
+<th style="text-align: left;"><code>SINTER k1 k2 k3</code></th>
+<th style="text-align: left;">是否报错</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>单体 Redis</strong></td>
+<td style="text-align: left;">无</td>
+<td style="text-align: left;">✅ 直接调用</td>
+<td style="text-align: left;">不报错</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Redis Cluster</strong></td>
+<td style="text-align: left;">16384 个，分布到多节点</td>
+<td style="text-align: left;">❌ key 不在同一 slot 时报 <code>CROSSSLOT</code></td>
+<td style="text-align: left;"><strong>会报错</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>代理分片</strong>（Twemproxy/Codis）</td>
+<td style="text-align: left;">无（代理内部做）</td>
+<td style="text-align: left;">❌ 代理层通常禁掉多 key 命令</td>
+<td style="text-align: left;"><strong>会报错</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>手动取模分片</strong>（userId % N）</td>
+<td style="text-align: left;">无（应用层路由）</td>
+<td style="text-align: left;">⚠️ 跨分片时不报错，<strong>静默返回错误结果</strong></td>
+<td style="text-align: left;"><strong>不报错</strong>（最隐蔽）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>单 Redis + 应用层拆小 key</strong>（防大 key）</td>
+<td style="text-align: left;">无</td>
+<td style="text-align: left;">✅ 直接调用（同实例）</td>
+<td style="text-align: left;">不报错</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：只有 Cluster 和代理分片会<strong>显式报错</strong>，手动取模分片是<strong>最危险的</strong>——跨分片的 key 在各自 Redis 上执行，缺失的 key 被视为空集，静默返回错误结果。架构上必须通过 <strong>key 命名约束</strong>从根本上杜绝。</p>
+<h4 id="9142">9.14.2 三层架构：写入管控 → 命名对齐 → 查询零判断</h4>
+<div class="codehilite"><pre><span></span><code>                      ┌─────────────────────────────────┐
+                      │  层 1：写入管控（分布式信号量）         │
+                      │  ├─ acquire slot (Lua 原子)          │
+                      │  ├─ 按 userId 分片路由                 │
+                      │  └─ release + token+TTL 防泄漏        │
+                      │  作用：防止 N 个服务同时 SADD →        │
+                      │        流量整形，避免并发写入失控         │
+                      └──────────────┬──────────────────────┘
+                                     │ 写入时 key 格式已定
+                      ┌──────────────▼──────────────────────┐
+                      │  层 2：Key 命名统一 (hashtag)         │
+                      │  {userId}:friends                    │
+                      │  {userId}:blocklist                  │
+                      │  {userId}:tags                       │
+                      │  只对 { } 内做 CRC16 → 必然同 slot     │
+                      └──────────────┬──────────────────────┘
+                                     │ 运行时零校验
+                      ┌──────────────▼──────────────────────┐
+                      │  层 3：业务层直接调                    │
+                      │  SINTER / SUNION / SDIFF             │
+                      │  零额外判断，无 hash tag 提取开销       │
+                      └─────────────────────────────────────┘
+</code></pre></div>
+
+<p><strong>为什么不需要运行时校验</strong>：写入时已通过信号量控制 + hashtag 约束保证了 key 命名，运行时直接调用即可。没必要每次 <code>SINTER</code> 前提取 <code>{xxx}</code> 比对——这是无效开销。</p>
+<h4 id="9143-slot">9.14.3 为何集合运算必须选同 slot</h4>
+<div class="codehilite"><pre><span></span><code>Redis Cluster 的 slot 规则：
+  CRC16("{userId}:friends") % 16384 → 只计算 {userId} → slot X
+  CRC16("{userId}:blocklist") % 16384 → 只计算 {userId} → slot X
+
+  同 slot → 同节点 → SINTER 可直接在服务端完成。
+
+vs 不同 slot（跨分片兜底方案）：
+  SINTER k1 k2 → k1 在 Node A，k2 在 Node B → 无法执行原生命令
+  → 需分别向 Node A、Node B 执行 SMEMBERS（或 SSCAN 分段）拉全量
+  → 在集群中需多次 RTT（每个节点至少一次）
+  → 在 10K member 场景下，单次网络传输可达数百 KB
+  → 客户端内存需同时持有所有集合的完整数据
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">网络传输</th>
+<th style="text-align: left;">服务端 CPU</th>
+<th style="text-align: left;">客户端内存</th>
+<th style="text-align: left;">推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>同 slot 直调</strong></td>
+<td style="text-align: left;">仅返回结果集</td>
+<td style="text-align: left;">O(S*(k-1)) 服务端</td>
+<td style="text-align: left;">结果集大小</td>
+<td style="text-align: left;">⭐</td>
+</tr>
+<tr>
+<td style="text-align: left;">客户端拉全量求交集</td>
+<td style="text-align: left;">k×N 条 member</td>
+<td style="text-align: left;">无（客户端 CPU）</td>
+<td style="text-align: left;">k×N member</td>
+<td style="text-align: left;">仅跨分片兜底</td>
+</tr>
+<tr>
+<td style="text-align: left;">STORE 缓存结果</td>
+<td style="text-align: left;">一次 RTT</td>
+<td style="text-align: left;">一次 O(N)</td>
+<td style="text-align: left;">结果集大小</td>
+<td style="text-align: left;">适合高频复用</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>兜底方案代价量化</strong>：跨分片 SINTER k1 k2（各 10K member，50B per member）→ 网络传输约 2×10K×50B ≈ 1MB；若并发 50 请求 → 50MB/s 客户端入站带宽。<strong>仅在确实跨用户/跨分片时作为最后手段使用。</strong></p>
+</blockquote>
+<h4 id="9144-redis-key">9.14.4 单 Redis + 应用层拆小 key 的陷阱</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 场景：为了防止大 key（如单 key 100 万 member DEL 会阻塞），</span>
+<span class="c1">#       把一个大 Set 拆成 10 个小 Set，全部在同一台 Redis 上。</span>
+
+SADD<span class="w"> </span>user:123:followers:0<span class="w"> </span>10万个member
+SADD<span class="w"> </span>user:123:followers:1<span class="w"> </span>10万个member
+...
+SADD<span class="w"> </span>user:123:followers:9<span class="w"> </span>10万个member
+
+<span class="c1"># 做交集：</span>
+SINTER<span class="w"> </span>user:123:followers:0<span class="w"> </span>user:123:followers:1<span class="w"> </span>...<span class="w"> </span>user:123:followers:9
+<span class="c1"># → 单机 Redis 无 slot 限制，语法完全正确 ✅</span>
+<span class="c1"># → 但遍历量 = 10 × 10 万 = 100 万，和拆之前一样 O(N) ⚠️</span>
+</code></pre></div>
+
+<div class="codehilite"><pre><span></span><code>核心认知：拆分不会降低 SINTER 的遍历总量。
+  分片减少的是单 key 的 DEL/SADD/阻塞风险——这是拆分的目的。
+  集合运算的 O(N) 支付在"遍历过程"，不因拆分而减少。
+
+  拆分只在以下场景有意义：
+    ✓ 避免单个 key 过大导致 DEL 阻塞主线程
+    ✓ 避免 SMEMBERS 单次返回过多数据导致 OOM
+    ✓ 多节点并行计算 + 合并（需要跨节点）
+    ✗ 减少 SINTER/SUNION/SDIFF 的 CPU 遍历量
+</code></pre></div>
+
+<h4 id="9145-sharding">9.14.5 不同 sharding 模式下的集合运算快速决策表</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">分片模式</th>
+<th style="text-align: left;">同分片运行 SINTER</th>
+<th style="text-align: left;">跨分片 SINTER</th>
+<th style="text-align: left;">正确性保证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>单体 Redis</strong></td>
+<td style="text-align: left;">✅ 直接调</td>
+<td style="text-align: left;">✅ 直接调（所有 key 同实例）</td>
+<td style="text-align: left;">天然正确</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Cluster + hashtag</strong></td>
+<td style="text-align: left;">✅ 直接调</td>
+<td style="text-align: left;">❌ CROSSSLOT 报错</td>
+<td style="text-align: left;">服务端报错</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Cluster 无 hashtag</strong></td>
+<td style="text-align: left;">⚠️ 运气好如果 CRC16 同 slot</td>
+<td style="text-align: left;">❌ CROSSSLOT 报错</td>
+<td style="text-align: left;">不可靠</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>手动取模分片</strong></td>
+<td style="text-align: left;">✅ 直接调（同 userId）</td>
+<td style="text-align: left;">⚠️ <strong>静默错误</strong></td>
+<td style="text-align: left;">无保证</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>代理分片</strong></td>
+<td style="text-align: left;">看代理规则</td>
+<td style="text-align: left;">❌ 代理拒掉</td>
+<td style="text-align: left;">代理报错</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>单 Redis 拆小 key</strong></td>
+<td style="text-align: left;">✅ 直接调</td>
+<td style="text-align: left;">✅ 直接调（同实例）</td>
+<td style="text-align: left;">天然正确</td>
+</tr>
+</tbody>
+</table>
+<h4 id="9146">9.14.6 代码实现建议</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ==================== 推荐模式 ====================</span>
+
+<span class="c1">// 写入：经信号量管控 + hashtag 统一命名</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">addToSet</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">userId</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">setName</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">member</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 层 1：分布式信号量 acquire（Lua 原子）</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">token</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">UUID</span><span class="p">.</span><span class="na">randomUUID</span><span class="p">().</span><span class="na">toString</span><span class="p">();</span>
+<span class="w">    </span><span class="kt">boolean</span><span class="w"> </span><span class="n">acquired</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">semaphore</span><span class="p">.</span><span class="na">acquire</span><span class="p">(</span><span class="s">"set_write_slot:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="p">,</span><span class="w"> </span><span class="n">token</span><span class="p">,</span><span class="w"> </span><span class="mi">100</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">acquired</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">BusyException</span><span class="p">(</span><span class="s">"Write slot busy"</span><span class="p">);</span>
+
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 层 2：统一 hashtag 命名</span>
+<span class="w">        </span><span class="n">String</span><span class="w"> </span><span class="n">key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"{"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"}:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">setName</span><span class="p">;</span><span class="w">  </span><span class="c1">// 所有同 userId 的 key 同 slot</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="w"> </span><span class="n">member</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 层 1：release + token 防泄漏</span>
+<span class="w">        </span><span class="n">semaphore</span><span class="p">.</span><span class="na">release</span><span class="p">(</span><span class="s">"set_write_slot:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="p">,</span><span class="w"> </span><span class="n">token</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// 查询：层 3 零判断</span>
+<span class="kd">public</span><span class="w"> </span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">intersect</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">userId</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">setA</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">setB</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 直接调，不加任何校验——name 在写入层已保证为 {userId}:xxx 格式</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">keyA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"{"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"}:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">setA</span><span class="p">;</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">keyB</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"{"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"}:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">setB</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">sinter</span><span class="p">(</span><span class="n">keyA</span><span class="p">,</span><span class="w"> </span><span class="n">keyB</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// ==================== 兜底：跨分片交集（仅最后手段） ====================</span>
+
+<span class="c1">// 仅用于跨 userId 查询（如"两个用户的共同好友"）——无法走同 slot 优化。</span>
+<span class="c1">// 代价：需分别向多个节点 SMEMBERS（或 SSCAN 分段）拉全量。</span>
+<span class="c1">//       网络传输 ×2 全量 member + 客户端内存 ×2 集合大小。</span>
+<span class="c1">// 重度场景可替换为预计算/索引方案。</span>
+<span class="kd">public</span><span class="w"> </span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">crossUserIntersect</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">userA</span><span class="p">,</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">userB</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">setName</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// ⚠️ 大集合时改 SSCAN 分段拉取，避免 SMEMBERS 单次 OOM</span>
+<span class="w">    </span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">setA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">smembers</span><span class="p">(</span><span class="s">"{"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userA</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"}:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">setName</span><span class="p">);</span>
+<span class="w">    </span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">setB</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">smembers</span><span class="p">(</span><span class="s">"{"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userB</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"}:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">setName</span><span class="p">);</span>
+<span class="w">    </span><span class="n">setA</span><span class="p">.</span><span class="na">retainAll</span><span class="p">(</span><span class="n">setB</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">setA</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h4 id="9147">9.14.7 架构选型总结</h4>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────────┐
+│                 集合运算架构策略 最终结论                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  三层架构:                                                           │
+│    ① 写入管控层 ── 分布式信号量（acquire/release Lua 原子）            │
+│    ② 命名对齐层 ── {userId}:xxx 统一 hashtag，保证同 slot              │
+│    ③ 查询执行层 ── 零额外判断，原生命令直达                             │
+│                                                                     │
+│  核心原则:                                                           │
+│    • 事前约束 &gt; 事后校验（架构层面保证，免去运行时校验开销）              │
+│    • 同 slot 是 Cluster 下集合运算的唯一正确架构                        │
+│    • 单 Redis 无 slot 概念，但拆小 key 后 SINTER 遍历量不变             │
+│    • 手动取模分片是最隐蔽的 bug 源（不报错但结果错误）                   │
+│    • 跨分片 SINTER 只能客户端拉全量求交集（兜底方案，注意代价）          │
+│                                                                     │
+│  工程落地:                                                           │
+│    ✓ 分布式信号量统一管控写入并发度                                     │
+│    ✓ hashtag 统一所有 key 命名格式                                     │
+│    ✓ 运行时零校验，性能最优                                            │
+│    ✓ slowlog-log-slower-than 10000（单位 microseconds = 10ms）        │
+│    ✓ 监控: slowlog、blocked_clients、used_cpu_*、cmdstats             │
+│    ✓ 定时巡检 Set 编码（OBJECT ENCODING、redis-cli --bigkeys）         │
+│      结合 single member 数与内存基线设告警阈值，不固定百分比             │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h3 id="915">9.15 替代方案与工程实践</h3>
+<h4 id="9151">9.15.1 预计算/缓存交集</h4>
+<p>对于热点集合对，使用 <code>SINTERSTORE</code> 定期或事件驱动生成缓存结果，设置合理 TTL，异步刷新。</p>
+<blockquote>
+<p><strong>⚠ 防缓存风暴（Cache Stampede）</strong>: 多个 worker/实例并发执行刷新会造成重复 CPU 花费，且直接写入目标 key 在高并发/大结果集时仍会在主线程上产生较长阻塞。推荐使用 <strong>"临时 key + RENAME 原子替换"</strong> 或 <strong>"分布式锁（SETNX）"</strong> 防止 stampede。</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 定时任务：每 30 秒刷新一次高频交集（带防 stampede 锁 + 临时 key）</span>
+<span class="nd">@Scheduled</span><span class="p">(</span><span class="n">fixedDelay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">30_000</span><span class="p">)</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">refreshHotIntersection</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">lockKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"lock:hot:intersection:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="p">;</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">cacheKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"hot:intersection:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="p">;</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">tmpKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cacheKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":tmp:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">UUID</span><span class="p">.</span><span class="na">randomUUID</span><span class="p">();</span>
+
+<span class="w">    </span><span class="c1">// 尝试获取分布式锁（单机可用 SETNX，多实例用 Redis 锁）</span>
+<span class="w">    </span><span class="kt">boolean</span><span class="w"> </span><span class="n">locked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">setIfAbsent</span><span class="p">(</span><span class="n">lockKey</span><span class="p">,</span><span class="w"> </span><span class="s">"1"</span><span class="p">,</span><span class="w"> </span><span class="n">Duration</span><span class="p">.</span><span class="na">ofSeconds</span><span class="p">(</span><span class="mi">30</span><span class="p">));</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">locked</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 其他实例正在刷新，读取旧缓存作为降级</span>
+<span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 写入临时 key，避免计算期间暴露不完整结果</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">sinterstore</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span><span class="w"> </span><span class="s">"{userId}:setA"</span><span class="p">,</span><span class="w"> </span><span class="s">"{userId}:setB"</span><span class="p">);</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">expire</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span><span class="w"> </span><span class="mi">120</span><span class="p">);</span>
+<span class="w">        </span><span class="c1">// RENAME 是原子操作，瞬间切换（无窗口期）</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">rename</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span><span class="w"> </span><span class="n">cacheKey</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 释放锁（建议用 Lua 脚本校验 token 防误删）</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">delete</span><span class="p">(</span><span class="n">lockKey</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>适用于</strong>: 查询频率 &gt;&gt; 写入频率的集合对。</p>
+<h4 id="9152">9.15.2 增量维护（反向索引）</h4>
+<p>写入时以 Lua 原子脚本维护热的交集/计数索引，牺牲写入复杂度换取读时低延迟。</p>
+<blockquote>
+<p><strong>⚠ 重要</strong>: Redis Lua 要求 key 必须通过 <code>KEYS</code> 数组传入（而非 <code>ARGV</code>），以便集群模式下正确路由。不遵循此约定会导致沙盒错误或集群兼容性问题。</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 写入一个 member 时同步维护交集索引</span>
+<span class="c1">-- KEYS[1] = srcSet, KEYS[2] = otherSet, KEYS[3] = targetIndex</span>
+<span class="c1">-- ARGV[1] = member</span>
+<span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SADD'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="kr">if</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SISMEMBER'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="kr">then</span>
+<span class="w">    </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SADD'</span><span class="p">,</span><span class="w"> </span><span class="nv">KEYS</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span><span class="w"> </span><span class="nv">ARGV</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="kr">end</span>
+<span class="kr">return</span><span class="w"> </span><span class="mi">1</span>
+</code></pre></div>
+
+<p><strong>适用于</strong>: 写入频率不高但查询频繁、且交叉维度固定的场景。</p>
+<h4 id="9153">9.15.3 概率数据结构替代</h4>
+<blockquote>
+<p><strong>⚠ 模块依赖</strong>: 以下 <code>BF.*</code> / <code>CMS.*</code> 命令来自 <strong>RedisBloom</strong> 模块（Redis Stack 自带，或单独安装）。标准 Redis 不带这些命令，需要先加载模块。误判率/内存由初始化参数决定，不是固定值。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">原生命令</th>
+<th style="text-align: left;">概率替代</th>
+<th style="text-align: left;">精度（可配置）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">判断 member 是否存在</td>
+<td style="text-align: left;"><code>SISMEMBER</code></td>
+<td style="text-align: left;"><code>Bloom Filter</code> (<code>BF.RESERVE key 0.01 1000000</code> → <code>BF.EXISTS</code>)</td>
+<td style="text-align: left;">误判率可配置（如 0.01 = 1%）</td>
+</tr>
+<tr>
+<td style="text-align: left;">计算唯一 member 数</td>
+<td style="text-align: left;"><code>SCARD</code></td>
+<td style="text-align: left;"><code>HyperLogLog</code> (<code>PFCOUNT</code>)</td>
+<td style="text-align: left;">0.81% 标准误差</td>
+</tr>
+<tr>
+<td style="text-align: left;">统计某 member 频率</td>
+<td style="text-align: left;">需要额外计数</td>
+<td style="text-align: left;"><code>Count-Min Sketch</code> (<code>CMS.INITBYDIM</code> → <code>CMS.INCRBY</code>)</td>
+<td style="text-align: left;">可能高估，不低估</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><span class="c1"># BloomFilt 示例（需要 RedisBloom 模块）</span>
+BF.RESERVE<span class="w"> </span>bf_key<span class="w"> </span><span class="m">0</span>.01<span class="w"> </span><span class="m">1000000</span><span class="w">   </span><span class="c1"># 1% 误判，容量 100 万</span>
+BF.ADD<span class="w"> </span>bf_key<span class="w"> </span><span class="s2">"user:123"</span>
+BF.EXISTS<span class="w"> </span>bf_key<span class="w"> </span><span class="s2">"user:123"</span><span class="w">      </span><span class="c1"># → 1 (可能存在) / 0 (确定不存在)</span>
+</code></pre></div>
+
+<p><strong>适用于</strong>: 只需近似结果、集合规模极大的场景（几百万~几十亿级别）。</p>
+<h4 id="9154-lua-rtt">9.15.4 Lua 脚本合并多次 RTT</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 原子执行：取最小集合的大小 + 做交集</span>
+<span class="c1">-- KEYS[1..N] = 参与交集的 N 个集合</span>
+<span class="kd">local</span><span class="w"> </span><span class="nv">sizes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{}</span>
+<span class="kr">for</span><span class="w"> </span><span class="nv">i</span><span class="p">,</span><span class="w"> </span><span class="nv">key</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="nb">ipairs</span><span class="p">(</span><span class="nv">KEYS</span><span class="p">)</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="nv">sizes</span><span class="p">[</span><span class="nv">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SCARD'</span><span class="p">,</span><span class="w"> </span><span class="nv">key</span><span class="p">)</span>
+<span class="kr">end</span>
+<span class="c1">-- 选最小集合并返回交集</span>
+<span class="kd">local</span><span class="w"> </span><span class="nv">minIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="kr">for</span><span class="w"> </span><span class="nv">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="o">#</span><span class="nv">sizes</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="nv">sizes</span><span class="p">[</span><span class="nv">i</span><span class="p">]</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nv">sizes</span><span class="p">[</span><span class="nv">minIdx</span><span class="p">]</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="nv">minIdx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">i</span><span class="w"> </span><span class="kr">end</span>
+<span class="kr">end</span>
+<span class="kr">return</span><span class="w"> </span><span class="nv">redis</span><span class="p">.</span><span class="nf">call</span><span class="p">(</span><span class="s1">'SINTER'</span><span class="p">,</span><span class="w"> </span><span class="nf">unpack</span><span class="p">(</span><span class="nv">KEYS</span><span class="p">))</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>⚠ 重要说明</strong>:
+- Lua 脚本把多次 RTT 合并为一次，能显著降低网络延迟开销，<strong>但不减轻主线程 CPU 负担</strong>——CPU 密集型逻辑仍在主线程串行执行。
+- <code>.call('SINTER', ...)</code> 本身已是 Redis 原生实现且有内部优化（自动选最小集合遍历）；若要在 Lua 内自实现"最小集合优先遍历 + SISMEMBER"，Lua 循环的 CPU 开销可能<strong>高于</strong>原生 SINTER，不推荐。
+- <strong>要点</strong>: Lua 省的是 RTT，确保的是原子性，不是省 CPU。</p>
+</blockquote>
+<h4 id="9155">9.15.5 外部并行计算</h4>
+<p>对于离线大规模集合运算（如日级别全量交集分析），考虑导出数据到 Spark/Flink 等外部引擎并行计算，Redis 仅做在线热数据服务。</p>
+<hr />
+<h3 id="916">9.16 监控与告警实践</h3>
+<h4 id="9161">9.16.1 关键监控项</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">监控项</th>
+<th style="text-align: left;">来源</th>
+<th style="text-align: left;">意义</th>
+<th style="text-align: left;">告警建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>slowlog</strong></td>
+<td style="text-align: left;"><code>SLOWLOG GET 100</code></td>
+<td style="text-align: left;">捕获慢命令（集合运算是主要来源）</td>
+<td style="text-align: left;">slowlog 条目数突增或 P99 &gt; 阈值 → 告警</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>blocked_clients</strong></td>
+<td style="text-align: left;"><code>INFO stats</code></td>
+<td style="text-align: left;">被阻塞的客户端数</td>
+<td style="text-align: left;"><code>&gt; 0</code> 即告警</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>used_cpu_sys / used_cpu_user</strong></td>
+<td style="text-align: left;"><code>INFO cpu</code></td>
+<td style="text-align: left;">Redis 进程 CPU 占用</td>
+<td style="text-align: left;">持续 &gt; 80% → 容量告警</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>instantaneous_ops_per_sec</strong></td>
+<td style="text-align: left;"><code>INFO stats</code></td>
+<td style="text-align: left;">当前 QPS 波动</td>
+<td style="text-align: left;">骤降超过基线的 50% → 可能主线程阻塞</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>commandstats</strong></td>
+<td style="text-align: left;"><code>INFO commandstats</code></td>
+<td style="text-align: left;">各命令调用量与总耗时</td>
+<td style="text-align: left;"><code>sinter/sunion/sdiff</code> 单次平均耗时 &gt; SLA</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>latency</strong></td>
+<td style="text-align: left;"><code>LATENCY DOCTOR</code> / <code>LATENCY LATEST</code></td>
+<td style="text-align: left;">内部延迟事件</td>
+<td style="text-align: left;">峰值持续上升 → 排查</td>
+</tr>
+</tbody>
+</table>
+<h4 id="9162-slowlog">9.16.2 slowlog 配置与导出</h4>
+<div class="codehilite"><pre><span></span><code># redis.conf
+slowlog-log-slower-than 10000   # 单位: microseconds (10ms)
+slowlog-max-len 1024            # 最多保留 1024 条，建议 ≥ 512
+</code></pre></div>
+
+<blockquote>
+<p><strong>⚠ 注意</strong>: <code>SLOWLOG GET</code> 返回所有最近条目，简单 <code>echo &gt;&gt; file</code> 追加会<strong>重复记录</strong>；<code>SLOWLOG RESET</code> 会清空所有条目但可能<strong>丢失历史</strong>。</p>
+</blockquote>
+<p>推荐<strong>增量拉取</strong>方式（记录上次采集的最大 slowlog ID）：</p>
+<div class="codehilite"><pre><span></span><code><span class="ch">#!/bin/bash</span>
+<span class="c1"># 增量采集 slowlog，记录 last_id 避免重复</span>
+<span class="nv">LAST_ID_FILE</span><span class="o">=</span><span class="s2">"/var/run/redis_slowlog_last_id"</span>
+<span class="nv">LAST_ID</span><span class="o">=</span><span class="k">$(</span>cat<span class="w"> </span><span class="s2">"</span><span class="nv">$LAST_ID_FILE</span><span class="s2">"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="m">0</span><span class="k">)</span>
+
+<span class="c1"># 获取所有 slowlog 条目，只导出 id &gt; last_id 的新条目</span>
+redis-cli<span class="w"> </span>SLOWLOG<span class="w"> </span>GET<span class="w"> </span><span class="m">128</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>line<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span><span class="c1"># 解析 slowlog id（每条约 4 行，id 在第 1 行）</span>
+<span class="w">    </span><span class="nv">id</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$line</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'{print $1}'</span><span class="k">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">"</span><span class="nv">$id</span><span class="s2">"</span><span class="w"> </span>-gt<span class="w"> </span><span class="s2">"</span><span class="nv">$LAST_ID</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">        </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$line</span><span class="s2">"</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>/var/log/redis_slowlog.log
+<span class="w">        </span><span class="nv">NEW_LAST_ID</span><span class="o">=</span><span class="nv">$id</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="k">done</span>
+
+<span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">NEW_LAST_ID</span><span class="k">:-</span><span class="nv">$LAST_ID</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$LAST_ID_FILE</span><span class="s2">"</span>
+</code></pre></div>
+
+<p>或直接使用现成的 Prometheus slowlog exporter / Redis Exporter 插件，将 slowlog 导入 Loki/ELK 等集中式日志系统并做自动去重。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Prometheus alert rule 示例</span>
+<span class="nt">groups</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">redis_slowlog</span>
+<span class="w">    </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RedisSlowlogSpike</span>
+<span class="w">        </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rate(redis_slowlog_count[5m]) &gt; 10</span>
+<span class="w">        </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">"Redis</span><span class="nv"> </span><span class="s">slowlog</span><span class="nv"> </span><span class="s">飙升</span><span class="nv"> </span><span class="s">&gt;10/min"</span>
+</code></pre></div>
+
+<h4 id="9163-set">9.16.3 Set 编码巡检</h4>
+<blockquote>
+<p><strong>⚠ 生产环境绝对禁止使用 <code>KEYS</code></strong>（会阻塞 Redis）。必须使用 <code>SCAN</code> 分批遍历 + pipeline。</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 手动检查单个 key 的编码</span>
+redis-cli<span class="w"> </span>OBJECT<span class="w"> </span>ENCODING<span class="w"> </span><span class="s2">"user:123:tags"</span>
+<span class="c1"># 返回: intset | listpack | hashtable</span>
+
+<span class="c1"># 批量检查（安全方式：SCAN + pipeline，避免 KEYS）</span>
+redis-cli<span class="w"> </span>--scan<span class="w"> </span>--pattern<span class="w"> </span><span class="s2">"user:*:tags"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>key<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span><span class="nv">enc</span><span class="o">=</span><span class="k">$(</span>redis-cli<span class="w"> </span>OBJECT<span class="w"> </span>ENCODING<span class="w"> </span><span class="s2">"</span><span class="nv">$key</span><span class="s2">"</span><span class="k">)</span>
+<span class="w">  </span><span class="nv">size</span><span class="o">=</span><span class="k">$(</span>redis-cli<span class="w"> </span>SCARD<span class="w"> </span><span class="s2">"</span><span class="nv">$key</span><span class="s2">"</span><span class="k">)</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$key</span><span class="s2"> | </span><span class="nv">$enc</span><span class="s2"> | </span><span class="nv">$size</span><span class="s2">"</span>
+<span class="k">done</span>
+
+<span class="c1"># 统计 intset/listpack 占比</span>
+redis-cli<span class="w"> </span>--bigkeys<span class="w">  </span><span class="c1"># 输出会标示 encoding 类型</span>
+</code></pre></div>
+
+<p><strong>建议</strong>：对于大规模巡检，使用 <code>SCAN</code> + 批量 <code>OBJECT ENCODING</code>/<code>MEMORY USAGE</code> pipeline，并限制每轮扫描数量与超时。</p>
+<h4 id="9164">9.16.4 压测环境配置文档化建议</h4>
+<p>为便于他人复现与对比，建议在压测报告中记录：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 环境配置卡</span>
+<span class="nt">machine</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">cpu</span><span class="p">:</span><span class="w"> </span><span class="s">"Intel</span><span class="nv"> </span><span class="s">i7-12700H</span><span class="nv"> </span><span class="s">2.3GHz"</span>
+<span class="w">  </span><span class="nt">cores</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
+<span class="w">  </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">"32GB</span><span class="nv"> </span><span class="s">DDR5"</span>
+<span class="nt">os</span><span class="p">:</span><span class="w"> </span><span class="s">"Windows</span><span class="nv"> </span><span class="s">11</span><span class="nv"> </span><span class="s">/</span><span class="nv"> </span><span class="s">WSL2</span><span class="nv"> </span><span class="s">/</span><span class="nv"> </span><span class="s">Docker</span><span class="nv"> </span><span class="s">Desktop"</span>
+<span class="nt">redis</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="s">"redis:7-alpine"</span>
+<span class="w">  </span><span class="nt">config_changes</span><span class="p">:</span><span class="w"> </span><span class="s">"无（默认配置）"</span>
+<span class="w">  </span><span class="nt">maxmemory</span><span class="p">:</span><span class="w"> </span><span class="s">""</span>
+<span class="nt">client</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">library</span><span class="p">:</span><span class="w"> </span><span class="s">"PowerShell</span><span class="nv"> </span><span class="s">TCP</span><span class="nv"> </span><span class="s">直连"</span>
+<span class="w">  </span><span class="nt">connection_mode</span><span class="p">:</span><span class="w"> </span><span class="s">"每次新建连接（无连接池，未重用</span><span class="nv"> </span><span class="s">TCP</span><span class="nv"> </span><span class="s">连接）"</span>
+<span class="w">  </span><span class="nt">pipeline</span><span class="p">:</span><span class="w"> </span><span class="s">"无"</span>
+<span class="w">  </span><span class="nt">pool_size</span><span class="p">:</span><span class="w"> </span><span class="s">"不适用（未使用连接池）"</span>
+<span class="w">  </span><span class="nt">note</span><span class="p">:</span><span class="w"> </span><span class="s">"压测应使用连接池或长连接。每次新建连接会引入</span><span class="nv"> </span><span class="s">TCP</span><span class="nv"> </span><span class="s">三次握手</span><span class="nv"> </span><span class="s">+</span><span class="nv"> </span><span class="s">TLS</span><span class="nv"> </span><span class="s">开销，会严重拉低吞吐并影响可比性。建议生产压测记录是否重用连接、是否使用</span><span class="nv"> </span><span class="s">pipelining。"</span>
+<span class="nt">data_encoding</span><span class="p">:</span><span class="w"> </span><span class="s">"hashtable（非整数</span><span class="nv"> </span><span class="s">member:</span><span class="nv"> </span><span class="s">item:xxxxx）"</span>
+<span class="nt">network</span><span class="p">:</span><span class="w"> </span><span class="s">"localhost</span><span class="nv"> </span><span class="s">(127.0.0.1)"</span>
+</code></pre></div>
+
+<hr />
+<h3 id="917-sadd-vs">9.17 写入策略：实时 SADD vs 定时任务同步</h3>
+<blockquote>
+<p>核心问题澄清：集合运算的 CPU 开销在<strong>读</strong>（SINTER/SUNION/SDIFF）而非<strong>写</strong>（SADD）。</p>
+</blockquote>
+<h4 id="9171-cpu">9.17.1 写与读的 CPU 成本对比</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">操作</th>
+<th style="text-align: left;">复杂度</th>
+<th style="text-align: left;">10K 成员耗时</th>
+<th style="text-align: left;">CPU 开销级别</th>
+<th style="text-align: left;">需要异步吗</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>SADD</strong> 单条 member</td>
+<td style="text-align: left;">O(1) 哈希插入</td>
+<td style="text-align: left;"><strong>&lt; 1μs</strong></td>
+<td style="text-align: left;">几乎为零</td>
+<td style="text-align: left;">❌ 不需要</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SREM</strong> 单条 member</td>
+<td style="text-align: left;">O(1) 哈希删除</td>
+<td style="text-align: left;"><strong>&lt; 1μs</strong></td>
+<td style="text-align: left;">几乎为零</td>
+<td style="text-align: left;">❌ 不需要</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SINTER</strong> 两集合</td>
+<td style="text-align: left;">O(S × (k-1))</td>
+<td style="text-align: left;"><strong>~0.3ms</strong></td>
+<td style="text-align: left;"><strong>这是 CPU 大户</strong></td>
+<td style="text-align: left;">✅ 需缓存结果</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SUNION</strong> 两集合</td>
+<td style="text-align: left;">O(N1+N2)</td>
+<td style="text-align: left;"><strong>~0.3ms</strong></td>
+<td style="text-align: left;"><strong>这是 CPU 大户</strong></td>
+<td style="text-align: left;">✅ 需缓存结果</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SDIFF</strong> 两集合</td>
+<td style="text-align: left;">O(N1+N2)</td>
+<td style="text-align: left;"><strong>~0.3ms</strong></td>
+<td style="text-align: left;"><strong>这是 CPU 大户</strong></td>
+<td style="text-align: left;">✅ 需缓存结果</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────┐
+│  关键认知 (纠正误区):                                        │
+│                                                             │
+│  SADD 单条写入 CPU 开销 ≈ 1μs = 1/300 次 SINTER              │
+│  → 同步 SADD 完全没有性能问题                                │
+│  → 真正应该用定时任务预计算的是 SINTER/SUNION/SDIFF 的读结果  │
+│                                                             │
+│  不要为了省 O(1) 的写入，引入数据延迟这个更大的问题。          │
+└─────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h4 id="9172">9.17.2 三种写入策略及适用场景</h4>
+<p><strong>策略 A：实时增量 SADD（最常用）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 用户加好友 → 立即 SADD，开销 O(1) &lt; 1μs</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">addFriend</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">userId</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">friendId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">db</span><span class="p">.</span><span class="na">insert</span><span class="p">(</span><span class="s">"friends"</span><span class="p">,</span><span class="w"> </span><span class="n">userId</span><span class="p">,</span><span class="w"> </span><span class="n">friendId</span><span class="p">);</span><span class="w">                    </span><span class="c1">// 持久化</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="s">"user:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userId</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":friends"</span><span class="p">,</span><span class="w"> </span><span class="n">friendId</span><span class="p">);</span><span class="w">      </span><span class="c1">// &lt; 1μs, 无需异步</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>适用</strong>: 单条增量变更（加好友、加标签、购买记录、用户行为）
+<strong>理由</strong>: 用户加了好友，5 分钟后才在"共同好友"里看到？产品不可接受。</p>
+</blockquote>
+<hr />
+<p><strong>策略 B：定时全量覆盖（纯缓存场景）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 人群包从大数据平台产出，每天更新一次 → 全量覆盖</span>
+<span class="nd">@Scheduled</span><span class="p">(</span><span class="n">cron</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"0 0 3 * * ?"</span><span class="p">)</span><span class="w">  </span><span class="c1">// 每天凌晨 3 点</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">syncAudienceTags</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">List</span><span class="o">&lt;</span><span class="n">UserTag</span><span class="o">&gt;</span><span class="w"> </span><span class="n">tags</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="p">.</span><span class="na">query</span><span class="p">(</span><span class="s">"select * from user_tags where ..."</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">tmpKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"audience:target:tmp"</span><span class="p">;</span><span class="w">         </span><span class="c1">// 用临时 key 避免覆盖率窗口</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">del</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">);</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">UserTag</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">tags</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="na">getUserId</span><span class="p">());</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">rename</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span><span class="w"> </span><span class="s">"audience:target"</span><span class="p">);</span><span class="w">       </span><span class="c1">// 原子替换</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>适用</strong>: 数据源是离线/批量计算的（人群包、日报、周期报表），实时同步没意义。
+<strong>注意</strong>: 不要直接 DEL 原 key 再 SADD，用临时 key + RENAME 原子替换，避免查询窗口看到空集。</p>
+</blockquote>
+<hr />
+<p><strong>策略 C：实时 SADD + 定时对账（高可靠性）</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 实时变更 + 定时兜底，防止消息丢失 / Redis 重启数据丢失</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">addTag</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">productId</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="n">tag</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">db</span><span class="p">.</span><span class="na">insert</span><span class="p">(</span><span class="s">"product_tags"</span><span class="p">,</span><span class="w"> </span><span class="n">productId</span><span class="p">,</span><span class="w"> </span><span class="n">tag</span><span class="p">);</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="s">"tag:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">tag</span><span class="p">,</span><span class="w"> </span><span class="n">productId</span><span class="p">);</span><span class="w">                   </span><span class="c1">// 实时 (毫秒级)</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="s">"tag:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":version"</span><span class="p">,</span><span class="w"> </span><span class="n">productId</span><span class="p">);</span><span class="w">      </span><span class="c1">// 版本标记</span>
+<span class="p">}</span>
+
+<span class="nd">@Scheduled</span><span class="p">(</span><span class="n">fixedDelay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">300_000</span><span class="p">)</span><span class="w">  </span><span class="c1">// 每 5 分钟对账</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">reconcile</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">lastVersion</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="s">"tag:version:last"</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">currentVersion</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">System</span><span class="p">.</span><span class="na">currentTimeMillis</span><span class="p">();</span>
+
+<span class="w">    </span><span class="n">List</span><span class="o">&lt;</span><span class="n">ProductTag</span><span class="o">&gt;</span><span class="w"> </span><span class="n">changes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="p">.</span><span class="na">query</span><span class="p">(</span>
+<span class="w">        </span><span class="s">"select * from product_tags where updated_at &gt; ?"</span><span class="p">,</span><span class="w"> </span><span class="n">lastVersion</span><span class="p">);</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">ProductTag</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">changes</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="s">"tag:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="na">getTag</span><span class="p">(),</span><span class="w"> </span><span class="n">t</span><span class="p">.</span><span class="na">getProductId</span><span class="p">());</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">set</span><span class="p">(</span><span class="s">"tag:version:last"</span><span class="p">,</span><span class="w"> </span><span class="n">currentVersion</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>适用</strong>: 既需要毫秒级实时性，又需要防止消息队列丢消息、Redis 重启等异常。</p>
+</blockquote>
+<h4 id="9173">9.17.3 三种策略决策树</h4>
+<div class="codehilite"><pre><span></span><code>需要实时性？
+ ├─ 是 → 数据源是增量变更吗？
+ │        ├─ 是 → 【策略 A】实时 SADD
+ │        └─ 否 → 数据源是周期批量产出？
+ │                └─ 是 → 【策略 C】实时 SADD + 定时全量对账
+ └─ 否 → 数据每天才更新一次？
+          └─ 是 → 【策略 B】定时全量覆盖
+</code></pre></div>
+
+<h4 id="9174-sintersunion">9.17.4 定时任务真正的价值：预计算 SINTER/SUNION 读结果</h4>
+<p>定时任务不应用来迁移 SADD 写操作（没必要），而应用来<strong>预计算 O(N) 读的结果</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ❌ 错误理解：把 SADD 放到定时任务 → 牺牲实时性，换可忽略的 CPU</span>
+<span class="c1">// ✅ 正确理解：把 SINTER 结果预计算 → 读操作由 O(N) 降为 O(1)</span>
+
+<span class="c1">// 高频共同好友查询：每秒 1000 次请求 → 每次都 SINTER → CPU 炸</span>
+<span class="c1">// 解法：定时预计算 + 缓存（加锁防 stampede + 临时 key 原子替换）</span>
+
+<span class="nd">@Scheduled</span><span class="p">(</span><span class="n">fixedDelay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60_000</span><span class="p">)</span><span class="w">  </span><span class="c1">// 每分钟刷新一次</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">preCalculateCommonFriends</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">List</span><span class="o">&lt;</span><span class="n">Long</span><span class="o">&gt;</span><span class="w"> </span><span class="n">hotPairs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">getHotUserPairs</span><span class="p">();</span><span class="w">  </span><span class="c1">// 活跃用户对</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Pair</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">hotPairs</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">String</span><span class="w"> </span><span class="n">cacheKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"cache:common_friends:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">p</span><span class="p">.</span><span class="na">a</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">p</span><span class="p">.</span><span class="na">b</span><span class="p">;</span>
+<span class="w">        </span><span class="n">String</span><span class="w"> </span><span class="n">tmpKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cacheKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":tmp:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">UUID</span><span class="p">.</span><span class="na">randomUUID</span><span class="p">();</span>
+<span class="w">        </span><span class="n">String</span><span class="w"> </span><span class="n">lockKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"lock:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">cacheKey</span><span class="p">;</span>
+
+<span class="w">        </span><span class="c1">// 用 SETNX 防 stampede：多个实例同时刷新只执行一次</span>
+<span class="w">        </span><span class="kt">boolean</span><span class="w"> </span><span class="n">locked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">setIfAbsent</span><span class="p">(</span><span class="n">lockKey</span><span class="p">,</span><span class="w"> </span><span class="s">"1"</span><span class="p">,</span><span class="w"> </span><span class="n">Duration</span><span class="p">.</span><span class="na">ofSeconds</span><span class="p">(</span><span class="mi">30</span><span class="p">));</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">locked</span><span class="p">)</span><span class="w"> </span><span class="k">continue</span><span class="p">;</span><span class="w">  </span><span class="c1">// 已有其他实例在刷新，跳过</span>
+
+<span class="w">        </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">redis</span><span class="p">.</span><span class="na">sinterstore</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span>
+<span class="w">                </span><span class="s">"user:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">p</span><span class="p">.</span><span class="na">a</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":friends"</span><span class="p">,</span>
+<span class="w">                </span><span class="s">"user:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">p</span><span class="p">.</span><span class="na">b</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":friends"</span><span class="p">);</span>
+<span class="w">            </span><span class="n">redis</span><span class="p">.</span><span class="na">expire</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span><span class="w"> </span><span class="mi">120</span><span class="p">);</span><span class="w">  </span><span class="c1">// TTL 2 分钟</span>
+<span class="w">            </span><span class="n">redis</span><span class="p">.</span><span class="na">rename</span><span class="p">(</span><span class="n">tmpKey</span><span class="p">,</span><span class="w"> </span><span class="n">cacheKey</span><span class="p">);</span><span class="w">  </span><span class="c1">// 原子替换</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">redis</span><span class="p">.</span><span class="na">delete</span><span class="p">(</span><span class="n">lockKey</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// 查询 → 直接读缓存 O(1)</span>
+<span class="kd">public</span><span class="w"> </span><span class="n">Set</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">commonFriends</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">userA</span><span class="p">,</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="n">userB</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">smembers</span><span class="p">(</span><span class="s">"cache:common_friends:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userA</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">":"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">userB</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// 命中缓存 → 一次 RTT，零遍历</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>收益量化</strong>：1K members × 1000 QPS → 每 60s 一次预计算 vs 每次 0.15ms → CPU 节省 ~99%。</p>
+<h4 id="9175">9.17.5 总结</h4>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────────┐
+│                集合运算写入策略 最终结论                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ① SADD 单条写入 CPU 开销 &lt; 1μs → 不需要异步，直接同步即可            │
+│  ② 真正耗 CPU 的是 SINTER/SUNION/SDIFF (读操作，O(N))                 │
+│  ③ 定时任务的价值:                                                   │
+│     - 数据源是离线的 → 定时全量覆盖                                    │
+│     - 高频读需要缓存 → 定时预计算 SINTERSTORE + TTL                    │
+│     - 防消息丢失    → 实时 SADD + 定时对账                            │
+│  ④ 不要本末倒置: 牺牲实时性去省可忽略的 O(1) 写入开销,                 │
+│     数据延迟对用户体验的伤害 &gt;&gt; 省下的那点 CPU                         │
+│                                                                     │
+│  一句话: 同步写、定时算 (缓存读结果), 别反过来。                     │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h3 id="918-set-vs-hyperloglog-vs-bloomfilter-vs-cms">9.18 概率数据结构压测：Set vs HyperLogLog vs BloomFilter vs CMS</h3>
+<blockquote>
+<p><strong>控制变量对比压测</strong>：相同数据量、相同并发度下，精确存储（Set）和概率数据结构（HLL/BF/CMS）的<strong>吞吐量、内存占用、精度</strong>三角对比。</p>
+</blockquote>
+<h4 id="9181">9.18.1 压测环境</h4>
+<div class="codehilite"><pre><span></span><code>┌──────────────────────────────────────────────────────────────────────┐
+│                       压测拓扑                                        │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  redis:6379 (标准 Redis 7)          redis-stack:6380 (Redis Stack)   │
+│  ├─ Set 精确存储                     ├─ BloomFilter (BF.ADD/BF.EXISTS)│
+│  ├─ HyperLogLog (PFADD/PFCOUNT)     ├─ Count-Min Sketch (CMS.INCRBY) │
+│  └─ 所有集合运算 (SINTER/SUNION)    └─ 需 --profile prob 启动        │
+│                                                                      │
+│  客户端: PowerShell 原生 TCP 直连, $Concurrency 并发 worker          │
+│  每个 worker 循环发送 RESP 命令, 统计 ops/sec                        │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h4 id="9182">9.18.2 一键运行</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 方式 1: 一键运行 (mvn package → docker-compose up → 功能验证 → 性能对比)</span>
+<span class="nb">cd</span><span class="w"> </span>redis-project
+loadtester<span class="se">\p</span>rob-run.bat<span class="w"> </span>--skip-build
+
+<span class="c1"># 方式 2: 分步执行</span>
+<span class="c1"># Step 1: 打包</span>
+mvn<span class="w"> </span>package<span class="w"> </span>-DskipTests
+
+<span class="c1"># Step 2: 启动 Redis + Redis Stack</span>
+docker-compose<span class="w"> </span>--profile<span class="w"> </span>prob<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>redis<span class="w"> </span>redis-stack
+
+<span class="c1"># Step 3: 功能正确性验证</span>
+powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/prob-bench.ps1
+
+<span class="c1"># Step 4: 高并发性能对比</span>
+powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/prob-concur.ps1<span class="w"> </span>-Members<span class="w"> </span><span class="m">10000</span><span class="w"> </span>-Iters<span class="w"> </span><span class="m">2000</span>
+
+<span class="c1"># 参数说明:</span>
+<span class="c1">#   prob-bench.ps1  — 无参数 (固定 1000 member, 快速验证)</span>
+<span class="c1">#   prob-concur.ps1 -Members 10000  数据量</span>
+<span class="c1">#                   -Iters 2000     操作次数</span>
+</code></pre></div>
+
+<h4 id="9183">9.18.3 三大对比维度</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">对比维度</th>
+<th style="text-align: left;">精确方案</th>
+<th style="text-align: left;">概率方案</th>
+<th style="text-align: left;">控制变量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>成员存在性检查</strong></td>
+<td style="text-align: left;"><code>SISMEMBER</code> (O(1), 精确)</td>
+<td style="text-align: left;"><code>BF.EXISTS</code> (O(k), ~1% 误判)</td>
+<td style="text-align: left;">同数据量、同并发</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>唯一计数</strong></td>
+<td style="text-align: left;"><code>SCARD</code> (O(1), 精确)</td>
+<td style="text-align: left;"><code>PFCOUNT</code> (O(1), 0.81% 误差)</td>
+<td style="text-align: left;">同数据量、同并发</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>写入吞吐</strong></td>
+<td style="text-align: left;"><code>SADD</code> (O(1), 精确)</td>
+<td style="text-align: left;"><code>PFADD</code> / <code>BF.ADD</code> (O(1))</td>
+<td style="text-align: left;">同数据量、同并发</td>
+</tr>
+</tbody>
+</table>
+<h4 id="9184-prob-benchps1">9.18.4 功能正确性验证（prob-bench.ps1）</h4>
+<p><strong>实测结果：11/11 PASS</strong>（H1~H5, B1~B3, C1~C3 全部通过）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">测例</th>
+<th style="text-align: left;">命令</th>
+<th style="text-align: left;">预期</th>
+<th style="text-align: left;">实测</th>
+<th style="text-align: left;">结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">H1</td>
+<td style="text-align: left;">HLL 去重计数</td>
+<td style="text-align: left;"><code>PFADD</code> 1K条 → <code>PFCOUNT</code></td>
+<td style="text-align: left;">980~1020</td>
+<td style="text-align: left;">1002</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">H2</td>
+<td style="text-align: left;">HLL 重复添加</td>
+<td style="text-align: left;"><code>PFADD</code> 同一元素 3 次 → <code>PFCOUNT</code></td>
+<td style="text-align: left;">= 1</td>
+<td style="text-align: left;">= 1</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">H3</td>
+<td style="text-align: left;">HLL 合并</td>
+<td style="text-align: left;"><code>PFMERGE 500+500</code> → <code>PFCOUNT</code></td>
+<td style="text-align: left;">950~1050</td>
+<td style="text-align: left;">1003</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">H4</td>
+<td style="text-align: left;">HLL 固定内存</td>
+<td style="text-align: left;"><code>MEMORY USAGE hll:test</code></td>
+<td style="text-align: left;">≤ 15KB</td>
+<td style="text-align: left;">2KB</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">H5</td>
+<td style="text-align: left;">Set 精确计数</td>
+<td style="text-align: left;"><code>SADD</code> 1K条 → <code>SCARD</code></td>
+<td style="text-align: left;">~1000</td>
+<td style="text-align: left;">999</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">B1</td>
+<td style="text-align: left;">BF 创建</td>
+<td style="text-align: left;"><code>BF.RESERVE key 0.01 100000</code></td>
+<td style="text-align: left;">OK</td>
+<td style="text-align: left;">OK</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">B2</td>
+<td style="text-align: left;">BF 零漏报</td>
+<td style="text-align: left;"><code>BF.EXISTS</code> 已添加的 200 条</td>
+<td style="text-align: left;">全部 = 1</td>
+<td style="text-align: left;">200/200</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">B3</td>
+<td style="text-align: left;">BF 误判率</td>
+<td style="text-align: left;"><code>BF.EXISTS</code> 未添加的 1000 条</td>
+<td style="text-align: left;">≤ 2%</td>
+<td style="text-align: left;">通过</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">C1</td>
+<td style="text-align: left;">CMS 创建</td>
+<td style="text-align: left;"><code>CMS.INITBYDIM key 2000 5</code></td>
+<td style="text-align: left;">OK</td>
+<td style="text-align: left;">OK</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">C2</td>
+<td style="text-align: left;">CMS 不低估</td>
+<td style="text-align: left;"><code>CMS.INCRBY a 5 + 2</code> → <code>CMS.QUERY</code></td>
+<td style="text-align: left;">≥ 7</td>
+<td style="text-align: left;">通过</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+<tr>
+<td style="text-align: left;">C3</td>
+<td style="text-align: left;">CMS 未添加项</td>
+<td style="text-align: left;"><code>CMS.QUERY</code> 未添加的 key</td>
+<td style="text-align: left;">≤ 2</td>
+<td style="text-align: left;">通过</td>
+<td style="text-align: left;">PASS</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>H1~H5 在标准 Redis 7 (<code>redis:6379</code>) 上运行；B1~B3、C1~C3 需要 Redis Stack (<code>--profile prob</code>, 端口 6380)。</strong></p>
+</blockquote>
+<h4 id="9185">9.18.5 性能对比实测结果</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 测试环境: Docker Desktop Windows, redis:7 + redis-stack:7.2.0-v13</span>
+<span class="c1"># 控制变量: 10K members × 2000 ops per benchmark</span>
+<span class="c1"># 命令通过 redis-cli &lt; commands.txt 管道一次发送</span>
+</code></pre></div>
+
+<p><strong>对比 1：成员存在性检查</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方法</th>
+<th style="text-align: left;">吞吐 (ops/sec)</th>
+<th style="text-align: left;">内存 (10K)</th>
+<th style="text-align: left;">精度</th>
+<th style="text-align: left;">适用规模</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Set <code>SISMEMBER</code></strong></td>
+<td style="text-align: left;">2,114</td>
+<td style="text-align: left;">504KB</td>
+<td style="text-align: left;">精确</td>
+<td style="text-align: left;">&lt; 百万级</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>BF <code>BF.EXISTS</code></strong></td>
+<td style="text-align: left;">2,227</td>
+<td style="text-align: left;"><strong>28KB</strong></td>
+<td style="text-align: left;">1% 误判</td>
+<td style="text-align: left;"><strong>亿级</strong></td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>内存对比 (10K member):
+  Set   ████████████████████████████████████████████  504KB
+  BF    ██  28KB  (省 18×)
+</code></pre></div>
+
+<p><strong>对比 2：唯一计数</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方法</th>
+<th style="text-align: left;">吞吐 (ops/sec)</th>
+<th style="text-align: left;">内存 (10K)</th>
+<th style="text-align: left;">精度</th>
+<th style="text-align: left;">适用规模</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Set <code>SCARD</code></strong></td>
+<td style="text-align: left;">1,867</td>
+<td style="text-align: left;">504KB</td>
+<td style="text-align: left;">精确</td>
+<td style="text-align: left;">&lt; 百万级</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>HLL <code>PFCOUNT</code></strong></td>
+<td style="text-align: left;">2,155</td>
+<td style="text-align: left;"><strong>14KB</strong></td>
+<td style="text-align: left;">1.23% 实测误差</td>
+<td style="text-align: left;"><strong>无限</strong></td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>内存对比:
+  10K Set    ████████████████████████████████████████████  504KB
+  任何 HLL   █  14KB  (省 36×)
+</code></pre></div>
+
+<p><strong>对比 3：写入吞吐</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方法</th>
+<th style="text-align: left;">吞吐 (ops/sec)</th>
+<th style="text-align: left;">内存 (2K writes)</th>
+<th style="text-align: left;">内存增长模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><code>SADD</code></strong></td>
+<td style="text-align: left;">2,214</td>
+<td style="text-align: left;">78KB</td>
+<td style="text-align: left;">每 member ~50B</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>PFADD</code></strong></td>
+<td style="text-align: left;">2,040</td>
+<td style="text-align: left;"><strong>14KB</strong></td>
+<td style="text-align: left;"><strong>固定 12KB</strong></td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>关键发现:
+  - 吞吐量: 概率结构不在比 Set 慢 (同量级, 都在 ~2000 ops/sec)
+  - 内存:   概率结构节省 18~36× 内存 (10K 规模下)
+  - 精度:   HLL 实测误差 1.23% (理论 0.81%, 10K 小样本接近)
+
+  ⚠ 注意: 本压测的绝对吞吐值受 docker exec redis-cli 进程开销限制 (~2K ops/sec)。
+         实际直连部署可达 100K~200K ops/sec (参考 9.5 节 setop-concur 实测)。
+         横向比较仍有效——同样的管道开销下, 概率结构和精确结构吞吐同级。
+</code></pre></div>
+
+<h4 id="9186">9.18.6 极端规模下的内存对比（理论推算）</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">数据量</th>
+<th style="text-align: left;">Set (精确)</th>
+<th style="text-align: left;">HyperLogLog</th>
+<th style="text-align: left;">BloomFilter (1%)</th>
+<th style="text-align: left;">CMS (2000×5)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1 万</td>
+<td style="text-align: left;">~500KB</td>
+<td style="text-align: left;"><strong>12KB</strong></td>
+<td style="text-align: left;">~14KB</td>
+<td style="text-align: left;">~40KB</td>
+</tr>
+<tr>
+<td style="text-align: left;">10 万</td>
+<td style="text-align: left;">~5MB</td>
+<td style="text-align: left;"><strong>12KB</strong></td>
+<td style="text-align: left;">~120KB</td>
+<td style="text-align: left;">~40KB</td>
+</tr>
+<tr>
+<td style="text-align: left;">100 万</td>
+<td style="text-align: left;">~50MB</td>
+<td style="text-align: left;"><strong>12KB</strong></td>
+<td style="text-align: left;">~1.2MB</td>
+<td style="text-align: left;">~40KB</td>
+</tr>
+<tr>
+<td style="text-align: left;">1000 万</td>
+<td style="text-align: left;">~500MB</td>
+<td style="text-align: left;"><strong>12KB</strong></td>
+<td style="text-align: left;">~12MB</td>
+<td style="text-align: left;">~40KB</td>
+</tr>
+<tr>
+<td style="text-align: left;">1 亿</td>
+<td style="text-align: left;"><strong>~6GB</strong></td>
+<td style="text-align: left;"><strong>12KB</strong></td>
+<td style="text-align: left;"><strong>~500MB</strong></td>
+<td style="text-align: left;">~40KB</td>
+</tr>
+<tr>
+<td style="text-align: left;">10 亿</td>
+<td style="text-align: left;"><strong>≥ 60GB</strong></td>
+<td style="text-align: left;"><strong>12KB</strong></td>
+<td style="text-align: left;">~5GB</td>
+<td style="text-align: left;">~40KB</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code>1 亿条数据下的内存可视化:
+
+  Set             ██████████████████████████████████████████  ~6GB
+  BloomFilter     ███  ~500MB
+  CMS             █  ~40KB
+  HyperLogLog     █  ~12KB  ← 只有约 1.5 行 Set 的内存
+</code></pre></div>
+
+<h4 id="9187-vs">9.18.7 精度 vs 内存 取舍决策表</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">推荐</th>
+<th style="text-align: left;">理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">需要精确 member 列表</td>
+<td style="text-align: left;"><strong>Set / ZSet</strong></td>
+<td style="text-align: left;">概率结构不存储具体 member</td>
+</tr>
+<tr>
+<td style="text-align: left;">UV / DAU / 页面去重浏览</td>
+<td style="text-align: left;"><strong>HyperLogLog</strong></td>
+<td style="text-align: left;">1% 误差可接受，固定 12KB</td>
+</tr>
+<tr>
+<td style="text-align: left;">黑名单 / 爬虫去重 / 缓存穿透</td>
+<td style="text-align: left;"><strong>BloomFilter</strong></td>
+<td style="text-align: left;">1% 误判可接受，省 100× 内存</td>
+</tr>
+<tr>
+<td style="text-align: left;">点击量 Top-N / 频率统计</td>
+<td style="text-align: left;"><strong>CMS</strong></td>
+<td style="text-align: left;">不需要精确计数，省 20× 内存</td>
+</tr>
+<tr>
+<td style="text-align: left;">财务数据 / 精确报表</td>
+<td style="text-align: left;"><strong>Set / ZSet</strong></td>
+<td style="text-align: left;">必须精确</td>
+</tr>
+</tbody>
+</table>
+<h4 id="9188">9.18.8 核心结论</h4>
+<div class="codehilite"><pre><span></span><code>┌─────────────────────────────────────────────────────────────────────┐
+│              概率数据结构 vs 精确存储 压测结论                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  功能正确性: ✅ 11/11 PASS (HLL/BF/CMS 全部通过)                      │
+│                                                                     │
+│  ① 吞吐量同级: 概率结构和精确结构在同一数量级                          │
+│     SISMEMBER 2114 vs BF.EXISTS 2227 ops/sec                       │
+│     SCARD 1867 vs PFCOUNT 2155 ops/sec                             │
+│     SADD 2214 vs PFADD 2040 ops/sec                                │
+│     → 选择概率结构不是因为快, 是因为省内存                            │
+│                                                                     │
+│  ② 真正的收益在内存 (10K 实测):                                      │
+│     Set 504KB → HLL 14KB  (省 36×)                                  │
+│     Set 504KB → BF 28KB   (省 18×)                                  │
+│     1 亿条: Set ~6GB, HLL ~12KB, BF ~500MB                         │
+│                                                                     │
+│  ③ 精度实测:                                                       │
+│     HLL: 1.23% (vs 理论 0.81%, 10K 小样本)                          │
+│     BF:  零漏报, 误判率 &lt; 2%                                        │
+│     CMS: 不低估 (≥ 真实值)                                           │
+│                                                                     │
+│  ④ 部署前提:                                                        │
+│     HLL  → 标准 Redis 7 内置, 零部署成本                             │
+│     BF/CMS → 需要 Redis Stack 镜像 (`docker-compose --profile prob`)│
+│                                                                     │
+│  ⑤ 选择决策:                                                        │
+│     百万级以下 → Set/ZSet 精确存储, 不需要概率结构                    │
+│     亿级以上   → HLL/BF/CMS, 内存节省 18~500,000×                   │
+│     组合使用   → 热数据 Set + 统计 HLL + 去重 BF                     │
+│                                                                     │
+│  产出文件:                                                          │
+│    loadtester/prob-bench.ps1     — 功能正确性验证 (11 项, PASS=11)   │
+│    loadtester/prob-concur.ps1    — 控制变量性能对比 (redis-cli 管道)  │
+│    loadtester/prob-run.bat       — 一键运行 (打包→启动→验证→压测)    │
+│    docker-compose.yml            — 已新增 redis-stack 服务 (prof=prob)│
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h4 id="9189-hll-bf-cms">9.18.9 场景速查：HLL / BF / CMS 该用哪个</h4>
+<blockquote>
+<p>核心问题不是"哪个更好"，而是"你问的是什么问题"——不同问题对应不同结构。</p>
+</blockquote>
+<h5 id="_8">一句话定位</h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">结构</th>
+<th style="text-align: left;">回答的问题</th>
+<th style="text-align: left;">口诀</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>HyperLogLog</strong></td>
+<td style="text-align: left;">"今天来了多少<strong>不同</strong>用户？"</td>
+<td style="text-align: left;">去重计数，不求精确</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>BloomFilter</strong></td>
+<td style="text-align: left;">"这个手机号在不在黑名单？"</td>
+<td style="text-align: left;">存在性判断，允许误判</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Count-Min Sketch</strong></td>
+<td style="text-align: left;">"每个商品被看了多少次？"</td>
+<td style="text-align: left;">频率统计，允许高估</td>
+</tr>
+</tbody>
+</table>
+<h5 id="_9">决策树</h5>
+<div class="codehilite"><pre><span></span><code>你的需求是啥？
+│
+├─ "统计有多少个不同的 X"
+│   └─ HyperLogLog（12KB 固定，0.81% 误差）
+│
+├─ "判断 X 在不在集合里"
+│   ├─ 必须 100% 准确      → Set（O(1) SISMEMBER）
+│   └─ 1% 误判可以接受     → BloomFilter（内存省 18~100×）
+│
+├─ "统计每个 X 做了几次"
+│   ├─ 必须精确            → ZSet / Hash
+│   ├─ 允许略高估 + 内存紧 → CMS（~40KB 固定）
+│   └─ 只要 Top-N          → CMS 初步计数 + ZSet 存 Top-N
+│
+├─ "需要列出集合里所有成员"
+│   └─ Set / ZSet（概率结构做不到，它们不存具体 member）
+│
+└─ "百万级以下，内存还够"
+    └─ 用 Set，不要过早优化。只有当内存账单来的时候再考虑概率结构。
+</code></pre></div>
+
+<h5 id="_10">三种结构组合使用</h5>
+<div class="codehilite"><pre><span></span><code>一个成熟系统的典型组合：
+
+  用户统计
+  ├─ 日活/月活           → HLL（去重计数，12KB 搞定）
+  ├─ 今日登录用户 ID      → Set（热数据，百万级以下）
+  └─ 历史登录用户去重     → BloomFilter（亿级，防缓存穿透）
+
+  内容推荐
+  ├─ 文章阅读量排行       → CMS 近似计数 + ZSet 精确 Top-100
+  ├─ 已推荐去重          → BloomFilter（"这篇推过没？"）
+  └─ 用户兴趣标签         → Set SINTER（精确交集，百万级）
+
+  安全风控
+  ├─ 黑名单手机号         → BloomFilter（亿级库，"0" 即放行）
+  ├─ 登录失败频率         → CMS（防暴力破解）
+  └─ 高风险用户精确名单   → Set（兜底 BloomFilter 的 1% 误判）
+</code></pre></div>
+
+<blockquote>
+<p><strong>一句话总结</strong>：<strong>HLL 统计人、BF 判存在、CMS 量频率。</strong> 需求模糊用概率、查询列表用 Set、内存紧张选对路。Set 不丢精度；概率结构是主动取舍——用精度换 RAM，不是 bug 是设计。</p>
+</blockquote>
+<h4 id="91810-setzset">9.18.10 正式环境迁移指南：从 Set/ZSet 平滑过渡到概率结构</h4>
+<h5 id="_11">要不要一开始就用？</h5>
+<div class="codehilite"><pre><span></span><code>起步阶段:   几千条数据，Set 内存几百 KB      → 完全不需要概率结构
+增长阶段:   百万条数据，Set 内存几十 MB      → 可以开始考虑，但 Set 仍然扛得住
+爆发阶段:   亿级数据，Set 内存几 GB~几十 GB  → 必须迁移，RAM 账单直接教你做人
+</code></pre></div>
+
+<blockquote>
+<p><strong>原则：先跑起来，等内存告警了再迁。概率结构解决的是"规模问题"，不是"起步问题"。</strong></p>
+</blockquote>
+<h5 id="_12">迁移总策略：四步走，零停机</h5>
+<div class="codehilite"><pre><span></span><code>┌──────────────────────────────────────────────────────────────────┐
+│             迁移总策略：双写 → 校验 → 切读 → 停写                   │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  阶段 1: 双写 (Double Write)                                      │
+│    - 老逻辑 (Set) 和新逻辑 (HLL/BF/CMS) 同时写                     │
+│    - 持续 1-7 天，累积新结构的历史数据                              │
+│    - 此阶段读写仍以老逻辑为准                                      │
+│                                                                  │
+│  阶段 2: 校验 (Validate)                                          │
+│    - 老结构和概率结构的返回值做交叉校验                             │
+│    - 监控误差率、误判率在可接受范围内                               │
+│    - 设好告警阈值，异常时立刻回滚                                   │
+│                                                                  │
+│  阶段 3: 切读 (Switch Read)                                       │
+│    - 10% → 50% → 100% 灰度切换读取源                               │
+│    - 每个灰度阶段至少观察 1-3 天                                    │
+│    - 外部监控仪表盘对比前后数据波动                                  │
+│                                                                  │
+│  阶段 4: 停写 (Stop Old)                                          │
+│    - 删除老结构写入代码                                             │
+│    - 老 key 靠原有 TTL 自然过期，内存自动回收                        │
+│    - 无需手动全量 DEL，零运维接触                                   │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h5 id="aset-hyperlogloguvdau">迁移方案 A：Set → HyperLogLog（UV/DAU 去重计数）</h5>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ════════════ 阶段 1: 双写（持续 1 周）════════════</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">recordUV</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">userId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">dateKey</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">"uv:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LocalDate</span><span class="p">.</span><span class="na">now</span><span class="p">();</span><span class="w">       </span><span class="c1">// 老：Set</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">hllKey</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s">"uv_hll:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LocalDate</span><span class="p">.</span><span class="na">now</span><span class="p">();</span><span class="w">   </span><span class="c1">// 新：HLL</span>
+
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="n">dateKey</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="p">.</span><span class="na">valueOf</span><span class="p">(</span><span class="n">userId</span><span class="p">));</span><span class="w">      </span><span class="c1">// 老逻辑保留</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">pfadd</span><span class="p">(</span><span class="n">hllKey</span><span class="p">,</span><span class="w"> </span><span class="n">String</span><span class="p">.</span><span class="na">valueOf</span><span class="p">(</span><span class="n">userId</span><span class="p">));</span><span class="w">      </span><span class="c1">// 新逻辑并跑</span>
+
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">expire</span><span class="p">(</span><span class="n">dateKey</span><span class="p">,</span><span class="w"> </span><span class="mi">86400</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">30</span><span class="p">);</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">expire</span><span class="p">(</span><span class="n">hllKey</span><span class="p">,</span><span class="w"> </span><span class="mi">86400</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">30</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// ════════════ 阶段 2: 离线校验（每天对账一次）════════════</span>
+<span class="nd">@Scheduled</span><span class="p">(</span><span class="n">cron</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"0 0 2 * * ?"</span><span class="p">)</span><span class="w">  </span><span class="c1">// 每天凌晨 2 点</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">validateHLL</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">String</span><span class="w"> </span><span class="n">today</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">LocalDate</span><span class="p">.</span><span class="na">now</span><span class="p">().</span><span class="na">toString</span><span class="p">();</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">setCount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">scard</span><span class="p">(</span><span class="s">"uv:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">today</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">hllCount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">pfcount</span><span class="p">(</span><span class="s">"uv_hll:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">today</span><span class="p">);</span>
+
+<span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">setCount</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">hllCount</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">100.0</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">setCount</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">error</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mf">2.0</span><span class="p">)</span><span class="w"> </span><span class="n">alert</span><span class="p">(</span><span class="s">"HLL 误差超标: "</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"%"</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// ════════════ 阶段 3: 灰度切读 ════════════</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="nf">getUV</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">date</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">roll</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ThreadLocalRandom</span><span class="p">.</span><span class="na">current</span><span class="p">().</span><span class="na">nextInt</span><span class="p">(</span><span class="mi">100</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">roll</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">hllReadPercentage</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">pfcount</span><span class="p">(</span><span class="s">"uv_hll:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">date</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">scard</span><span class="p">(</span><span class="s">"uv:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">date</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// ════════════ 阶段 4: 停写 Set ════════════</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">recordUV</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">userId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">pfadd</span><span class="p">(</span><span class="s">"uv_hll:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LocalDate</span><span class="p">.</span><span class="na">now</span><span class="p">(),</span><span class="w"> </span><span class="n">String</span><span class="p">.</span><span class="na">valueOf</span><span class="p">(</span><span class="n">userId</span><span class="p">));</span>
+<span class="w">    </span><span class="c1">// redis.sadd 已删除</span>
+<span class="p">}</span>
+<span class="c1">// Set key 靠原有 30 天 TTL 自然过期，无需手动清理</span>
+</code></pre></div>
+
+<h5 id="bset-bloomfilter">迁移方案 B：Set → BloomFilter（黑名单 / 去重）</h5>
+<blockquote>
+<p><strong>⚠ BF 标准实现不支持删除</strong>。如果黑名单需要频繁移除成员，有两个选择：
+1. 保留 Set 做精确删除（需接受 Set 的内存开销）
+2. 使用 <strong>Counting BloomFilter</strong>（RedisBloom 模块支持 <code>BF.INSERT ... NONSCALING</code>，用计数器替代单 bit，可递减删除。注意：Counting BF 内存是标准 BF 的 <strong>3~4 倍</strong>，且误判率与实现复杂度更高）</p>
+</blockquote>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ════════════ 阶段 0: 全量初始化 BF ════════════</span>
+<span class="nd">@PostConstruct</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">initBF</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">bfReserve</span><span class="p">(</span><span class="s">"blacklist:bf"</span><span class="p">,</span><span class="w"> </span><span class="mf">0.01</span><span class="p">,</span><span class="w"> </span><span class="mi">10_000_000</span><span class="p">);</span>
+<span class="w">    </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="n">allPhones</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">db</span><span class="p">.</span><span class="na">query</span><span class="p">(</span><span class="s">"SELECT phone FROM blacklist"</span><span class="p">);</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">phone</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">allPhones</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">redis</span><span class="p">.</span><span class="na">bfAdd</span><span class="p">(</span><span class="s">"blacklist:bf"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// ════════════ 阶段 1: 双写 ════════════</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">addBlacklist</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">phone</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">db</span><span class="p">.</span><span class="na">insert</span><span class="p">(</span><span class="s">"blacklist"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">);</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">sadd</span><span class="p">(</span><span class="s">"blacklist:set"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">);</span><span class="w">    </span><span class="c1">// 老</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">bfAdd</span><span class="p">(</span><span class="s">"blacklist:bf"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">);</span><span class="w">    </span><span class="c1">// 新</span>
+<span class="p">}</span>
+
+<span class="c1">// ════════════ 阶段 2: 双读校验 ════════════</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="nf">isBlacklisted</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">phone</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">redis</span><span class="p">.</span><span class="na">bfExists</span><span class="p">(</span><span class="s">"blacklist:bf"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">))</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">boolean</span><span class="w"> </span><span class="n">exact</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">sismember</span><span class="p">(</span><span class="s">"blacklist:set"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">exact</span><span class="p">)</span><span class="w"> </span><span class="n">log</span><span class="p">.</span><span class="na">warn</span><span class="p">(</span><span class="s">"BF false positive: phone={}"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">exact</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// ════════════ 阶段 3: 切读 ════════════</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="nf">isBlacklisted</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">phone</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">bfExists</span><span class="p">(</span><span class="s">"blacklist:bf"</span><span class="p">,</span><span class="w"> </span><span class="n">phone</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// 1% 误判：偶尔冤枉一个正常用户 → 客服申诉解决，业务可接受</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h5 id="czset-cms">迁移方案 C：ZSet → CMS（排行榜 / 频率统计）</h5>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 阶段 1: 双写</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">recordClick</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">articleId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">zincrby</span><span class="p">(</span><span class="s">"clicks:zset"</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s">"article:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">articleId</span><span class="p">);</span><span class="w">   </span><span class="c1">// 老</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">cmsIncrBy</span><span class="p">(</span><span class="s">"clicks:cms"</span><span class="p">,</span><span class="w"> </span><span class="s">"article:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">articleId</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span><span class="w">  </span><span class="c1">// 新</span>
+<span class="p">}</span>
+
+<span class="c1">// 阶段 3: 组合方案 - CMS 计数 + ZSet 精确 Top-100</span>
+<span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">recordClick</span><span class="p">(</span><span class="kt">long</span><span class="w"> </span><span class="n">articleId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">cmsIncrBy</span><span class="p">(</span><span class="s">"clicks:cms"</span><span class="p">,</span><span class="w"> </span><span class="s">"article:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">articleId</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">long</span><span class="w"> </span><span class="n">approxCount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">cmsQuery</span><span class="p">(</span><span class="s">"clicks:cms"</span><span class="p">,</span><span class="w"> </span><span class="s">"article:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">articleId</span><span class="p">);</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">zadd</span><span class="p">(</span><span class="s">"clicks:top100"</span><span class="p">,</span><span class="w"> </span><span class="n">approxCount</span><span class="p">,</span><span class="w"> </span><span class="s">"article:"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">articleId</span><span class="p">);</span>
+<span class="w">    </span><span class="n">redis</span><span class="p">.</span><span class="na">zremrangeByRank</span><span class="p">(</span><span class="s">"clicks:top100"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mi">101</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kd">public</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="w"> </span><span class="nf">getTop100</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">redis</span><span class="p">.</span><span class="na">zrevrange</span><span class="p">(</span><span class="s">"clicks:top100"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">99</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h5 id="_13">迁移检查清单</h5>
+<div class="codehilite"><pre><span></span><code>┌──────────────────────────────────────────────────────────────────┐
+│               迁移前必检项                                        │
+├──────────────────────────────────────────────────────────────────┤
+│ □ 确认业务可接受精度损失（HLL: 0.81%误差, BF: 1%误判, CMS: 高估） |
+│ □ 确认不需要查询具体 member 列表（概率结构不存具体元素）           │
+│ □ 确认 Redis 版本/模块（HLL 标准内置, BF/CMS 需 Redis Stack）     │
+│ □ 双写期间预留约 2× 当前内存 余量，避免触发 OOM                   │
+│ □ 对老 Set key 设置合理 TTL（如 7~30 天），完成双写后自动回收      │
+│ □ 准备回滚方案：灰度比例可随时调回 0%（全部走老逻辑）              │
+│ □ 灰度周期：10% 1~2天 → 50% 1~3天 → 100% 保留回滚按钮 1 周      │
+└──────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+
+<h5 id="_14">核心结论</h5>
+<div class="codehilite"><pre><span></span><code>  不需要一开始就用。百万级以下 Set 完全够。
+  迁移核心是"双写 → 校验 → 切读 → 停写"，四步走，零停机，随时可回滚。
+  真正危险的是"到了 10 亿条还没迁"——那个时候再迁就是事故级别的项目了。
+  老 key 靠 TTL 自然过期，无需手动全量 DEL，运维零接触。
+
+  一句话: 早迁不急、晚迁不慌、不迁不行。
+</code></pre></div>
+  </article>
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+</script>
+</body>
+</html>
