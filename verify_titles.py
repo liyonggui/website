@@ -37,6 +37,10 @@ def parse_front_matter(text):
         return {}, body, f"YAML 解析失败: {e}"
 
 
+def is_draft(meta):
+    return str(meta.get("draft", "")).strip().lower() in ("true", "yes", "1")
+
+
 def check_md_quality():
     errors = []
     for path in list(ROOT.glob("blog/*.md")) + list(ROOT.glob("deep/*/*.md")):
@@ -45,6 +49,8 @@ def check_md_quality():
         if err:
             errors.append(f"{rel}: {err}")
             continue  # 元数据不可信，跳过后续必填项检查
+        if is_draft(meta):
+            continue  # 草稿：不要求必填项完整、不要求生成 HTML
         for field in ("title", "summary", "date", "tags", "category"):
             if not meta.get(field):
                 errors.append(f"{rel}: front matter 缺少 {field}")
@@ -68,6 +74,9 @@ def check_html_quality():
 def check_missing_html():
     errors = []
     for md_path in list(ROOT.glob("blog/*.md")) + list(ROOT.glob("deep/*/*.md")):
+        meta, _, _ = parse_front_matter(md_path.read_text(encoding="utf-8"))
+        if is_draft(meta):
+            continue  # 草稿不生成 HTML
         if not md_path.with_suffix(".html").exists():
             errors.append(f"{md_path.as_posix()}: 对应 HTML 未生成")
     return errors

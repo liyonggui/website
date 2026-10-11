@@ -31,8 +31,9 @@ jobs:
 
       - name: Check generated artifacts are committed
         run: |
-          if ! git diff --exit-code; then
-            echo "::error::生成产物与仓库不一致——请本地运行三个生成脚本后，把变更文件一并提交"
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "::error::存在未提交的生成产物（含新建文件）——请本地运行三个生成脚本后，把变更与新文件一并提交"
             exit 1
           fi
 

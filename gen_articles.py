@@ -432,7 +432,12 @@ def process_dir(rel_dir, active, back_label, catalog):
             text = f.read()
         meta, text = parse_front_matter(text)
         if str(meta.get("draft", "")).strip().lower() in ("true", "yes", "1"):
-            continue  # 草稿不生成公开 HTML（索引同样排除）
+            # 草稿不生成公开 HTML（索引同样排除）；若此前发布过，清除残留页面
+            stale = os.path.join(abs_dir, fn[:-3] + ".html")
+            if os.path.exists(stale):
+                os.remove(stale)
+                print("草稿下线，已删除残留 HTML:", os.path.relpath(stale, ROOT))
+            continue
         heading, text = extract_title(text, fn[:-3])
         title = str(meta.get("title") or heading or fn[:-3]).strip()
         body, toc = md_to_html(demote_h1(text))
