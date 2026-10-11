@@ -2,6 +2,8 @@
 """生成 deep.html：底层原理专栏索引（sticky 分类导航 + 文档卡片）。"""
 import os, urllib.parse
 
+from path_data import MYSQL_ORDER
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DEEP = os.path.join(ROOT, "deep")
 
@@ -53,7 +55,7 @@ HEAD = """<!DOCTYPE html>
   <meta property="og:description" content="数据库内核、压测方法论、云原生、AI Agent 原理——项目背后的硬核底层知识库。" />
   <meta property="og:url" content="https://liyonggui.github.io/website/deep.html" />
   <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-  <link rel="stylesheet" href="assets/css/style.css?v=2" />
+  <link rel="stylesheet" href="assets/css/style.css?v=3" />
   <script>
     (function () {
       try {
@@ -193,6 +195,9 @@ for key, title, desc, ic in SERIES:
         % (key, key, SHORT[key], count))
 
     items = []
+    if key == "mysql":
+        items.append('              <a class="path-entry" href="mysql-path.html">学习线路 · %d 站，从这里开始 →</a>\n'
+                     % len(MYSQL_ORDER))
     for fn in files:
         href = "deep/%s/%s" % (key, urllib.parse.quote(fn[:-3] + ".html"))
         if fn == "README.md":

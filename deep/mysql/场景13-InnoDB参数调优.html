@@ -15,8 +15,8 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景13：InnoDB 参数调优对吞吐的影响", "description": "InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用\"强持久性\"配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…", "url": "https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-27", "keywords": "MySQL, mysql"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
-<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
   (function () {
@@ -189,6 +189,8 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tunin
   </nav>
 </details></aside>
   </div>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 19/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测B9：连接泄漏与长连接治理</span></a><a class="pn-next" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html"><span class="pn-dir">下一站 →</span><span class="pn-title">补测B8：容量规划与压测上限评估</span></a></div></div></nav>
+
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>

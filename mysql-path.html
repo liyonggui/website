@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MySQL 学习线路：从原理到生产治理的 38 站 · 小番茄程序猿</title>
+<meta name="description" content="把本站全部 MySQL 文章按认知顺序组织成 38 站学习线路：打底、事务与锁、索引与 SQL、连接与容量、扩展与高可用、进阶专题，另附随查手册。"/>
+<meta name="keywords" content="MySQL, 学习路线, 学习线路, 事务, 锁, 索引, 高可用"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/mysql-path.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml" />
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="MySQL 学习线路：从原理到生产治理的 38 站 · 小番茄程序猿" />
+<meta property="og:description" content="把本站全部 MySQL 文章按认知顺序组织成 38 站学习线路：打底、事务与锁、索引与 SQL、连接与容量、扩展与高可用、进阶专题，另附随查手册。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/mysql-path.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"MySQL 学习线路","author":{"@type":"Person","name":"小番茄程序猿"},"url":"https://liyonggui.github.io/website/mysql-path.html","inLanguage":"zh-CN"}</script>
+<link rel="stylesheet" href="assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img class="logo" src="assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks">
+        <a href="index.html">首页</a>
+        <a href="projects.html">项目</a>
+        <a href="blog.html">博客</a>
+        <a href="deep.html" class="active">深度</a>
+      </nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="deep.html">← 返回深度技术</a>
+    <h1>MySQL 学习线路：从原理到生产治理的 38 站</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">学习线路 · MySQL</div><h1>MySQL 学习线路：<br/>从原理到生产治理的 38 站。</h1><p class="lead">这条线路把本站全部 44 篇 MySQL 文章按「认知顺序」重新组织：38 站主线路建议按顺序读——每一站回答一个问题：<b>读完它你能解决什么</b>；另有 6 篇随查手册放在最后，工作中直接翻，不必按顺序。</p><div class="path-progressbar"><i style="width:0"></i></div></div>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">1</span><div class="stage-tt"><h2>打底</h2><p>先建立全局图景：MySQL 内部发生了什么、每一层谁负责、哪些指标值得盯。</p></div><span class="stage-cnt">3 站</span></div><ol class="path-list"><li><a href="deep/mysql/MySQL%E5%8E%9F%E7%90%86%E7%AF%87.html"><span class="step-no">01</span><span class="step-body"><strong>MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制</strong><em>一口气读懂 InnoDB 架构、内存结构、redo/undo 与刷脏机制，建立 MySQL 世界观</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/MySQL%E5%9B%9B%E5%B1%82%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%9B%91%E6%8E%A7%E6%B1%87%E6%80%BB.html"><span class="step-no">02</span><span class="step-body"><strong>MySQL 四层架构、执行顺序、监控与 BufferPool 汇总</strong><em>从连接层到存储层逐层拆解，给出每一层该监控哪些指标</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/MySQL%E6%A0%B8%E5%BF%83%E8%A6%81%E7%82%B9%E4%B8%8E%E8%84%91%E5%9B%BE%E9%80%9F%E8%AE%B0.html"><span class="step-no">03</span><span class="step-body"><strong>MySQL 核心要点 & 脑图速记</strong><em>全系列结论的浓缩版，读完自测哪里还没掌握</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">2</span><div class="stage-tt"><h2>事务与锁</h2><p>并发正确性的地基：隔离级别、MVCC、各类锁的相互作用，以及死锁怎么治理。</p></div><span class="stage-cnt">7 站</span></div><ol class="path-list"><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF2-%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E7%BA%A7%E5%88%AB.html"><span class="step-no">04</span><span class="step-body"><strong>场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）</strong><em>用实验说清 RC / RR 的真实区别，幻读到底怎么处理</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html"><span class="step-no">05</span><span class="step-body"><strong>场景9：InnoDB 并发控制（MVCC 多版本并发控制）</strong><em>ReadView 与版本链怎么工作，为什么 RR 下普通读不加锁</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF3-%E6%82%B2%E8%A7%82%E9%94%81vs%E4%B9%90%E8%A7%82%E9%94%81.html"><span class="step-no">06</span><span class="step-body"><strong>场景3：悲观锁 vs 乐观锁</strong><em>两种并发控制路线的适用场景与线上选型依据</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E9%94%81%E7%9A%84%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5%E4%B8%8E%E9%80%89%E5%9E%8B.html"><span class="step-no">07</span><span class="step-body"><strong>场景4：锁的工程实践、选型与规避（开发视角）</strong><em>行锁、间隙锁、意向锁在真实业务里如何相互作用</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E8%A1%A5%E5%BC%BA-InnoDB%E9%94%81%E5%AE%8C%E6%95%B4%E4%BD%93%E7%B3%BB.html"><span class="step-no">08</span><span class="step-body"><strong>场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</strong><em>完整锁类型地图，排查锁问题先对照这张图</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF4-%E9%97%B4%E9%9A%99%E9%94%81%E4%B8%8ENext-KeyLock.html"><span class="step-no">09</span><span class="step-body"><strong>场景4：间隙锁 / Next-Key Lock</strong><em>RR 下锁区间怎么划，为什么会产生意想不到的锁范围</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF18-%E9%94%81%E7%AD%89%E5%BE%85%E4%B8%8E%E6%AD%BB%E9%94%81%E7%9B%91%E6%8E%A7%E6%B2%BB%E7%90%86.html"><span class="step-no">10</span><span class="step-body"><strong>场景18：锁等待与死锁监控治理</strong><em>定位死锁的完整链路：从 show engine innodb status 到监控告警</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">3</span><div class="stage-tt"><h2>索引与 SQL 质量</h2><p>写得快之前先写对：索引为什么失效、深分页怎么办、慢查询的标准化处理流程。</p></div><span class="stage-cnt">4 站</span></div><ol class="path-list"><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF5-%E7%B4%A2%E5%BC%95%E5%A4%B1%E6%95%88%E4%B8%8E%E6%85%A2%E6%9F%A5%E8%AF%A2.html"><span class="step-no">11</span><span class="step-body"><strong>场景5：索引失效与慢查询</strong><em>常见索引失效姿势清单，以及执行计划的判读方法</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html"><span class="step-no">12</span><span class="step-body"><strong>补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</strong><em>limit 100000,20 为什么慢，游标分页 / 延迟关联怎么改</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB7-%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E8%BF%87%E6%9C%9F%E4%B8%8E%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%BC%98%E5%8C%96.html"><span class="step-no">13</span><span class="step-body"><strong>补测B7：统计信息过期与执行计划优化</strong><em>执行计划突然变差时的第一嫌疑人</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html"><span class="step-no">14</span><span class="step-body"><strong>场景14：慢查询定位与优化闭环</strong><em>从慢日志到优化落地的标准工作流，可复用到任何项目</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">4</span><div class="stage-tt"><h2>连接与容量</h2><p>撑住流量的地基：连接池怎么调、参数怎么算、这台机器到底能扛多少。</p></div><span class="stage-cnt">7 站</span></div><ol class="path-list"><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF1-%E8%BF%9E%E6%8E%A5%E6%B1%A0%E4%B8%8E%E8%B6%85%E5%8D%96%E9%97%AE%E9%A2%98.html"><span class="step-no">15</span><span class="step-body"><strong>场景1：连接池与超卖问题（四种扣减策略对比）</strong><em>连接池打满引发的雪崩与超卖现场还原</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF16-%E8%BF%9E%E6%8E%A5%E6%B1%A0%E5%8F%82%E6%95%B0%E8%B0%83%E4%BC%98.html"><span class="step-no">16</span><span class="step-body"><strong>场景16：连接池参数调优（HikariCP）</strong><em>HikariCP 的参数应该是算出来的，不是抄来的</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB5-%E8%BF%9E%E6%8E%A5%E8%80%97%E5%B0%BD%E6%B2%BB%E7%90%86.html"><span class="step-no">17</span><span class="step-body"><strong>补测B5：连接耗尽治理（max_connections 打满）</strong><em>连接被谁占着不放：泄漏的定位与防护</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html"><span class="step-no">18</span><span class="step-body"><strong>补测B9：连接泄漏与长连接治理</strong><em>长连接的代价与治理手段</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF13-InnoDB%E5%8F%82%E6%95%B0%E8%B0%83%E4%BC%98.html"><span class="step-no">19</span><span class="step-body"><strong>场景13：InnoDB 参数调优对吞吐的影响</strong><em>buffer pool、刷脏、日志相关参数的生产取值思路</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html"><span class="step-no">20</span><span class="step-body"><strong>补测B8：容量规划与压测上限评估</strong><em>这台机器到底能扛多少：容量估算的方法论</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/Sysbench%E5%8D%95%E4%BD%93MySQL%E7%A1%AC%E4%BB%B6%E4%B8%8A%E9%99%90%E5%8E%8B%E6%B5%8B.html"><span class="step-no">21</span><span class="step-body"><strong>Sysbench 单体 MySQL 硬件上限压测</strong><em>用 Sysbench 把单机 MySQL 压到真实上限</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">5</span><div class="stage-tt"><h2>扩展与高可用</h2><p>从单机走向集群：读写分离、主从延迟、分库分表、高可用与备份。</p></div><span class="stage-cnt">7 站</span></div><ol class="path-list"><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF6-%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB%E4%B8%8E%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F.html"><span class="step-no">22</span><span class="step-body"><strong>场景6：读写分离与主从延迟</strong><em>读写分离的引入时机，以及延迟从哪里来</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF11-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E6%B2%BB%E7%90%86.html"><span class="step-no">23</span><span class="step-body"><strong>场景11：主从延迟治理（写后读一致性方案）</strong><em>主从延迟的三类根因与对应治理方案</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html"><span class="step-no">24</span><span class="step-body"><strong>补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）</strong><em>主从数据不一致怎么发现、怎么安全修复</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html"><span class="step-no">25</span><span class="step-body"><strong>补测B10：主从延迟告警与从库自动摘除</strong><em>延迟超阈值自动摘除流量的落地实现</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF7-%E5%88%86%E5%BA%93%E5%88%86%E8%A1%A8.html"><span class="step-no">26</span><span class="step-body"><strong>场景7：分库分表（应用层水平分表）</strong><em>什么时候才真的需要分，以及怎么选分片键</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF15-MySQL%E9%AB%98%E5%8F%AF%E7%94%A8.html"><span class="step-no">27</span><span class="step-body"><strong>场景15：MySQL 高可用（主从切换 / 故障演练）</strong><em>主从 / 半同步 / MHA / MGR 的选型对比</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html"><span class="step-no">28</span><span class="step-body"><strong>补测B1：备份恢复（binlog PITR / 误删误更新恢复）</strong><em>备份不是拷文件：可恢复性验证怎么做</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">6</span><div class="stage-tt"><h2>进阶专题</h2><p>架构师视角的一致性、吞吐与治理：缓存双写、分布式锁、冷热分离、批量写入。</p></div><span class="stage-cnt">10 站</span></div><ol class="path-list"><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF10-Redis%E7%BC%93%E5%AD%98%E4%B8%8EMySQL%E5%8F%8C%E5%86%99%E4%B8%80%E8%87%B4%E6%80%A7.html"><span class="step-no">29</span><span class="step-body"><strong>场景10：Redis 缓存 + MySQL 双写一致性</strong><em>缓存一致性方案对比，以及最终选择的理由</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF12-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81.html"><span class="step-no">30</span><span class="step-body"><strong>场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</strong><em>用 MySQL / Redis 做分布式锁的正确姿势与陷阱</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF8-%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5%E4%BC%98%E5%8C%96.html"><span class="step-no">31</span><span class="step-body"><strong>场景8：批量写入优化</strong><em>批量写入的吞吐提升路径与边界</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%86%99%E5%85%A5%E8%B7%AF%E5%BE%84%E5%AF%B9%E6%AF%94-MySQL%E6%89%B9%E9%87%8Fvs%E7%A3%81%E7%9B%98%E8%BF%BD%E5%8A%A0.html"><span class="step-no">32</span><span class="step-body"><strong>写入路径对比：单体 MySQL 批量 vs 本地磁盘追加</strong><em>从写入路径看批量优化的理论极限在哪</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF17-%E6%95%B0%E6%8D%AE%E5%BD%92%E6%A1%A3%E4%B8%8E%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB.html"><span class="step-no">33</span><span class="step-body"><strong>场景17：数据归档与冷热分离</strong><em>历史数据搬到哪、怎么搬、查询怎么办</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB11-%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB%E7%9A%84%E6%9F%A5%E8%AF%A2%E8%B7%AF%E7%94%B1.html"><span class="step-no">34</span><span class="step-body"><strong>补测B11：冷热分离的查询路由</strong><em>冷热两层对业务透明的路由实现</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB3-%E7%83%AD%E7%82%B9%E8%A1%8C%E9%94%81%E6%B2%BB%E7%90%86.html"><span class="step-no">35</span><span class="step-body"><strong>补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</strong><em>热点行更新的排队问题与解法</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html"><span class="step-no">36</span><span class="step-body"><strong>补测B4：SQL 注入与安全治理</strong><em>从注入实测到防护清单</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E8%A1%A5%E6%B5%8BB12-%E6%AD%BB%E9%94%81%E5%90%8E%E7%9A%84%E5%BA%94%E7%94%A8%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6.html"><span class="step-no">37</span><span class="step-body"><strong>补测B12：死锁后的应用重试机制</strong><em>死锁不可避免，应用层怎么兜底</em></span><span class="arr">→</span></a></li><li><a href="deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html"><span class="step-no">38</span><span class="step-body"><strong>数据同步工具对比：mysqldump / DataX / Flink CDC</strong><em>mysqldump / DataX / Flink CDC 三代同步工具的选型逻辑</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-ref"><h2>附 · 随查手册（6 篇）</h2><p>不按顺序读：线上出问题时，这些是直接照着操作的手册。</p><ul class="ref-list"><li><a href="deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html"><strong>MySQL（InnoDB）事务与锁排查治理手册</strong><em>线上锁问题应急处理步骤</em></a></li><li><a href="deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html"><strong>Copilot Chat Conversation Export: MySQL故障排查实战总结</strong><em>故障现象 → 排查动作速查表</em></a></li><li><a href="deep/mysql/%E8%BF%9E%E6%8E%A5%E5%B1%82%E5%8F%82%E6%95%B0%E8%AF%A6%E7%BB%86%E8%BE%A8%E6%9E%90.html"><strong>MySQL 连接层参数详细辨析</strong><em>连接层每个参数的准确含义与推荐值</em></a></li><li><a href="deep/mysql/%E5%9C%BA%E6%99%AF1-18%E7%BB%93%E8%AE%BA%E6%B1%87%E6%80%BB.html"><strong>MySQL 高并发场景 1-18 结论汇总（只要结论）</strong><em>18 个主场景的一句话结论合集</em></a></li><li><a href="deep/mysql/MySQL%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E3%80%81%E9%94%81%E6%9C%BA%E5%88%B6%E3%80%81%E7%B4%A2%E5%BC%95%E5%B7%AE%E5%BC%82%20%E6%A0%B8%E5%BF%83%E6%B1%87%E6%80%BB%E6%96%87%E6%A1%A3.html"><strong>MySQL事务隔离、锁机制、索引差异 核心汇总文档</strong><em>隔离 / 锁 / 索引三主题的结论去重汇总</em></a></li><li><a href="deep/mysql/KingbaseES-%E9%94%81%E4%B8%8E%E4%BA%8B%E5%8A%A1%E6%8E%92%E6%9F%A5%E6%89%8B%E5%86%8C.html"><strong>KingbaseES / PostgreSQL 锁与长事务排查手册</strong><em>国产数据库 KingbaseES 的锁排查对照手册</em></a></li></ul></section>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

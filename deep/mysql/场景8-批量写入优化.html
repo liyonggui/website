@@ -15,8 +15,8 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景8-批量写入优化.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景8：批量写入优化", "description": "MySQL 单条 INSERT 的瓶颈主要在网络往返和事务提交：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。批量写入通…", "url": "https://liyonggui.github.io/website/deep/mysql/场景8-批量写入优化.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景8-批量写入优化.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-21", "keywords": "MySQL, mysql"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
-<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
   (function () {
@@ -163,6 +163,8 @@
   </nav>
 </details></aside>
   </div>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 31/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E5%9C%BA%E6%99%AF12-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</span></a><a class="pn-next" href="../../deep/mysql/%E5%86%99%E5%85%A5%E8%B7%AF%E5%BE%84%E5%AF%B9%E6%AF%94-MySQL%E6%89%B9%E9%87%8Fvs%E7%A3%81%E7%9B%98%E8%BF%BD%E5%8A%A0.html"><span class="pn-dir">下一站 →</span><span class="pn-title">写入路径对比：单体 MySQL 批量 vs 本地磁盘追加</span></a></div></div></nav>
+
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>

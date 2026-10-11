@@ -15,8 +15,8 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/补测B10-主从延迟告警与从库自动摘除.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测B10：主从延迟告警与从库自动摘除", "description": "读写分离下，从库复制延迟会导致读从库读到过期数据。延迟超阈值必须告警 + 自动把从库从读写分离摘除（读全部回主库），延迟恢复后再重新挂载。否则高并发下读到陈旧数据引发业务事故。", "url": "https://liyonggui.github.io/website/deep/mysql/补测B10-主从延迟告警与从库自动摘除.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B10-主从延迟告警与从库自动摘除.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-03", "keywords": "MySQL, mysql"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
-<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
   (function () {
@@ -174,6 +174,8 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/lag/check?th
   </nav>
 </details></aside>
   </div>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 25/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF7-%E5%88%86%E5%BA%93%E5%88%86%E8%A1%A8.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景7：分库分表（应用层水平分表）</span></a></div></div></nav>
+
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>

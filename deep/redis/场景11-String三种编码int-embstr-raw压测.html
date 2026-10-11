@@ -15,8 +15,8 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景11-String三种编码int-embstr-raw压测.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）", "description": "已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需…", "url": "https://liyonggui.github.io/website/deep/redis/场景11-String三种编码int-embstr-raw压测.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景11-String三种编码int-embstr-raw压测.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-15", "keywords": "Redis, 压测, redis"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
-<link rel="stylesheet" href="../../assets/css/article.css"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
   (function () {
@@ -2387,6 +2387,7 @@ curl<span class="w"> </span>http://localhost:8082/set-encoding/status
   </nav>
 </details></aside>
   </div>
+
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>

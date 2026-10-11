@@ -10,9 +10,12 @@ import html
 import json
 import os
 import re
+import urllib.parse
 
 import markdown
 from pygments.formatters import HtmlFormatter
+
+from path_data import MYSQL_ORDER
 
 try:
     import yaml
@@ -41,8 +44,8 @@ TEMPLATE = """<!DOCTYPE html>
 <meta property="og:url" content="__CANONICAL__" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">__JSONLD__</script>
-<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=2"/>
-<link rel="stylesheet" href="__PREFIX__assets/css/article.css"/>
+<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="__PREFIX__assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
 <script>
   (function () {
@@ -86,6 +89,7 @@ __BODY__
     </article>
     <aside class="toc-side">__TOC__</aside>
   </div>
+__PATHNAV__
 __RELATED__
   <section class="giscus-wrap">
     <div class="wrap">
@@ -185,7 +189,7 @@ def depth_prefix(subdir):
 
 
 def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=None,
-               canonical="", keywords="", jsonld="", related_html="", desc=""):
+               canonical="", keywords="", jsonld="", related_html="", desc="", pathnav=""):
     a = {"home": "", "proj": "", "blog": "", "deep": ""}
     if active in a:
         a[active] = ' class="active"'
@@ -202,6 +206,7 @@ def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=
             .replace("__META__", build_meta_row(meta, title, prefix))
             .replace("__BODY__", body)
             .replace("__TOC__", toc)
+            .replace("__PATHNAV__", pathnav)
             .replace("__RELATED__", related_html)
             .replace("__BACK_HREF__", back_href)
             .replace("__BACK_LABEL__", back_label)
@@ -395,6 +400,40 @@ def build_related_html(related, prefix):
     )
 
 
+def build_path_nav(idx, path_titles, prefix):
+    """MySQL 学习线路的上一站/下一站导航（idx 从 0 起）。"""
+    total = len(MYSQL_ORDER)
+    stem = MYSQL_ORDER[idx]
+    prev_stem = MYSQL_ORDER[idx - 1] if idx > 0 else None
+    next_stem = MYSQL_ORDER[idx + 1] if idx < total - 1 else None
+
+    def _link(stem_, cls, dir_txt, fallback):
+        t = path_titles.get("deep/mysql/" + stem_ + ".html", stem_)
+        href = prefix + "deep/mysql/" + urllib.parse.quote(stem_ + ".html")
+        return (f'<a class="{cls}" href="{href}">'
+                f'<span class="pn-dir">{dir_txt}</span>'
+                f'<span class="pn-title">{html.escape(t or fallback)}</span></a>')
+
+    if prev_stem:
+        prev_html = _link(prev_stem, "pn-prev", "← 上一站", "上一站")
+    else:
+        prev_html = (f'<a class="pn-prev pn-home" href="{prefix}mysql-path.html">'
+                     f'<span class="pn-dir">← 上一站</span>'
+                     f'<span class="pn-title">线路总览</span></a>')
+    if next_stem:
+        next_html = _link(next_stem, "pn-next", "下一站 →", "下一站")
+    else:
+        next_html = (f'<a class="pn-next pn-home" href="{prefix}mysql-path.html">'
+                     f'<span class="pn-dir">下一站 →</span>'
+                     f'<span class="pn-title">回到线路总览</span></a>')
+    return (
+        '  <nav class="path-nav"><div class="wrap">'
+        f'<span class="pn-label">MySQL 学习线路 · 第 {idx + 1}/{total} 站</span>'
+        f'<div class="pn-links">{prev_html}{next_html}</div>'
+        '</div></nav>\n'
+    )
+
+
 def build_jsonld(title, desc, rel_url, meta, tags, series):
     data = {
         "@context": "https://schema.org",
@@ -452,6 +491,10 @@ def process_dir(rel_dir, active, back_label, catalog):
         series = str(meta.get("series") or default_series(rel_dir))
         desc = str(meta.get("summary") or "").strip() or f"{title} —— 小番茄程序猿的技术文章"
         related = find_related(catalog, rel_url, series, tags)
+        pathnav = ""
+        if rel_dir == "deep/mysql" and fn[:-3] in MYSQL_ORDER:
+            path_titles = {e["rel_url"]: e["title"] for e in catalog}
+            pathnav = build_path_nav(MYSQL_ORDER.index(fn[:-3]), path_titles, prefix)
         html_doc = build_html(
             prefix, title, body, active, back_href, back_label, toc, meta,
             canonical=SITE_BASE + rel_url,
@@ -459,6 +502,7 @@ def process_dir(rel_dir, active, back_label, catalog):
             jsonld=build_jsonld(title, desc, rel_url, meta, tags, series),
             related_html=build_related_html(related, prefix),
             desc=desc,
+            pathnav=pathnav,
         )
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(html_doc)
