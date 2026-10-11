@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>学习线路 · 小番茄程序猿</title>
+  <meta name="description" content="学习线路总览：把零散的技术文章按认知顺序串成线路，每一站回答「读完它能解决什么」。MySQL 线路 38 站已上线，Redis / ES / K8s 线路整理中。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="学习线路 · 小番茄程序猿" />
+  <meta property="og:description" content="把技术文章按认知顺序串成学习线路，每一站回答「读完它能解决什么」。" />
+  <meta property="og:url" content="https://liyonggui.github.io/website/learn.html" />
+  <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+  <link rel="stylesheet" href="assets/css/style.css?v=3" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks">
+          <a href="index.html">首页</a>
+          <a href="projects.html">项目</a>
+          <a href="blog.html">博客</a>
+          <a href="deep.html">深度</a>
+          <a href="learn.html" class="active">学习</a>
+          <a href="about.html">关于</a>
+        </nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">学习</div>
+          <h2>学习线路总览</h2>
+          <p>
+            单篇手册解决单个问题，线路解决「先学什么、后学什么」。
+            每条线路按认知顺序编排，每一站只回答一个问题：<b>读完它你能解决什么</b>。
+          </p>
+        </div>
+
+        <div class="card" style="margin-bottom:var(--s4)">
+          <div class="proj-top">
+            <h3>MySQL 学习线路</h3>
+            <span class="metric">38 站 + 6 篇随查手册</span>
+          </div>
+          <p>
+            从 InnoDB 原理到生产治理：事务与锁、索引与 SQL 质量、连接与容量、扩展与高可用，
+            全部基于实测场景，附结论汇总与可直接照做的运维手册。
+          </p>
+          <div class="tag-row">
+            <span class="tag gray">打底 3 站</span>
+            <span class="tag gray">事务与锁 7 站</span>
+            <span class="tag gray">索引与 SQL 质量 4 站</span>
+            <span class="tag gray">连接与容量 7 站</span>
+            <span class="tag gray">扩展与高可用 7 站</span>
+            <span class="tag gray">进阶专题 10 站</span>
+          </div>
+          <div class="more" style="margin-top:var(--s3)">
+            <a class="btn btn-primary" href="mysql-path.html">进入线路 <span class="arr">→</span></a>
+          </div>
+        </div>
+
+        <div class="grid grid-3">
+          <div class="card" style="opacity:.65">
+            <h3>Redis 高并发线路</h3>
+            <p>编码与结构选型、Pipeline 边界、缓存一致性、哨兵与集群——11 个压测场景正在重新编排。</p>
+            <div class="more"><span class="tag gray">整理中</span></div>
+          </div>
+          <div class="card" style="opacity:.65">
+            <h3>Elasticsearch 线路</h3>
+            <p>写入全流程、分片与路由、ILM 冷热分层、运维命令速查——手册已就绪，线路编排中。</p>
+            <div class="more"><span class="tag gray">整理中</span></div>
+          </div>
+          <div class="card" style="opacity:.65">
+            <h3>K8s 实践线路</h3>
+            <p>从 Compose 到集群：副本、探针、Ingress、HPA 与滚动更新，按部署演进顺序编排。</p>
+            <div class="more"><span class="tag gray">整理中</span></div>
+          </div>
+        </div>
+
+        <p style="margin-top:var(--s4);opacity:.75">
+          不想按线路读？直接去 <a href="deep.html">深度</a> 按系列翻手册，或用 <a href="search.html">搜索</a> 定位具体问题。
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+
+  <script src="assets/js/comments.js?v=2"></script>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+      <span class="foot-links"><a href="about.html">关于</a> · <a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon() { th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+    syncThemeIcon();
+    th.addEventListener("click", function () {
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch (e) {}
+      syncThemeIcon();
+    });
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function () { l.classList.toggle("open"); });
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+      }, { threshold: 0.1 });
+      document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+    } else {
+      document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
+    }
+  </script>
+</body>
+</html>

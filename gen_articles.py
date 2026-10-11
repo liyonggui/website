@@ -70,6 +70,8 @@ TEMPLATE = """<!DOCTYPE html>
         <a href="__PREFIX__projects.html"__A_PROJ__>项目</a>
         <a href="__PREFIX__blog.html"__A_BLOG__>博客</a>
         <a href="__PREFIX__deep.html"__A_DEEP__>深度</a>
+        <a href="__PREFIX__learn.html"__A_LEARN__>学习</a>
+        <a href="__PREFIX__about.html"__A_ABOUT__>关于</a>
       </nav>
       <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
       <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
@@ -103,7 +105,7 @@ __RELATED__
 <footer>
   <div class="wrap">
     <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
-    <span class="foot-links"><a href="__PREFIX__tags.html">标签</a> · <a href="__PREFIX__archives.html">归档</a> · <a href="__PREFIX__search.html">搜索</a> · <a href="__PREFIX__rss.xml">RSS</a></span>
+    <span class="foot-links"><a href="__PREFIX__about.html">关于</a> · <a href="__PREFIX__tags.html">标签</a> · <a href="__PREFIX__archives.html">归档</a> · <a href="__PREFIX__search.html">搜索</a> · <a href="__PREFIX__rss.xml">RSS</a></span>
   </div>
 </footer>
 <script>
@@ -190,7 +192,7 @@ def depth_prefix(subdir):
 
 def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=None,
                canonical="", keywords="", jsonld="", related_html="", desc="", pathnav=""):
-    a = {"home": "", "proj": "", "blog": "", "deep": ""}
+    a = {"home": "", "proj": "", "blog": "", "deep": "", "about": "", "learn": ""}
     if active in a:
         a[active] = ' class="active"'
     meta = meta or {}
@@ -213,7 +215,9 @@ def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=
             .replace("__A_HOME__", a["home"])
             .replace("__A_PROJ__", a["proj"])
             .replace("__A_BLOG__", a["blog"])
-            .replace("__A_DEEP__", a["deep"]))
+            .replace("__A_DEEP__", a["deep"])
+            .replace("__A_ABOUT__", a["about"])
+            .replace("__A_LEARN__", a["learn"]))
 
 
 def get_title(md_text, fallback):
