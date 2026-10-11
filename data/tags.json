@@ -9,15 +9,11 @@
   },
   {
     "name": "Elasticsearch",
-    "count": 20
+    "count": 16
   },
   {
     "name": "压测",
     "count": 14
-  },
-  {
-    "name": "分库分表",
-    "count": 12
   },
   {
     "name": "锁",
@@ -25,14 +21,6 @@
   },
   {
     "name": "AI Agent",
-    "count": 10
-  },
-  {
-    "name": "ILM",
-    "count": 10
-  },
-  {
-    "name": "Java 并发",
     "count": 10
   },
   {
@@ -44,6 +32,10 @@
     "count": 10
   },
   {
+    "name": "Java 并发",
+    "count": 9
+  },
+  {
     "name": "K8s",
     "count": 9
   },
@@ -52,7 +44,7 @@
     "count": 9
   },
   {
-    "name": "索引",
+    "name": "分库分表",
     "count": 9
   },
   {
@@ -60,15 +52,23 @@
     "count": 8
   },
   {
+    "name": "ILM",
+    "count": 7
+  },
+  {
+    "name": "索引",
+    "count": 7
+  },
+  {
     "name": "事务",
     "count": 6
   },
   {
-    "name": "技术笔记",
-    "count": 3
+    "name": "RAG",
+    "count": 2
   },
   {
-    "name": "RAG",
+    "name": "技术笔记",
     "count": 2
   },
   {

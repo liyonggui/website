@@ -1425,22 +1425,6 @@
     "source": "deep/k8s/K8S-LEARNING-ROADMAP.md"
   },
   {
-    "title": "Java 线程池 CallerRunsPolicy 高负载退化实测：4 个异步任务减到 3 个，QPS 提升 38%（交错矩阵 + 四库对账）",
-    "summary": "线程池参数怎么定？异步一定比同步快吗？本文用一条真实链路（HTTP → Disruptor → Kafka → 3 个消费者 → 写 MySQL / Redis / ES / Mo…",
-    "date": "2026-10-11",
-    "tags": [
-      "Java 并发"
-    ],
-    "category": "blog",
-    "series": "博客",
-    "slug": "02-线程池退化实测-CSDN版",
-    "reading_time": 19,
-    "featured": true,
-    "draft": false,
-    "url": "blog/02-线程池退化实测-CSDN版.html",
-    "source": "blog/02-线程池退化实测-CSDN版.md"
-  },
-  {
     "title": "Java 秒杀/库存场景压测脚本设计清单",
     "summary": "本文用于设计 Java 秒杀、库存扣减、订单创建和异步消息链路的压测脚本。重点覆盖：",
     "date": "2026-10-11",
@@ -1507,44 +1491,6 @@
     "draft": false,
     "url": "deep/es/ILM 全面实操手册（修订版）.html",
     "source": "deep/es/ILM 全面实操手册（修订版）.md"
-  },
-  {
-    "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档",
-    "summary": "（全文无省略、无占位符，可直接复制保存为 .md 文件，生产+面试完整使用）",
-    "date": "2026-10-11",
-    "tags": [
-      "Elasticsearch",
-      "索引",
-      "分库分表",
-      "ILM"
-    ],
-    "category": "deep",
-    "series": "es",
-    "slug": "ES_分片ILM_完整终版手册-1",
-    "reading_time": 50,
-    "featured": false,
-    "draft": false,
-    "url": "deep/es/ES_分片ILM_完整终版手册-1.html",
-    "source": "deep/es/ES_分片ILM_完整终版手册-1.md"
-  },
-  {
-    "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档",
-    "summary": "（全文无省略、无占位符，可直接复制保存为 .md 文件，生产+面试完整使用）",
-    "date": "2026-10-11",
-    "tags": [
-      "Elasticsearch",
-      "索引",
-      "分库分表",
-      "ILM"
-    ],
-    "category": "deep",
-    "series": "es",
-    "slug": "ES_分片ILM_完整终版手册-3 - 备份版",
-    "reading_time": 54,
-    "featured": false,
-    "draft": false,
-    "url": "deep/es/ES_分片ILM_完整终版手册-3 - 备份版.html",
-    "source": "deep/es/ES_分片ILM_完整终版手册-3 - 备份版.md"
   },
   {
     "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档",
@@ -1688,24 +1634,6 @@
     "source": "deep/es/ES_分片ILM_完整终版手册-2.md"
   },
   {
-    "title": "ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册",
-    "summary": "1. 索引与分片核心基础",
-    "date": "2026-10-11",
-    "tags": [
-      "Elasticsearch",
-      "分库分表",
-      "ILM"
-    ],
-    "category": "deep",
-    "series": "es",
-    "slug": "ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册",
-    "reading_time": 17,
-    "featured": false,
-    "draft": false,
-    "url": "deep/es/ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册.html",
-    "source": "deep/es/ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册.md"
-  },
-  {
     "title": "ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）",
     "summary": "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…",
     "date": "2026-10-11",
@@ -1720,22 +1648,6 @@
     "draft": false,
     "url": "deep/es/ES7.17 写入全流程-2.html",
     "source": "deep/es/ES7.17 写入全流程-2.md"
-  },
-  {
-    "title": "ES7.17 写入全流程+**底层存储算法精准拆解**",
-    "summary": "从路由分片 → 日志存储 → 内存索引 → 磁盘段文件 → 词条排序 → 数据压缩，每一步用什么算法、数据结构、存储格式全部讲透",
-    "date": "2026-10-11",
-    "tags": [
-      "Elasticsearch"
-    ],
-    "category": "deep",
-    "series": "es",
-    "slug": "ES7.17 写入全流程-1",
-    "reading_time": 9,
-    "featured": false,
-    "draft": false,
-    "url": "deep/es/ES7.17 写入全流程-1.html",
-    "source": "deep/es/ES7.17 写入全流程-1.md"
   },
   {
     "title": "ES 运维常用命令速查手册（独立文档，可直接复制使用）",
@@ -1872,22 +1784,6 @@
     "draft": false,
     "url": "deep/agent/AI-Agent新手教学.html",
     "source": "deep/agent/AI-Agent新手教学.md"
-  },
-  {
-    "title": "01-知乎回答版",
-    "summary": "前面几位把 Redis String 的编码原理、内存布局讲得很清楚了。我这篇只做一件事：把这套机制放到十几万 QPS 下压一遍，看这几种编码到底差多少钱。",
-    "date": "2026-10-11",
-    "tags": [
-      "技术笔记"
-    ],
-    "category": "blog",
-    "series": "博客",
-    "slug": "01-知乎回答版",
-    "reading_time": 10,
-    "featured": true,
-    "draft": false,
-    "url": "blog/01-知乎回答版.html",
-    "source": "blog/01-知乎回答版.md"
   },
   {
     "title": "01-知乎回答-源码阅读方法版",
