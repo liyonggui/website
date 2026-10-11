@@ -14,7 +14,7 @@
 <meta property="og:description" content="高并发下，多个事务争用同一行/间隙锁会产生锁等待（事务串行化、吞吐下降），更严重的是死锁（事务互相持有对方需要的锁，死循环等待）。治理需要&quot;制造 → 监控 → 诊断 → 治理&quot;闭环…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景18-锁等待与死锁监控治理.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景18：锁等待与死锁监控治理", "description": "高并发下，多个事务争用同一行/间隙锁会产生锁等待（事务串行化、吞吐下降），更严重的是死锁（事务互相持有对方需要的锁，死循环等待）。治理需要\"制造 → 监控 → 诊断 → 治理\"闭环…", "url": "https://liyonggui.github.io/website/deep/mysql/场景18-锁等待与死锁监控治理.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景18-锁等待与死锁监控治理.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "MySQL, 锁, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景18：锁等待与死锁监控治理", "description": "高并发下，多个事务争用同一行/间隙锁会产生锁等待（事务串行化、吞吐下降），更严重的是死锁（事务互相持有对方需要的锁，死循环等待）。治理需要\"制造 → 监控 → 诊断 → 治理\"闭环…", "url": "https://liyonggui.github.io/website/deep/mysql/场景18-锁等待与死锁监控治理.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景18-锁等待与死锁监控治理.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-02", "keywords": "MySQL, 锁, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -52,7 +52,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景18：锁等待与死锁监控治理</h1>
-<div class="meta-row"><span class="m-item">2026-10-11</span><span class="m-item">mysql 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=锁">锁</a></span></div>
+<div class="meta-row"><span class="m-item">2026-04-02</span><span class="m-item">mysql 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=锁">锁</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -141,11 +141,11 @@ innodb_deadlocks         = 有死锁记录（SHOW ENGINE INNODB STATUS 检测）
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/mysql/KingbaseES-锁与事务排查手册.html"><span class="rel-title">KingbaseES / PostgreSQL 锁与长事务排查手册</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL-事务与锁排查治理手册.html"><span class="rel-title">MySQL（InnoDB）事务与锁排查治理手册</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&amp;面试版）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL原理篇.html"><span class="rel-title">MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景12-分布式锁.html"><span class="rel-title">场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B3-热点行锁治理.html"><span class="rel-title">补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B12-死锁后的应用重试机制.html"><span class="rel-title">补测B12：死锁后的应用重试机制</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-间隙锁与Next-KeyLock.html"><span class="rel-title">场景4：间隙锁 / Next-Key Lock</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-锁的工程实践与选型.html"><span class="rel-title">场景4：锁的工程实践、选型与规避（开发视角）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-补强-InnoDB锁完整体系.html"><span class="rel-title">场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

@@ -4,125 +4,6 @@
   <link>https://liyonggui.github.io/website/</link>
   <description>高并发后端与 AI Agent 工程化的技术博客与深度系列</description>
     <item>
-      <title>高并发压测执行清单</title>
-      <link>https://liyonggui.github.io/website/deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html</link>
-      <guid>https://liyonggui.github.io/website/deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html</guid>
-      <description>本文用于 Java + Redis + MySQL + MQ 类系统的压测设计、执行、分析和复盘。目标不是只得到一个最高 QPS，而是建立一条可追溯的证据链：</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>高并发写入测试总结</title>
-      <link>https://liyonggui.github.io/website/deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html</link>
-      <guid>https://liyonggui.github.io/website/deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html</guid>
-      <description>日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</title>
-      <link>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</link>
-      <guid>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</guid>
-      <description>「高并发实测」系列第 2 篇。 &gt; &gt; 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B9：连接泄漏与长连接治理</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html</guid>
-      <description>连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的&quot;隐藏故障&quot;（进程运行几天/几周后连接缓…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B8：容量规划与压测上限评估</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html</guid>
-      <description>高并发系统上线前需量化容量上限：能支撑多少 QPS/TPS、连接数上限、bufferpool/IO 饱和点，支撑容量预估与扩容决策。否则无法回答&quot;系统能扛多少并发&quot;。</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B7：统计信息过期与执行计划优化</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB7-%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E8%BF%87%E6%9C%9F%E4%B8%8E%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%BC%98%E5%8C%96.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB7-%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E8%BF%87%E6%9C%9F%E4%B8%8E%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%BC%98%E5%8C%96.html</guid>
-      <description>优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html</guid>
-      <description>高频慢查询源头：LIMIT 1000000,20 深分页。MySQL 需扫描并丢弃前 100 万行，offset 越大越慢，是列表页/管理后台最常见的慢查询。</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B5：连接耗尽治理（max_connections 打满）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB5-%E8%BF%9E%E6%8E%A5%E8%80%97%E5%B0%BD%E6%B2%BB%E7%90%86.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB5-%E8%BF%9E%E6%8E%A5%E8%80%97%E5%B0%BD%E6%B2%BB%E7%90%86.html</guid>
-      <description>连接耗尽雪崩防护。当并发请求超过 MySQL maxconnections，新连接报 Too many connections，请求大量失败，系统雪崩。需治理：连接池大小与 max…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B4：SQL 注入与安全治理</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html</guid>
-      <description>高并发系统安全必修。SQL 注入是最高危的漏洞之一：字符串拼接 SQL，恶意入参可绕过 WHERE 泄露全表、绕过认证、删库。治理核心：参数化根治 + 纵深防御（字段最小化、脱敏、…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB3-%E7%83%AD%E7%82%B9%E8%A1%8C%E9%94%81%E6%B2%BB%E7%90%86.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB3-%E7%83%AD%E7%82%B9%E8%A1%8C%E9%94%81%E6%B2%BB%E7%90%86.html</guid>
-      <description>真实并发最大瓶颈是热点行锁争用：单行库存/账户（如 thotsingle WHERE id=1）被大量并发 UPDATE，同一行锁串行化，吞吐骤降。MySQL 行锁粒度是行，热点行…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB2-%E4%B8%BB%E4%BB%8E%E4%B8%80%E8%87%B4%E6%80%A7%E6%A0%A1%E9%AA%8C%E4%B8%8E%E4%BF%AE%E5%A4%8D.html</guid>
-      <description>主从复制可能静默丢数据/漂移：某条 SQL 在从库执行失败被跳过、人为改库、DDL 不同步，都会导致主从数据不一致而不自知。复制线程 Running 只代表&quot;复制在跑&quot;，不代表数据…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B1：备份恢复（binlog PITR / 误删误更新恢复）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html</guid>
-      <description>高并发治理除了&quot;读写/一致性&quot;，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B12：死锁后的应用重试机制</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB12-%E6%AD%BB%E9%94%81%E5%90%8E%E7%9A%84%E5%BA%94%E7%94%A8%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB12-%E6%AD%BB%E9%94%81%E5%90%8E%E7%9A%84%E5%BA%94%E7%94%A8%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6.html</guid>
-      <description>死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B11：冷热分离的查询路由</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB11-%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB%E7%9A%84%E6%9F%A5%E8%AF%A2%E8%B7%AF%E7%94%B1.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB11-%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB%E7%9A%84%E6%9F%A5%E8%AF%A2%E8%B7%AF%E7%94%B1.html</guid>
-      <description>数据冷热分离后（热表存近期高频数据、归档表存历史冷数据），查询需应用层路由：热数据查热表、历史数据查归档表，避免查询扫全量大表。</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>补测B10：主从延迟告警与从库自动摘除</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html</guid>
-      <description>读写分离下，从库复制延迟会导致读从库读到过期数据。延迟超阈值必须告警 + 自动把从库从读写分离摘除（读全部回主库），延迟恢复后再重新挂载。否则高并发下读到陈旧数据引发业务事故。</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>瑞达星 × Agent 全链路（代码级）</title>
-      <link>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</link>
-      <guid>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</guid>
-      <description>谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
-      <title>数据同步工具对比：mysqldump / DataX / Flink CDC</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html</guid>
-      <description>定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
-    </item>
-    <item>
       <title>我发出去的文章里有一句承重墙是错的（第 4 篇更正）</title>
       <link>https://liyonggui.github.io/website/blog/05-%E7%AC%AC4%E7%AF%87%E6%9B%B4%E6%AD%A3-%E6%89%BF%E9%87%8D%E5%A2%99%E6%98%AF%E9%94%99%E7%9A%84.html</link>
       <guid>https://liyonggui.github.io/website/blog/05-%E7%AC%AC4%E7%AF%87%E6%9B%B4%E6%AD%A3-%E6%89%BF%E9%87%8D%E5%A2%99%E6%98%AF%E9%94%99%E7%9A%84.html</guid>
@@ -130,17 +11,136 @@
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>场景9：InnoDB 并发控制（MVCC 多版本并发控制）</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html</guid>
-      <description>InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
+      <title>AI Agent 项目集评估与改进建议</title>
+      <link>https://liyonggui.github.io/website/deep/agent/%E9%A1%B9%E7%9B%AE%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%94%B9%E8%BF%9B%E5%BB%BA%E8%AE%AE.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/%E9%A1%B9%E7%9B%AE%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%94%B9%E8%BF%9B%E5%BB%BA%E8%AE%AE.html</guid>
+      <description>评估范围：D:\ai-agent-project 根目录下的 Agent 教学项目、可观测性项目和 rdx-bx-backend 业务后端沙盒。 &gt; 评估时间：2026-09-20…</description>
+      <pubDate>Fri, 09 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>场景8：批量写入优化</title>
-      <link>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF8-%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5%E4%BC%98%E5%8C%96.html</link>
-      <guid>https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF8-%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5%E4%BC%98%E5%8C%96.html</guid>
-      <description>MySQL 单条 INSERT 的瓶颈主要在网络往返和事务提交：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。批量写入通…</description>
-      <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
+      <title>RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</title>
+      <link>https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html</link>
+      <guid>https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html</guid>
+      <description>「高并发实测」系列第 4 篇。 &gt; &gt; 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…</description>
+      <pubDate>Thu, 08 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>瑞达星 × Agent 全链路（代码级）</title>
+      <link>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html</guid>
+      <description>谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是&quot;择校/专业/课程&quot;公开浏览接口）。 &gt; 数据源纪律：Agent 打的是沙盒后端 D:\ai-agent-proj…</description>
+      <pubDate>Wed, 07 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>phase1-minimal-agent</title>
+      <link>https://liyonggui.github.io/website/deep/agent/README.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/README.html</guid>
+      <description>阶段 1 骨架：Spring Boot + Spring AI Alibaba（DashScope / 通义千问）最小 Agent 循环。 目的不是做产品，是亲手把「模型 → 选工…</description>
+      <pubDate>Mon, 05 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>rdx-agent 工程化落地纪要</title>
+      <link>https://liyonggui.github.io/website/deep/agent/rdx-agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/rdx-agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</guid>
+      <description>项目根：D:\ai-agent-project\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…</description>
+      <pubDate>Sun, 04 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>RAG 代码与原理详解（phase2 深读 · 新手向）</title>
+      <link>https://liyonggui.github.io/website/deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
+      <description>配套 AI-Agent新手教学.md 第 3 课的深挖版。对照 D:\ai-agent-project\phase2-rag 的代码读。 &gt; 目录：① LinkedHashMap …</description>
+      <pubDate>Fri, 02 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</title>
+      <link>https://liyonggui.github.io/website/deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
+      <description>配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 D:\ai-agent-project\pha…</description>
+      <pubDate>Thu, 01 Oct 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>phase5 MCP 代码与原理详解（server + client · 含失控案例）</title>
+      <link>https://liyonggui.github.io/website/deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
+      <description>配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 D:\ai-agent-project\phase5-mcp-server 与 phase5-mcp-cli…</description>
+      <pubDate>Wed, 23 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</title>
+      <link>https://liyonggui.github.io/website/deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
+      <description>配套：AI-Agent新手教学.md 第 7 课。代码在 D:\ai-agent-project\phase4-agent-ops。 &gt; 一句话：把 LLM 当不靠谱下游服务，用后…</description>
+      <pubDate>Tue, 22 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>AI Agent 新手教学（后端工程师·零基础版）</title>
+      <link>https://liyonggui.github.io/website/deep/agent/AI-Agent%E6%96%B0%E6%89%8B%E6%95%99%E5%AD%A6.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/AI-Agent%E6%96%B0%E6%89%8B%E6%95%99%E5%AD%A6.html</guid>
+      <description>你是谁：会写后端、懂接口/并发/缓存，但从没碰过 AI Agent。 &gt; 这份文档怎么读：从上到下，每一课 = 一个概念 + 你项目里的代码 + 你现在动手试什么。别跳，前 5 课…</description>
+      <pubDate>Sun, 20 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）</title>
+      <link>https://liyonggui.github.io/website/deep/agent/Agent%E4%B8%AD%E9%97%B4%E4%BB%B6%E4%BC%98%E5%8C%96%E9%80%89%E5%9E%8B.html</link>
+      <guid>https://liyonggui.github.io/website/deep/agent/Agent%E4%B8%AD%E9%97%B4%E4%BB%B6%E4%BC%98%E5%8C%96%E9%80%89%E5%9E%8B.html</guid>
+      <description>原则：带着病历找药。每个中间件都必须对应一个&quot;已实测出的问题&quot;，并说清&quot;治好了没&quot;——不是堆组件。 &gt; 当前栈：Spring AI 1.1.8 + 百炼 MaaS + RAG 向量…</description>
+      <pubDate>Sat, 19 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>Spring Cloud → K3s 极简落地：用最小子集认识 K8s</title>
+      <link>https://liyonggui.github.io/website/deep/k8s/spring-cloud-plan.html</link>
+      <guid>https://liyonggui.github.io/website/deep/k8s/spring-cloud-plan.html</guid>
+      <description>目标定位：本方案的目的不是验证微服务全功能（分布式事务 / 消息队列 / 定时任务 / 链路追踪都不在目标内），而是借助 spring-cloud 这个现成项目，在已搭好的 K3s…</description>
+      <pubDate>Tue, 15 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层</title>
+      <link>https://liyonggui.github.io/website/blog/03-Agent%E5%B7%A5%E7%A8%8B%E5%8C%96%E5%AE%9E%E6%B5%8B.html</link>
+      <guid>https://liyonggui.github.io/website/blog/03-Agent%E5%B7%A5%E7%A8%8B%E5%8C%96%E5%AE%9E%E6%B5%8B.html</guid>
+      <description>「高并发实测」系列第 3 篇。 &gt; &gt; 环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …</description>
+      <pubDate>Sun, 13 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>service-user 滚动更新练习（K8s 核心概念 · B）</title>
+      <link>https://liyonggui.github.io/website/deep/k8s/ROLLING-UPDATE.html</link>
+      <guid>https://liyonggui.github.io/website/deep/k8s/ROLLING-UPDATE.html</guid>
+      <description>目标：认识 K8s 的滚动更新（Rolling Update）与回滚，理解&quot;零停机发布&quot;是怎么发生的。 &gt; 当前状态：sc-demo 命名空间下，service-user Depl…</description>
+      <pubDate>Fri, 11 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>Redis 1主1从3哨兵（自动故障转移）</title>
+      <link>https://liyonggui.github.io/website/deep/k8s/redis-sentinel.html</link>
+      <guid>https://liyonggui.github.io/website/deep/k8s/redis-sentinel.html</guid>
+      <description>在「1主1从」之上加 3 个哨兵，补齐最后一块：主库宕机自动选主 + 客户端经哨兵发现当前主库。 这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的…</description>
+      <pubDate>Thu, 10 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</title>
+      <link>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</link>
+      <guid>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</guid>
+      <description>「高并发实测」系列第 2 篇。 &gt; &gt; 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…</description>
+      <pubDate>Wed, 09 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>Redis 1主1从（StatefulSet 主从复制）</title>
+      <link>https://liyonggui.github.io/website/deep/k8s/redis-replication.html</link>
+      <guid>https://liyonggui.github.io/website/deep/k8s/redis-replication.html</guid>
+      <description>在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…</description>
+      <pubDate>Wed, 09 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>单实例 Redis on K3s（学习用）</title>
+      <link>https://liyonggui.github.io/website/deep/k8s/redis-README.html</link>
+      <guid>https://liyonggui.github.io/website/deep/k8s/redis-README.html</guid>
+      <description>把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…</description>
+      <pubDate>Tue, 08 Sep 2026 00:00:00 -0000</pubDate>
+    </item>
+    <item>
+      <title>k3s 实战：一个可跑通、可炸给你看的单机集群</title>
+      <link>https://liyonggui.github.io/website/deep/k8s/README.html</link>
+      <guid>https://liyonggui.github.io/website/deep/k8s/README.html</guid>
+      <description>这份东西不是&quot;K8s 入门教程&quot;，而是把前面几轮聊的结论落成能在你机器上跑、并且每个关键结论都有对应现场证据的一套材料。目标只有一个：让你亲手看到那些&quot;背下来但没感觉&quot;的机制——C…</description>
+      <pubDate>Sun, 06 Sep 2026 00:00:00 -0000</pubDate>
     </item>
 </channel></rss>

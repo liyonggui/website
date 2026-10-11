@@ -29,6 +29,13 @@ jobs:
           python gen_deep.py
           python generate_index.py
 
+      - name: Check generated artifacts are committed
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::生成产物与仓库不一致——请本地运行三个生成脚本后，把变更文件一并提交"
+            exit 1
+          fi
+
       - name: Validate site
         run: |
           python verify_titles.py

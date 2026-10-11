@@ -1,7 +1,7 @@
 ---
 title: "RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子"
 summary: "「高并发实测」系列第 4 篇。 > > 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…"
-date: 2026-10-11
+date: 2026-10-08
 author: "小番茄程序猿"
 tags:
   - RAG

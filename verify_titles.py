@@ -19,42 +19,32 @@ ROOT = Path(__file__).resolve().parent
 
 
 def parse_front_matter(text):
+    """返回 (meta, body, err)；有 front matter 但解析失败时 err 给出原因（不静默退化）。"""
     if not text.startswith("---\n"):
-        return {}, text
+        return {}, text, None
     end = text.find("\n---\n", 4)
     if end == -1:
-        return {}, text
+        return {}, text, "front matter 未闭合"
     front = text[4:end]
     body = text[end + len("\n---\n"):]
-    meta = {}
     try:
         import yaml
         data = yaml.safe_load(front)
         if isinstance(data, dict):
-            meta = data
-    except Exception:
-        # yaml 不可用/失败时退化为逐行解析（仅支持 key: value 与 "- item"）
-        key = None
-        for line in front.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("- ") and key:
-                meta.setdefault(key, []).append(line[2:].strip().strip('"'))
-                continue
-            if ":" in line:
-                k, v = line.split(":", 1)
-                key = k.strip()
-                if v.strip():
-                    meta[key] = v.strip().strip('"')
-    return meta, body
+            return data, body, None
+        return {}, body, "front matter 不是键值映射"
+    except Exception as e:
+        return {}, body, f"YAML 解析失败: {e}"
 
 
 def check_md_quality():
     errors = []
     for path in list(ROOT.glob("blog/*.md")) + list(ROOT.glob("deep/*/*.md")):
-        meta, body = parse_front_matter(path.read_text(encoding="utf-8"))
+        meta, body, err = parse_front_matter(path.read_text(encoding="utf-8"))
         rel = path.relative_to(ROOT).as_posix()
+        if err:
+            errors.append(f"{rel}: {err}")
+            continue  # 元数据不可信，跳过后续必填项检查
         for field in ("title", "summary", "date", "tags", "category"):
             if not meta.get(field):
                 errors.append(f"{rel}: front matter 缺少 {field}")
@@ -99,12 +89,46 @@ def check_data_files():
     return errors
 
 
+def check_index_urls():
+    """索引里每篇文章的 url 必须对应实际存在的 HTML。"""
+    errors = []
+    p = ROOT / "data" / "articles.json"
+    if not p.exists():
+        return errors
+    try:
+        records = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return errors
+    for r in records:
+        url = r.get("url") or ""
+        if url and not (ROOT / url).exists():
+            errors.append(f"articles.json 指向不存在的页面: {url}")
+    return errors
+
+
+def check_xml():
+    """rss.xml 与 sitemap.xml 必须是合法 XML。"""
+    import xml.etree.ElementTree as ET
+    errors = []
+    for name in ("rss.xml", "sitemap.xml"):
+        p = ROOT / name
+        if not p.exists():
+            continue
+        try:
+            ET.parse(p)
+        except Exception as e:
+            errors.append(f"{name} XML 解析失败: {e}")
+    return errors
+
+
 def main():
     errors = []
     errors += check_md_quality()
     errors += check_html_quality()
     errors += check_missing_html()
     errors += check_data_files()
+    errors += check_index_urls()
+    errors += check_xml()
 
     if errors:
         print(f"站点校验失败（{len(errors)} 项）：")
@@ -112,7 +136,7 @@ def main():
             print(" -", e)
         raise SystemExit(1)
 
-    print("站点校验通过：元数据 / HTML 结构 / 产物对应 / 索引文件 全部正常")
+    print("站点校验通过：元数据 / HTML 结构 / 产物对应 / 索引文件 / URL / XML 全部正常")
 
 
 if __name__ == "__main__":

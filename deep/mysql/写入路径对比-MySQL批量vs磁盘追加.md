@@ -1,7 +1,7 @@
 ---
 title: "写入路径对比：单体 MySQL 批量 vs 本地磁盘追加"
 summary: "同样的数据写入，两条线路性能差异巨大： - 线路1：单体 MySQL 批量写入（JDBC batch + rewriteBatchedStatements，落 InnoDB）。 -…"
-date: 2026-10-11
+date: 2026-03-08
 author: "小番茄程序猿"
 tags:
   - MySQL

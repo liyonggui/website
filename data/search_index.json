@@ -1,201 +1,5 @@
 [
   {
-    "title": "高并发压测执行清单",
-    "summary": "本文用于 Java + Redis + MySQL + MQ 类系统的压测设计、执行、分析和复盘。目标不是只得到一个最高 QPS，而是建立一条可追溯的证据链：",
-    "tags": [
-      "压测",
-      "Java 并发"
-    ],
-    "url": "deep/bench/高并发压测执行清单.html",
-    "series": "bench",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "高并发写入测试总结",
-    "summary": "日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka",
-    "tags": [
-      "压测",
-      "Java 并发"
-    ],
-    "url": "deep/bench/测试总结.html",
-    "series": "bench",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%",
-    "summary": "「高并发实测」系列第 2 篇。 > > 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…",
-    "tags": [
-      "MySQL",
-      "Java 并发"
-    ],
-    "url": "blog/02-异步不等于更快.html",
-    "series": "博客",
-    "category": "blog",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B9：连接泄漏与长连接治理",
-    "summary": "连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的\"隐藏故障\"（进程运行几天/几周后连接缓…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B9-连接泄漏与长连接治理.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B8：容量规划与压测上限评估",
-    "summary": "高并发系统上线前需量化容量上限：能支撑多少 QPS/TPS、连接数上限、bufferpool/IO 饱和点，支撑容量预估与扩容决策。否则无法回答\"系统能扛多少并发\"。",
-    "tags": [
-      "MySQL",
-      "压测"
-    ],
-    "url": "deep/mysql/补测B8-容量规划与压测上限评估.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B7：统计信息过期与执行计划优化",
-    "summary": "优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B7-统计信息过期与执行计划优化.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）",
-    "summary": "高频慢查询源头：LIMIT 1000000,20 深分页。MySQL 需扫描并丢弃前 100 万行，offset 越大越慢，是列表页/管理后台最常见的慢查询。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B6-深分页查询优化.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B5：连接耗尽治理（max_connections 打满）",
-    "summary": "连接耗尽雪崩防护。当并发请求超过 MySQL maxconnections，新连接报 Too many connections，请求大量失败，系统雪崩。需治理：连接池大小与 max…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B5-连接耗尽治理.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B4：SQL 注入与安全治理",
-    "summary": "高并发系统安全必修。SQL 注入是最高危的漏洞之一：字符串拼接 SQL，恶意入参可绕过 WHERE 泄露全表、绕过认证、删库。治理核心：参数化根治 + 纵深防御（字段最小化、脱敏、…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B4-SQL注入与安全治理.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）",
-    "summary": "真实并发最大瓶颈是热点行锁争用：单行库存/账户（如 thotsingle WHERE id=1）被大量并发 UPDATE，同一行锁串行化，吞吐骤降。MySQL 行锁粒度是行，热点行…",
-    "tags": [
-      "MySQL",
-      "Redis",
-      "锁",
-      "缓存"
-    ],
-    "url": "deep/mysql/补测B3-热点行锁治理.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）",
-    "summary": "主从复制可能静默丢数据/漂移：某条 SQL 在从库执行失败被跳过、人为改库、DDL 不同步，都会导致主从数据不一致而不自知。复制线程 Running 只代表\"复制在跑\"，不代表数据…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B2-主从一致性校验与修复.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B1：备份恢复（binlog PITR / 误删误更新恢复）",
-    "summary": "高并发治理除了\"读写/一致性\"，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B1-备份恢复.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B12：死锁后的应用重试机制",
-    "summary": "死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。",
-    "tags": [
-      "MySQL",
-      "锁"
-    ],
-    "url": "deep/mysql/补测B12-死锁后的应用重试机制.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B11：冷热分离的查询路由",
-    "summary": "数据冷热分离后（热表存近期高频数据、归档表存历史冷数据），查询需应用层路由：热数据查热表、历史数据查归档表，避免查询扫全量大表。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B11-冷热分离的查询路由.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "补测B10：主从延迟告警与从库自动摘除",
-    "summary": "读写分离下，从库复制延迟会导致读从库读到过期数据。延迟超阈值必须告警 + 自动把从库从读写分离摘除（读全部回主库），延迟恢复后再重新挂载。否则高并发下读到陈旧数据引发业务事故。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/补测B10-主从延迟告警与从库自动摘除.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "瑞达星 × Agent 全链路（代码级）",
-    "summary": "谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是\"择校/专业/课程\"公开浏览接口）。 > 数据源纪律：Agent 打的是沙盒后端 D:\\ai-agent-proj…",
-    "tags": [
-      "AI Agent",
-      "Spring AI"
-    ],
-    "url": "deep/agent/全链路.html",
-    "series": "agent",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "数据同步工具对比：mysqldump / DataX / Flink CDC",
-    "summary": "定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/数据同步工具对比-mysqldump-DataX-FlinkCDC.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
     "title": "我发出去的文章里有一句承重墙是错的（第 4 篇更正）",
     "summary": "「高并发实测」系列 · 第 4 篇更正。 > > 第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条…",
     "tags": [
@@ -207,518 +11,39 @@
     "date": "2026-10-11"
   },
   {
-    "title": "场景9：InnoDB 并发控制（MVCC 多版本并发控制）",
-    "summary": "InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…",
-    "tags": [
-      "MySQL",
-      "事务",
-      "Java 并发"
-    ],
-    "url": "deep/mysql/场景9-InnoDB并发控制MVCC.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景8：批量写入优化",
-    "summary": "MySQL 单条 INSERT 的瓶颈主要在网络往返和事务提交：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。批量写入通…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景8-批量写入优化.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景7：分库分表（应用层水平分表）",
-    "summary": "当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，单表 IO、索引深度、锁竞争仍是瓶颈。分库分表是终极方案：把单表数据物理拆分到多个…",
-    "tags": [
-      "MySQL",
-      "分库分表"
-    ],
-    "url": "deep/mysql/场景7-分库分表.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景6：读写分离与主从延迟",
-    "summary": "在 MySQL 高并发场景下，读多写少是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用读写分离：写走主库、读走从库，把读压力分摊到只读副本上。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景6-读写分离与主从延迟.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景5：索引失效与慢查询",
-    "summary": "MySQL 在数据量大时，若查询未命中合适的索引，会退化为全表扫描（type=ALL），导致慢查询、CPU 打满、锁表。索引失效通常源于写法问题（函数、隐式转换、like 前导、o…",
-    "tags": [
-      "MySQL",
-      "索引"
-    ],
-    "url": "deep/mysql/场景5-索引失效与慢查询.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景4：间隙锁 / Next-Key Lock",
-    "summary": "InnoDB 在 REPEATABLE READ 隔离级别下，通过间隙锁（Gap Lock）和 Next-Key Lock 防止幻读，但也因此引入了锁范围扩大与间隙锁死锁等并发问题…",
-    "tags": [
-      "MySQL",
-      "锁"
-    ],
-    "url": "deep/mysql/场景4-间隙锁与Next-KeyLock.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景4：锁的工程实践、选型与规避（开发视角）",
-    "summary": "在掌握 InnoDB 锁机制（S/X、意向锁、间隙锁、Next-Key）后，补充工程落地经验：锁的降级、开发注意事项、高并发下如何选锁、如何规避锁。",
-    "tags": [
-      "MySQL",
-      "锁"
-    ],
-    "url": "deep/mysql/场景4-锁的工程实践与选型.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）",
-    "summary": "在\"间隙锁 / Next-Key Lock\"基础上，补齐 InnoDB 锁体系的其余核心技术点。所有演示基于 tgaplock 表。",
-    "tags": [
-      "MySQL",
-      "锁"
-    ],
-    "url": "deep/mysql/场景4-补强-InnoDB锁完整体系.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景3：悲观锁 vs 乐观锁",
-    "summary": "高并发写场景下，保证数据一致性有两种主流方案： - 悲观锁：SELECT ... FOR UPDATE 先锁定数据行，阻塞其它写，再读改写。依赖 InnoDB 行锁。 - 乐观锁：…",
-    "tags": [
-      "MySQL",
-      "锁"
-    ],
-    "url": "deep/mysql/场景3-悲观锁vs乐观锁.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）",
-    "summary": "MySQL 并发事务访问同一数据时，不同隔离级别决定是否出现脏读、不可重复读、幻读。生产环境常因错误设置隔离级别或对现象理解不清，导致数据一致性问题或性能下降。",
-    "tags": [
-      "MySQL",
-      "事务"
-    ],
-    "url": "deep/mysql/场景2-事务隔离级别.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景1：连接池与超卖问题（四种扣减策略对比）",
-    "summary": "高并发秒杀/抢购场景下，多个请求同时扣减同一商品的库存。若不加任何并发控制，会导致超卖（库存减为负数）；而错误的加锁策略又会带来性能损耗或死锁。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景1-连接池与超卖问题.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景18：锁等待与死锁监控治理",
-    "summary": "高并发下，多个事务争用同一行/间隙锁会产生锁等待（事务串行化、吞吐下降），更严重的是死锁（事务互相持有对方需要的锁，死循环等待）。治理需要\"制造 → 监控 → 诊断 → 治理\"闭环…",
-    "tags": [
-      "MySQL",
-      "锁"
-    ],
-    "url": "deep/mysql/场景18-锁等待与死锁监控治理.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景17：数据归档与冷热分离",
-    "summary": "业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致： - 查询需扫全表（含大量历史冷数据），性能下降 - 索引变大，缓存命中率降低 - 备份、迁移、统计耗时",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景17-数据归档与冷热分离.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景16：连接池参数调优（HikariCP）",
-    "summary": "连接池是应用访问 MySQL 的\"水管\"，参数直接影响高并发下的吞吐、排队与超时。本项目使用 HikariCP，演示不同连接池大小对高并发性能的影响及调优思路。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景16-连接池参数调优.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景15：MySQL 高可用（主从切换 / 故障演练）",
-    "summary": "单点 MySQL 一旦故障，整个服务不可用。高可用（HA） 的核心是：故障时能快速探测 + 自动切换，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景15-MySQL高可用.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景14：慢查询定位与优化闭环",
-    "summary": "慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要完整闭环：定位 → 分析 → 优化 → 验证，而不是拍脑袋改。",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景14-慢查询定位与优化闭环.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景13：InnoDB 参数调优对吞吐的影响",
-    "summary": "InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用\"强持久性\"配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景13-InnoDB参数调优.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）",
-    "summary": "在分布式/多实例场景下，单机 synchronized/ReentrantLock 无法跨进程互斥，需要分布式锁。MySQL 分布式锁的核心：",
-    "tags": [
-      "MySQL",
-      "锁",
-      "索引"
-    ],
-    "url": "deep/mysql/场景12-分布式锁.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景11：主从延迟治理（写后读一致性方案）",
-    "summary": "读写分离（场景6）把读压力分流到从库，但引入主从延迟：写主库后，从库需要经复制（binlog → relay log → SQL apply）才能同步，延迟窗口内从库读到的是旧数据…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/场景11-主从延迟治理.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景10：Redis 缓存 + MySQL 双写一致性",
-    "summary": "Redis 缓存能大幅提升读性能（内存读 vs 磁盘读），但引入缓存与数据库双写一致性问题：更新 MySQL 后，缓存若不更新，业务会读到过期数据（脏数据）。本场景演示双写不一致的…",
-    "tags": [
-      "MySQL",
-      "Redis",
-      "缓存"
-    ],
-    "url": "deep/mysql/场景10-Redis缓存与MySQL双写一致性.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 9: 集合运算（合并/交集/差集）高并发压测",
-    "summary": "Redis Set 集合运算（SINTER/SUNION/SDIFF）复杂度：",
-    "tags": [
-      "Redis",
-      "压测",
-      "Java 并发"
-    ],
-    "url": "deep/redis/场景9-集合运算高并发压测验证.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 8: 热点 Key Pipeline INCR 自增",
-    "summary": "Redis Cluster + Pipeline 高并发 INCR 同一个热点 key:",
-    "tags": [
-      "Redis",
-      "缓存"
-    ],
-    "url": "deep/redis/场景8-1-热点Key Pipeline自增.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化",
-    "summary": "场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT < 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…",
-    "tags": [
-      "Redis",
-      "缓存"
-    ],
-    "url": "deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 7: Cluster 跨槽 Pipeline 错误轰炸",
-    "summary": "Redis Cluster 核心规则: - 16384 个 hash slot（slot = CRC16(key) % 16384） - 每个 key 根据 CRC16 哈希只属于…",
-    "tags": [
-      "Redis",
-      "缓存"
-    ],
-    "url": "deep/redis/场景7-Cluster跨槽Pipeline错误轰炸.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 6: 高并发多连接 Pipeline — maxclients 边界探测",
-    "summary": "生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …",
-    "tags": [
-      "Redis",
-      "Java 并发",
-      "缓存"
-    ],
-    "url": "deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证",
-    "summary": "问题要点： - HGETALL 在大 Hash（field 数数千以上）时做 O(N) 操作，导致 Redis 单线程长时间阻塞，写请求在此期间全部排队并出现 P99 激增或超时。…",
-    "tags": [
-      "Redis"
-    ],
-    "url": "deep/redis/场景5-读写争抢HGETALL-vs-HSCAN全维度验证.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测",
-    "summary": "问题: 单服务压测最优 8 个 pipeline 槽位，生产 12 个 Java 服务同时写 Redis。 如果每服务 8 个 pipeline → 96 个并发管道，超出 Red…",
-    "tags": [
-      "Redis",
-      "缓存"
-    ],
-    "url": "deep/redis/场景4-分布式信号量多Writer竞争Pipeline槽位.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 3 — 短期 TTL 海量过期 key 持续灌入",
-    "summary": "问题背景（一句话）： 大量短 TTL（秒级）key 同时创建导致在到期时 Redis 的 active-expire 采样式扫描集中触发，从而在主线程上造成短时阻塞，导致 P99/…",
-    "tags": [
-      "Redis"
-    ],
-    "url": "deep/redis/场景3-短期TTL海量过期key持续灌入.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 2 — 大结构 Hash 批量写入",
-    "summary": "多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemor…",
-    "tags": [
-      "Redis"
-    ],
-    "url": "deep/redis/场景2-大结构Hash批量写入.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）",
-    "summary": "已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需…",
-    "tags": [
-      "Redis",
-      "压测"
-    ],
-    "url": "deep/redis/场景11-String三种编码int-embstr-raw压测.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测",
-    "summary": "目标：为\"写入阶段\"做架构选型验证。聚焦两组对比： > 1. 稳态写压测：哨兵 vs 集群 的纯写吞吐/延迟 > 2. 故障韧性压测：kill master → 观察写中断/恢复表…",
-    "tags": [
-      "Redis",
-      "压测"
-    ],
-    "url": "deep/redis/场景10-哨兵vs集群写入阶段选型.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "场景 1 — Lettuce Pipeline 压测问题排查与优化",
-    "summary": "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…",
-    "tags": [
-      "Redis",
-      "压测",
-      "缓存"
-    ],
-    "url": "deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "单实例 Redis on K3s（学习用）",
-    "summary": "把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…",
-    "tags": [
-      "K8s",
-      "云原生",
-      "Redis"
-    ],
-    "url": "deep/k8s/redis-README.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言",
-    "summary": "记录日期：2026-09-08 ｜ 来源：Gil Tene《How NOT to Measure Latency》(Strange Loop 2015) > 关联实验：demo 高…",
-    "tags": [
-      "压测"
-    ],
-    "url": "deep/bench/协同遗漏-Coordinated-Omission.html",
-    "series": "bench",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距",
-    "summary": "环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…",
-    "tags": [
-      "Redis",
-      "压测"
-    ],
-    "url": "blog/01-Redis-String三种编码压测.html",
-    "series": "博客",
-    "category": "blog",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "写入链路降级设计：本地文件兜底 + 限速回放",
-    "summary": "性质：工程设计方案（内部沉淀，暂不作为文章内容发布） > 适用：demo 高并发写入链路（HTTP → Disruptor → Kafka → 3 消费者 → MySQL/Redi…",
-    "tags": [
-      "压测"
-    ],
-    "url": "deep/bench/降级设计-本地文件兜底与限速回放.html",
-    "series": "bench",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "写入路径对比：单体 MySQL 批量 vs 本地磁盘追加",
-    "summary": "同样的数据写入，两条线路性能差异巨大： - 线路1：单体 MySQL 批量写入（JDBC batch + rewriteBatchedStatements，落 InnoDB）。 -…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/写入路径对比-MySQL批量vs磁盘追加.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "一、ES分片倾斜线上应急处理步骤（可直接照着操作）",
-    "summary": "先定位、再评估影响、先应急降压、再根治修复，禁止高峰期大力度迁移分片、大批量 reindex。",
-    "tags": [
-      "Elasticsearch",
-      "分库分表"
-    ],
-    "url": "deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "service-user 滚动更新练习（K8s 核心概念 · B）",
-    "summary": "目标：认识 K8s 的滚动更新（Rolling Update）与回滚，理解\"零停机发布\"是怎么发生的。 > 当前状态：sc-demo 命名空间下，service-user Depl…",
-    "tags": [
-      "K8s",
-      "云原生"
-    ],
-    "url": "deep/k8s/ROLLING-UPDATE.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "rdx-agent 工程化落地纪要",
-    "summary": "项目根：D:\\ai-agent-project\\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…",
+    "title": "AI Agent 项目集评估与改进建议",
+    "summary": "评估范围：D:\\ai-agent-project 根目录下的 Agent 教学项目、可观测性项目和 rdx-bx-backend 业务后端沙盒。 > 评估时间：2026-09-20…",
     "tags": [
       "AI Agent",
       "Spring AI"
     ],
-    "url": "deep/agent/rdx-agent-工程化落地纪要.html",
+    "url": "deep/agent/项目评估与改进建议.html",
     "series": "agent",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-10-09"
   },
   {
-    "title": "phase6 评测代码与原理详解（三路判分·中位数·CI门禁）",
-    "summary": "配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 D:\\ai-agent-project\\pha…",
+    "title": "RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子",
+    "summary": "「高并发实测」系列第 4 篇。 > > 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…",
     "tags": [
-      "AI Agent",
-      "Spring AI",
-      "评测",
-      "源码"
+      "RAG"
     ],
-    "url": "deep/agent/phase6-评测代码与原理详解.html",
-    "series": "agent",
-    "category": "deep",
-    "date": "2026-10-11"
+    "url": "blog/04-RAG评测三层反转.html",
+    "series": "博客",
+    "category": "blog",
+    "date": "2026-10-08"
   },
   {
-    "title": "phase5 MCP 代码与原理详解（server + client · 含失控案例）",
-    "summary": "配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 D:\\ai-agent-project\\phase5-mcp-server 与 phase5-mcp-cli…",
+    "title": "瑞达星 × Agent 全链路（代码级）",
+    "summary": "谁接入谁：只有瑞达星后端 /wxma 被 Agent 接入（读的是\"择校/专业/课程\"公开浏览接口）。 > 数据源纪律：Agent 打的是沙盒后端 D:\\ai-agent-proj…",
     "tags": [
       "AI Agent",
-      "Spring AI",
-      "MCP",
-      "源码"
+      "Spring AI"
     ],
-    "url": "deep/agent/phase5-MCP代码与原理详解.html",
+    "url": "deep/agent/全链路.html",
     "series": "agent",
     "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）",
-    "summary": "配套：AI-Agent新手教学.md 第 7 课。代码在 D:\\ai-agent-project\\phase4-agent-ops。 > 一句话：把 LLM 当不靠谱下游服务，用后…",
-    "tags": [
-      "AI Agent",
-      "Spring AI",
-      "源码",
-      "缓存"
-    ],
-    "url": "deep/agent/phase4-护栏代码与原理详解.html",
-    "series": "agent",
-    "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-10-07"
   },
   {
     "title": "phase1-minimal-agent",
@@ -730,152 +55,19 @@
     "url": "deep/agent/README.html",
     "series": "agent",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-10-05"
   },
   {
-    "title": "k3s 实战：一个可跑通、可炸给你看的单机集群",
-    "summary": "这份东西不是\"K8s 入门教程\"，而是把前面几轮聊的结论落成能在你机器上跑、并且每个关键结论都有对应现场证据的一套材料。目标只有一个：让你亲手看到那些\"背下来但没感觉\"的机制——C…",
+    "title": "rdx-agent 工程化落地纪要",
+    "summary": "项目根：D:\\ai-agent-project\\rdx-agent（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…",
     "tags": [
-      "K8s",
-      "云原生"
+      "AI Agent",
+      "Spring AI"
     ],
-    "url": "deep/k8s/README.html",
-    "series": "k8s",
+    "url": "deep/agent/rdx-agent-工程化落地纪要.html",
+    "series": "agent",
     "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Sysbench 单体 MySQL 硬件上限压测",
-    "summary": "用 Sysbench 测出单体 MySQL（无集群、无主从）的硬件性能上限： - 读上限：oltpreadonly（纯查询） - 读写混合上限：oltpreadwrite（OLTP…",
-    "tags": [
-      "MySQL",
-      "压测"
-    ],
-    "url": "deep/mysql/Sysbench单体MySQL硬件上限压测.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Spring Cloud → K3s 极简落地：用最小子集认识 K8s",
-    "summary": "目标定位：本方案的目的不是验证微服务全功能（分布式事务 / 消息队列 / 定时任务 / 链路追踪都不在目标内），而是借助 spring-cloud 这个现成项目，在已搭好的 K3s…",
-    "tags": [
-      "K8s",
-      "云原生",
-      "Spring Cloud"
-    ],
-    "url": "deep/k8s/spring-cloud-plan.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis架构演变过程",
-    "summary": "下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…",
-    "tags": [
-      "Redis"
-    ],
-    "url": "deep/redis/Redis架构演变过程.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis 高并发缓存架构实战手册",
-    "summary": "实战总结：基于本项目的真实压测数据（场景 2/5/7/8-1/8.21/9.18/11）整理，涉及缓存穿透/击穿/雪崩、延迟任务、概率算法、持久化、集群、编码选型等核心主题。",
-    "tags": [
-      "Redis",
-      "Java 并发",
-      "缓存"
-    ],
-    "url": "deep/redis/Redis 高并发缓存架构实战手册.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis 高并发压测全场景总结（场景 1-11）",
-    "summary": "本文件汇总 docs/ 下 11 个压测场景的核心结论与简略压测过程，用于快速回顾与面试准备。完整细节见各场景原始文档。",
-    "tags": [
-      "Redis",
-      "压测",
-      "Java 并发"
-    ],
-    "url": "deep/redis/场景1-11压测总结汇总.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis 数据类型原理",
-    "summary": "从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。 > > 注：本文所有字节数与阈值均为\"典型 64-bit Linux + je…",
-    "tags": [
-      "Redis",
-      "源码"
-    ],
-    "url": "deep/redis/Redis数据类型原理.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis 数据类型具体使用场景",
-    "summary": "基于《Redis数据类型原理》整理。Redis 有 5 种基础数据类型（String / Hash / List / Set / ZSet）+ 3 种内置专用结构（Bitmaps …",
-    "tags": [
-      "Redis"
-    ],
-    "url": "deep/redis/Redis数据类型具体使用场景.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis 单体工具类使用文档",
-    "summary": "面向单节点单机 Redis（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回 RedisResult<T>，业务层通过 isSuccess() 判断结果，getData()…",
-    "tags": [
-      "Redis"
-    ],
-    "url": "deep/redis/Redis单体工具类使用文档.html",
-    "series": "redis",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis 1主1从（StatefulSet 主从复制）",
-    "summary": "在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…",
-    "tags": [
-      "K8s",
-      "云原生",
-      "Redis"
-    ],
-    "url": "deep/k8s/redis-replication.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Redis 1主1从3哨兵（自动故障转移）",
-    "summary": "在「1主1从」之上加 3 个哨兵，补齐最后一块：主库宕机自动选主 + 客户端经哨兵发现当前主库。 这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的…",
-    "tags": [
-      "K8s",
-      "云原生",
-      "Redis"
-    ],
-    "url": "deep/k8s/redis-sentinel.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子",
-    "summary": "「高并发实测」系列第 4 篇。 > > 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…",
-    "tags": [
-      "RAG"
-    ],
-    "url": "blog/04-RAG评测三层反转.html",
-    "series": "博客",
-    "category": "blog",
-    "date": "2026-10-11"
+    "date": "2026-10-04"
   },
   {
     "title": "RAG 代码与原理详解（phase2 深读 · 新手向）",
@@ -889,34 +81,1071 @@
     "url": "deep/agent/RAG代码与原理详解.html",
     "series": "agent",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-10-02"
   },
   {
-    "title": "MySQL（InnoDB）事务与锁排查治理手册",
-    "summary": "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…",
+    "title": "phase6 评测代码与原理详解（三路判分·中位数·CI门禁）",
+    "summary": "配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 D:\\ai-agent-project\\pha…",
+    "tags": [
+      "AI Agent",
+      "Spring AI",
+      "评测",
+      "源码"
+    ],
+    "url": "deep/agent/phase6-评测代码与原理详解.html",
+    "series": "agent",
+    "category": "deep",
+    "date": "2026-10-01"
+  },
+  {
+    "title": "phase5 MCP 代码与原理详解（server + client · 含失控案例）",
+    "summary": "配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 D:\\ai-agent-project\\phase5-mcp-server 与 phase5-mcp-cli…",
+    "tags": [
+      "AI Agent",
+      "Spring AI",
+      "MCP",
+      "源码"
+    ],
+    "url": "deep/agent/phase5-MCP代码与原理详解.html",
+    "series": "agent",
+    "category": "deep",
+    "date": "2026-09-23"
+  },
+  {
+    "title": "phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）",
+    "summary": "配套：AI-Agent新手教学.md 第 7 课。代码在 D:\\ai-agent-project\\phase4-agent-ops。 > 一句话：把 LLM 当不靠谱下游服务，用后…",
+    "tags": [
+      "AI Agent",
+      "Spring AI",
+      "源码",
+      "缓存"
+    ],
+    "url": "deep/agent/phase4-护栏代码与原理详解.html",
+    "series": "agent",
+    "category": "deep",
+    "date": "2026-09-22"
+  },
+  {
+    "title": "AI Agent 新手教学（后端工程师·零基础版）",
+    "summary": "你是谁：会写后端、懂接口/并发/缓存，但从没碰过 AI Agent。 > 这份文档怎么读：从上到下，每一课 = 一个概念 + 你项目里的代码 + 你现在动手试什么。别跳，前 5 课…",
+    "tags": [
+      "AI Agent",
+      "Spring AI"
+    ],
+    "url": "deep/agent/AI-Agent新手教学.html",
+    "series": "agent",
+    "category": "deep",
+    "date": "2026-09-20"
+  },
+  {
+    "title": "Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）",
+    "summary": "原则：带着病历找药。每个中间件都必须对应一个\"已实测出的问题\"，并说清\"治好了没\"——不是堆组件。 > 当前栈：Spring AI 1.1.8 + 百炼 MaaS + RAG 向量…",
+    "tags": [
+      "AI Agent",
+      "Spring AI",
+      "压测"
+    ],
+    "url": "deep/agent/Agent中间件优化选型.html",
+    "series": "agent",
+    "category": "deep",
+    "date": "2026-09-19"
+  },
+  {
+    "title": "Spring Cloud → K3s 极简落地：用最小子集认识 K8s",
+    "summary": "目标定位：本方案的目的不是验证微服务全功能（分布式事务 / 消息队列 / 定时任务 / 链路追踪都不在目标内），而是借助 spring-cloud 这个现成项目，在已搭好的 K3s…",
+    "tags": [
+      "K8s",
+      "云原生",
+      "Spring Cloud"
+    ],
+    "url": "deep/k8s/spring-cloud-plan.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-15"
+  },
+  {
+    "title": "Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层",
+    "summary": "「高并发实测」系列第 3 篇。 > > 环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …",
+    "tags": [
+      "技术笔记"
+    ],
+    "url": "blog/03-Agent工程化实测.html",
+    "series": "博客",
+    "category": "blog",
+    "date": "2026-09-13"
+  },
+  {
+    "title": "service-user 滚动更新练习（K8s 核心概念 · B）",
+    "summary": "目标：认识 K8s 的滚动更新（Rolling Update）与回滚，理解\"零停机发布\"是怎么发生的。 > 当前状态：sc-demo 命名空间下，service-user Depl…",
+    "tags": [
+      "K8s",
+      "云原生"
+    ],
+    "url": "deep/k8s/ROLLING-UPDATE.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-11"
+  },
+  {
+    "title": "Redis 1主1从3哨兵（自动故障转移）",
+    "summary": "在「1主1从」之上加 3 个哨兵，补齐最后一块：主库宕机自动选主 + 客户端经哨兵发现当前主库。 这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的…",
+    "tags": [
+      "K8s",
+      "云原生",
+      "Redis"
+    ],
+    "url": "deep/k8s/redis-sentinel.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-10"
+  },
+  {
+    "title": "高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%",
+    "summary": "「高并发实测」系列第 2 篇。 > > 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…",
     "tags": [
       "MySQL",
-      "事务",
-      "锁"
+      "Java 并发"
     ],
-    "url": "deep/mysql/MySQL-事务与锁排查治理手册.html",
+    "url": "blog/02-异步不等于更快.html",
+    "series": "博客",
+    "category": "blog",
+    "date": "2026-09-09"
+  },
+  {
+    "title": "Redis 1主1从（StatefulSet 主从复制）",
+    "summary": "在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…",
+    "tags": [
+      "K8s",
+      "云原生",
+      "Redis"
+    ],
+    "url": "deep/k8s/redis-replication.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-09"
+  },
+  {
+    "title": "单实例 Redis on K3s（学习用）",
+    "summary": "把 Redis 放上 K8s，比 sc-user 只多一个概念：数据要持久化、身份要稳定。 对应到资源就是三件套：StatefulSet + volumeClaimTemplate…",
+    "tags": [
+      "K8s",
+      "云原生",
+      "Redis"
+    ],
+    "url": "deep/k8s/redis-README.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-08"
+  },
+  {
+    "title": "k3s 实战：一个可跑通、可炸给你看的单机集群",
+    "summary": "这份东西不是\"K8s 入门教程\"，而是把前面几轮聊的结论落成能在你机器上跑、并且每个关键结论都有对应现场证据的一套材料。目标只有一个：让你亲手看到那些\"背下来但没感觉\"的机制——C…",
+    "tags": [
+      "K8s",
+      "云原生"
+    ],
+    "url": "deep/k8s/README.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-06"
+  },
+  {
+    "title": "K8s 实战学习路线图（已学 + 待学）",
+    "summary": "目标定位：认识 K8s，不是验证功能。本文件是学习进度的总账，记录已亲手跑通的能力、对应的清单文件、关键认知，以及尚未涉及但实战常用的功能与建议路线。 > > 最后更新：2026-…",
+    "tags": [
+      "K8s",
+      "云原生"
+    ],
+    "url": "deep/k8s/K8S-LEARNING-ROADMAP.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-04"
+  },
+  {
+    "title": "01-知乎回答-源码阅读方法版",
+    "summary": "我的做法是三步：先立一个可证伪的假设 → 去源码里找到定义和调用链 → 写代码把它跑出来验证。只看不跑，读完记住的还是别人的结论；带着问题读，一个 object.c 能顶十篇解读文…",
+    "tags": [
+      "源码"
+    ],
+    "url": "blog/01-知乎回答-源码阅读方法版.html",
+    "series": "博客",
+    "category": "blog",
+    "date": "2026-09-04"
+  },
+  {
+    "title": "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距",
+    "summary": "环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…",
+    "tags": [
+      "Redis",
+      "压测"
+    ],
+    "url": "blog/01-Redis-String三种编码压测.html",
+    "series": "博客",
+    "category": "blog",
+    "date": "2026-09-03"
+  },
+  {
+    "title": "Ingress + HPA 实践清单（sc-user）",
+    "summary": "两份清单已生成，风格对齐既有 sc-user 资源（命名空间 sc-demo）：",
+    "tags": [
+      "K8s",
+      "云原生",
+      "Elasticsearch"
+    ],
+    "url": "deep/k8s/ingress-hpa.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-09-01"
+  },
+  {
+    "title": "Compose → K8s 概念对照（给已经会 docker-compose 的人）",
+    "summary": "如果你只记一句话：Compose 描述的是\"一台机器上如何起一组容器\"，K8s 描述的是\"一个集群里期望状态长什么样\"。 前者的单位是容器，后者的单位是\"契约 + 调和循环\"。这个…",
+    "tags": [
+      "K8s",
+      "云原生"
+    ],
+    "url": "deep/k8s/compose-vs-k8s.html",
+    "series": "k8s",
+    "category": "deep",
+    "date": "2026-08-30"
+  },
+  {
+    "title": "高并发压测执行清单",
+    "summary": "本文用于 Java + Redis + MySQL + MQ 类系统的压测设计、执行、分析和复盘。目标不是只得到一个最高 QPS，而是建立一条可追溯的证据链：",
+    "tags": [
+      "压测",
+      "Java 并发"
+    ],
+    "url": "deep/bench/高并发压测执行清单.html",
+    "series": "bench",
+    "category": "deep",
+    "date": "2026-08-24"
+  },
+  {
+    "title": "写入链路降级设计：本地文件兜底 + 限速回放",
+    "summary": "性质：工程设计方案（内部沉淀，暂不作为文章内容发布） > 适用：demo 高并发写入链路（HTTP → Disruptor → Kafka → 3 消费者 → MySQL/Redi…",
+    "tags": [
+      "压测"
+    ],
+    "url": "deep/bench/降级设计-本地文件兜底与限速回放.html",
+    "series": "bench",
+    "category": "deep",
+    "date": "2026-08-21"
+  },
+  {
+    "title": "高并发写入测试总结",
+    "summary": "日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka",
+    "tags": [
+      "压测",
+      "Java 并发"
+    ],
+    "url": "deep/bench/测试总结.html",
+    "series": "bench",
+    "category": "deep",
+    "date": "2026-08-20"
+  },
+  {
+    "title": "协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言",
+    "summary": "记录日期：2026-09-08 ｜ 来源：Gil Tene《How NOT to Measure Latency》(Strange Loop 2015) > 关联实验：demo 高…",
+    "tags": [
+      "压测"
+    ],
+    "url": "deep/bench/协同遗漏-Coordinated-Omission.html",
+    "series": "bench",
+    "category": "deep",
+    "date": "2026-08-18"
+  },
+  {
+    "title": "Java 秒杀/库存场景压测脚本设计清单",
+    "summary": "本文用于设计 Java 秒杀、库存扣减、订单创建和异步消息链路的压测脚本。重点覆盖：",
+    "tags": [
+      "压测"
+    ],
+    "url": "deep/bench/Java秒杀库存场景压测脚本设计清单.html",
+    "series": "bench",
+    "category": "deep",
+    "date": "2026-08-14"
+  },
+  {
+    "title": "一、ES分片倾斜线上应急处理步骤（可直接照着操作）",
+    "summary": "先定位、再评估影响、先应急降压、再根治修复，禁止高峰期大力度迁移分片、大批量 reindex。",
+    "tags": [
+      "Elasticsearch",
+      "分库分表"
+    ],
+    "url": "deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-08-10"
+  },
+  {
+    "title": "ILM 全面实操手册（针对 ES 7.2 的合并修订版）",
+    "summary": "直接结论（要点）：",
+    "tags": [
+      "Elasticsearch",
+      "ILM"
+    ],
+    "url": "deep/es/ILM 全面实操手册（针对 ES 7.2 的合并修订版）.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-08-09"
+  },
+  {
+    "title": "ILM 全面实操手册（修订版）",
+    "summary": "结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split …",
+    "tags": [
+      "Elasticsearch",
+      "ILM"
+    ],
+    "url": "deep/es/ILM 全面实操手册（修订版）.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-08-07"
+  },
+  {
+    "title": "ES面试+运维命令独立速查手册（增补集群架构面试题完整版）",
+    "summary": "本文档拆分自完整版ES手册，分为三大模块：集群架构高频面试题（新增）+ 核心业务面试题 + 全量运维命令 + 批量运维脚本，所有答案为面试满分标准答案，命令可直接复制上线使用，适合…",
+    "tags": [
+      "Elasticsearch"
+    ],
+    "url": "deep/es/ES面试+运维命令独立速查手册（增补集群架构面试题完整版）.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-08-05"
+  },
+  {
+    "title": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）",
+    "summary": "本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…",
+    "tags": [
+      "Elasticsearch",
+      "分库分表"
+    ],
+    "url": "deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-08-04"
+  },
+  {
+    "title": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）",
+    "summary": "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…",
+    "tags": [
+      "Elasticsearch",
+      "分库分表"
+    ],
+    "url": "deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-08-02"
+  },
+  {
+    "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册",
+    "summary": "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…",
+    "tags": [
+      "Elasticsearch",
+      "分库分表",
+      "ILM"
+    ],
+    "url": "deep/es/ES路由分片ILM&Reindex别名完整手册.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-08-01"
+  },
+  {
+    "title": "ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册",
+    "summary": "1. 索引/分片/节点层级基础关系",
+    "tags": [
+      "Elasticsearch",
+      "索引",
+      "分库分表",
+      "ILM"
+    ],
+    "url": "deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-07-31"
+  },
+  {
+    "title": "ES 运维常用命令速查手册（独立文档，可直接复制使用）",
+    "summary": "1. 分片路由与倾斜排查命令 2. 集群分片均衡 & 磁盘水位配置 3. ILM 生命周期常规运维命令 4. ILM 冷热层级向上回退全套命令（Warm↔Hot / Cold↔Wa…",
+    "tags": [
+      "Elasticsearch"
+    ],
+    "url": "deep/es/ES_运维命令速查手册.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-07-29"
+  },
+  {
+    "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档",
+    "summary": "（全文无省略、无占位符，可直接复制保存为 .md 文件，生产+面试完整使用）",
+    "tags": [
+      "Elasticsearch",
+      "索引",
+      "分库分表",
+      "ILM"
+    ],
+    "url": "deep/es/ES_分片ILM_完整终版手册-3.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-07-27"
+  },
+  {
+    "title": "ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册",
+    "summary": "1. 索引与分片核心基础",
+    "tags": [
+      "Elasticsearch",
+      "分库分表",
+      "ILM"
+    ],
+    "url": "deep/es/ES_分片ILM_完整终版手册-2.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-07-25"
+  },
+  {
+    "title": "ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）",
+    "summary": "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…",
+    "tags": [
+      "Elasticsearch"
+    ],
+    "url": "deep/es/ES7.17 写入全流程-2.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-07-24"
+  },
+  {
+    "title": "ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）",
+    "summary": "本文承接前文ES路由、分片分配、冷热分层全套内容，ILM是ES冷热分层唯一原生实现方案，全程无业务代码、无定时任务，配置驱动实现索引自动冷热流转；同时厘清所有人都踩过的时间误区、调…",
+    "tags": [
+      "Elasticsearch",
+      "索引",
+      "源码",
+      "ILM"
+    ],
+    "url": "deep/es/ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-07-21"
+  },
+  {
+    "title": "Elasticsearch 分片节点分配算法 超详细详解",
+    "summary": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。",
+    "tags": [
+      "Elasticsearch",
+      "分库分表"
+    ],
+    "url": "deep/es/Elasticsearch 分片节点分配算法 超详细详解.html",
+    "series": "es",
+    "category": "deep",
+    "date": "2026-07-13"
+  },
+  {
+    "title": "场景 9: 集合运算（合并/交集/差集）高并发压测",
+    "summary": "Redis Set 集合运算（SINTER/SUNION/SDIFF）复杂度：",
+    "tags": [
+      "Redis",
+      "压测",
+      "Java 并发"
+    ],
+    "url": "deep/redis/场景9-集合运算高并发压测验证.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-07-10"
+  },
+  {
+    "title": "场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化",
+    "summary": "场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT < 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…",
+    "tags": [
+      "Redis",
+      "缓存"
+    ],
+    "url": "deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-07-09"
+  },
+  {
+    "title": "场景 8: 热点 Key Pipeline INCR 自增",
+    "summary": "Redis Cluster + Pipeline 高并发 INCR 同一个热点 key:",
+    "tags": [
+      "Redis",
+      "缓存"
+    ],
+    "url": "deep/redis/场景8-1-热点Key Pipeline自增.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-07-06"
+  },
+  {
+    "title": "场景 7: Cluster 跨槽 Pipeline 错误轰炸",
+    "summary": "Redis Cluster 核心规则: - 16384 个 hash slot（slot = CRC16(key) % 16384） - 每个 key 根据 CRC16 哈希只属于…",
+    "tags": [
+      "Redis",
+      "缓存"
+    ],
+    "url": "deep/redis/场景7-Cluster跨槽Pipeline错误轰炸.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-07-05"
+  },
+  {
+    "title": "场景 6: 高并发多连接 Pipeline — maxclients 边界探测",
+    "summary": "生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …",
+    "tags": [
+      "Redis",
+      "Java 并发",
+      "缓存"
+    ],
+    "url": "deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-07-02"
+  },
+  {
+    "title": "场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证",
+    "summary": "问题要点： - HGETALL 在大 Hash（field 数数千以上）时做 O(N) 操作，导致 Redis 单线程长时间阻塞，写请求在此期间全部排队并出现 P99 激增或超时。…",
+    "tags": [
+      "Redis"
+    ],
+    "url": "deep/redis/场景5-读写争抢HGETALL-vs-HSCAN全维度验证.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-29"
+  },
+  {
+    "title": "场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测",
+    "summary": "问题: 单服务压测最优 8 个 pipeline 槽位，生产 12 个 Java 服务同时写 Redis。 如果每服务 8 个 pipeline → 96 个并发管道，超出 Red…",
+    "tags": [
+      "Redis",
+      "缓存"
+    ],
+    "url": "deep/redis/场景4-分布式信号量多Writer竞争Pipeline槽位.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-21"
+  },
+  {
+    "title": "场景 3 — 短期 TTL 海量过期 key 持续灌入",
+    "summary": "问题背景（一句话）： 大量短 TTL（秒级）key 同时创建导致在到期时 Redis 的 active-expire 采样式扫描集中触发，从而在主线程上造成短时阻塞，导致 P99/…",
+    "tags": [
+      "Redis"
+    ],
+    "url": "deep/redis/场景3-短期TTL海量过期key持续灌入.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-17"
+  },
+  {
+    "title": "场景 2 — 大结构 Hash 批量写入",
+    "summary": "多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemor…",
+    "tags": [
+      "Redis"
+    ],
+    "url": "deep/redis/场景2-大结构Hash批量写入.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-16"
+  },
+  {
+    "title": "场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）",
+    "summary": "已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需…",
+    "tags": [
+      "Redis",
+      "压测"
+    ],
+    "url": "deep/redis/场景11-String三种编码int-embstr-raw压测.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-15"
+  },
+  {
+    "title": "场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测",
+    "summary": "目标：为\"写入阶段\"做架构选型验证。聚焦两组对比： > 1. 稳态写压测：哨兵 vs 集群 的纯写吞吐/延迟 > 2. 故障韧性压测：kill master → 观察写中断/恢复表…",
+    "tags": [
+      "Redis",
+      "压测"
+    ],
+    "url": "deep/redis/场景10-哨兵vs集群写入阶段选型.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-13"
+  },
+  {
+    "title": "场景 1 — Lettuce Pipeline 压测问题排查与优化",
+    "summary": "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…",
+    "tags": [
+      "Redis",
+      "压测",
+      "缓存"
+    ],
+    "url": "deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-11"
+  },
+  {
+    "title": "Redis 高并发压测全场景总结（场景 1-11）",
+    "summary": "本文件汇总 docs/ 下 11 个压测场景的核心结论与简略压测过程，用于快速回顾与面试准备。完整细节见各场景原始文档。",
+    "tags": [
+      "Redis",
+      "压测",
+      "Java 并发"
+    ],
+    "url": "deep/redis/场景1-11压测总结汇总.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-08"
+  },
+  {
+    "title": "Redis架构演变过程",
+    "summary": "下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…",
+    "tags": [
+      "Redis"
+    ],
+    "url": "deep/redis/Redis架构演变过程.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-07"
+  },
+  {
+    "title": "Redis 数据类型原理",
+    "summary": "从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。 > > 注：本文所有字节数与阈值均为\"典型 64-bit Linux + je…",
+    "tags": [
+      "Redis",
+      "源码"
+    ],
+    "url": "deep/redis/Redis数据类型原理.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-03"
+  },
+  {
+    "title": "Redis 数据类型具体使用场景",
+    "summary": "基于《Redis数据类型原理》整理。Redis 有 5 种基础数据类型（String / Hash / List / Set / ZSet）+ 3 种内置专用结构（Bitmaps …",
+    "tags": [
+      "Redis"
+    ],
+    "url": "deep/redis/Redis数据类型具体使用场景.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-06-01"
+  },
+  {
+    "title": "Redis 单体工具类使用文档",
+    "summary": "面向单节点单机 Redis（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回 RedisResult<T>，业务层通过 isSuccess() 判断结果，getData()…",
+    "tags": [
+      "Redis"
+    ],
+    "url": "deep/redis/Redis单体工具类使用文档.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-05-31"
+  },
+  {
+    "title": "Redis 高并发缓存架构实战手册",
+    "summary": "实战总结：基于本项目的真实压测数据（场景 2/5/7/8-1/8.21/9.18/11）整理，涉及缓存穿透/击穿/雪崩、延迟任务、概率算法、持久化、集群、编码选型等核心主题。",
+    "tags": [
+      "Redis",
+      "Java 并发",
+      "缓存"
+    ],
+    "url": "deep/redis/Redis 高并发缓存架构实战手册.html",
+    "series": "redis",
+    "category": "deep",
+    "date": "2026-05-30"
+  },
+  {
+    "title": "MySQL 连接层参数详细辨析",
+    "summary": "基于 MySQL 5.7/8.0，线程缓存 threadcachesize 参数，区分：连接、会话、线程、事务。 > 重要前提：MySQL 一个 TCP 连接 ≈ 一个会话(ses…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/连接层参数详细辨析.html",
     "series": "mysql",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-05-29"
   },
   {
-    "title": "MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）",
-    "summary": "本文为《MySQL事务隔离、锁机制、索引差异 核心汇总文档》与《间隙锁、临键锁 区间详解》两份文档的合并精简版，只保留结论，重复内容已去重整合。覆盖：事务隔离/MVCC、InnoD…",
+    "title": "补测B9：连接泄漏与长连接治理",
+    "summary": "连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的\"隐藏故障\"（进程运行几天/几周后连接缓…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B9-连接泄漏与长连接治理.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-28"
+  },
+  {
+    "title": "补测B8：容量规划与压测上限评估",
+    "summary": "高并发系统上线前需量化容量上限：能支撑多少 QPS/TPS、连接数上限、bufferpool/IO 饱和点，支撑容量预估与扩容决策。否则无法回答\"系统能扛多少并发\"。",
+    "tags": [
+      "MySQL",
+      "压测"
+    ],
+    "url": "deep/mysql/补测B8-容量规划与压测上限评估.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-27"
+  },
+  {
+    "title": "补测B7：统计信息过期与执行计划优化",
+    "summary": "优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B7-统计信息过期与执行计划优化.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-22"
+  },
+  {
+    "title": "补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）",
+    "summary": "高频慢查询源头：LIMIT 1000000,20 深分页。MySQL 需扫描并丢弃前 100 万行，offset 越大越慢，是列表页/管理后台最常见的慢查询。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B6-深分页查询优化.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-20"
+  },
+  {
+    "title": "补测B5：连接耗尽治理（max_connections 打满）",
+    "summary": "连接耗尽雪崩防护。当并发请求超过 MySQL maxconnections，新连接报 Too many connections，请求大量失败，系统雪崩。需治理：连接池大小与 max…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B5-连接耗尽治理.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-18"
+  },
+  {
+    "title": "补测B4：SQL 注入与安全治理",
+    "summary": "高并发系统安全必修。SQL 注入是最高危的漏洞之一：字符串拼接 SQL，恶意入参可绕过 WHERE 泄露全表、绕过认证、删库。治理核心：参数化根治 + 纵深防御（字段最小化、脱敏、…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B4-SQL注入与安全治理.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-16"
+  },
+  {
+    "title": "补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）",
+    "summary": "真实并发最大瓶颈是热点行锁争用：单行库存/账户（如 thotsingle WHERE id=1）被大量并发 UPDATE，同一行锁串行化，吞吐骤降。MySQL 行锁粒度是行，热点行…",
+    "tags": [
+      "MySQL",
+      "Redis",
+      "锁",
+      "缓存"
+    ],
+    "url": "deep/mysql/补测B3-热点行锁治理.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-14"
+  },
+  {
+    "title": "补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）",
+    "summary": "主从复制可能静默丢数据/漂移：某条 SQL 在从库执行失败被跳过、人为改库、DDL 不同步，都会导致主从数据不一致而不自知。复制线程 Running 只代表\"复制在跑\"，不代表数据…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B2-主从一致性校验与修复.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-11"
+  },
+  {
+    "title": "补测B12：死锁后的应用重试机制",
+    "summary": "死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。",
+    "tags": [
+      "MySQL",
+      "锁"
+    ],
+    "url": "deep/mysql/补测B12-死锁后的应用重试机制.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-10"
+  },
+  {
+    "title": "补测B11：冷热分离的查询路由",
+    "summary": "数据冷热分离后（热表存近期高频数据、归档表存历史冷数据），查询需应用层路由：热数据查热表、历史数据查归档表，避免查询扫全量大表。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B11-冷热分离的查询路由.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-06"
+  },
+  {
+    "title": "补测B10：主从延迟告警与从库自动摘除",
+    "summary": "读写分离下，从库复制延迟会导致读从库读到过期数据。延迟超阈值必须告警 + 自动把从库从读写分离摘除（读全部回主库），延迟恢复后再重新挂载。否则高并发下读到陈旧数据引发业务事故。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B10-主从延迟告警与从库自动摘除.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-05-03"
+  },
+  {
+    "title": "补测B1：备份恢复（binlog PITR / 误删误更新恢复）",
+    "summary": "高并发治理除了\"读写/一致性\"，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/补测B1-备份恢复.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-30"
+  },
+  {
+    "title": "数据同步工具对比：mysqldump / DataX / Flink CDC",
+    "summary": "定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/数据同步工具对比-mysqldump-DataX-FlinkCDC.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-27"
+  },
+  {
+    "title": "场景9：InnoDB 并发控制（MVCC 多版本并发控制）",
+    "summary": "InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…",
     "tags": [
       "MySQL",
       "事务",
+      "Java 并发"
+    ],
+    "url": "deep/mysql/场景9-InnoDB并发控制MVCC.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-22"
+  },
+  {
+    "title": "场景8：批量写入优化",
+    "summary": "MySQL 单条 INSERT 的瓶颈主要在网络往返和事务提交：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。批量写入通…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景8-批量写入优化.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-21"
+  },
+  {
+    "title": "场景7：分库分表（应用层水平分表）",
+    "summary": "当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，单表 IO、索引深度、锁竞争仍是瓶颈。分库分表是终极方案：把单表数据物理拆分到多个…",
+    "tags": [
+      "MySQL",
+      "分库分表"
+    ],
+    "url": "deep/mysql/场景7-分库分表.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-20"
+  },
+  {
+    "title": "场景6：读写分离与主从延迟",
+    "summary": "在 MySQL 高并发场景下，读多写少是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用读写分离：写走主库、读走从库，把读压力分摊到只读副本上。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景6-读写分离与主从延迟.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-19"
+  },
+  {
+    "title": "场景5：索引失效与慢查询",
+    "summary": "MySQL 在数据量大时，若查询未命中合适的索引，会退化为全表扫描（type=ALL），导致慢查询、CPU 打满、锁表。索引失效通常源于写法问题（函数、隐式转换、like 前导、o…",
+    "tags": [
+      "MySQL",
+      "索引"
+    ],
+    "url": "deep/mysql/场景5-索引失效与慢查询.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-17"
+  },
+  {
+    "title": "场景4：间隙锁 / Next-Key Lock",
+    "summary": "InnoDB 在 REPEATABLE READ 隔离级别下，通过间隙锁（Gap Lock）和 Next-Key Lock 防止幻读，但也因此引入了锁范围扩大与间隙锁死锁等并发问题…",
+    "tags": [
+      "MySQL",
+      "锁"
+    ],
+    "url": "deep/mysql/场景4-间隙锁与Next-KeyLock.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-14"
+  },
+  {
+    "title": "场景4：锁的工程实践、选型与规避（开发视角）",
+    "summary": "在掌握 InnoDB 锁机制（S/X、意向锁、间隙锁、Next-Key）后，补充工程落地经验：锁的降级、开发注意事项、高并发下如何选锁、如何规避锁。",
+    "tags": [
+      "MySQL",
+      "锁"
+    ],
+    "url": "deep/mysql/场景4-锁的工程实践与选型.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-10"
+  },
+  {
+    "title": "场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）",
+    "summary": "在\"间隙锁 / Next-Key Lock\"基础上，补齐 InnoDB 锁体系的其余核心技术点。所有演示基于 tgaplock 表。",
+    "tags": [
+      "MySQL",
+      "锁"
+    ],
+    "url": "deep/mysql/场景4-补强-InnoDB锁完整体系.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-08"
+  },
+  {
+    "title": "场景3：悲观锁 vs 乐观锁",
+    "summary": "高并发写场景下，保证数据一致性有两种主流方案： - 悲观锁：SELECT ... FOR UPDATE 先锁定数据行，阻塞其它写，再读改写。依赖 InnoDB 行锁。 - 乐观锁：…",
+    "tags": [
+      "MySQL",
+      "锁"
+    ],
+    "url": "deep/mysql/场景3-悲观锁vs乐观锁.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-05"
+  },
+  {
+    "title": "场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）",
+    "summary": "MySQL 并发事务访问同一数据时，不同隔离级别决定是否出现脏读、不可重复读、幻读。生产环境常因错误设置隔离级别或对现象理解不清，导致数据一致性问题或性能下降。",
+    "tags": [
+      "MySQL",
+      "事务"
+    ],
+    "url": "deep/mysql/场景2-事务隔离级别.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-03"
+  },
+  {
+    "title": "场景18：锁等待与死锁监控治理",
+    "summary": "高并发下，多个事务争用同一行/间隙锁会产生锁等待（事务串行化、吞吐下降），更严重的是死锁（事务互相持有对方需要的锁，死循环等待）。治理需要\"制造 → 监控 → 诊断 → 治理\"闭环…",
+    "tags": [
+      "MySQL",
+      "锁"
+    ],
+    "url": "deep/mysql/场景18-锁等待与死锁监控治理.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-02"
+  },
+  {
+    "title": "场景17：数据归档与冷热分离",
+    "summary": "业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致： - 查询需扫全表（含大量历史冷数据），性能下降 - 索引变大，缓存命中率降低 - 备份、迁移、统计耗时",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景17-数据归档与冷热分离.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-04-01"
+  },
+  {
+    "title": "场景16：连接池参数调优（HikariCP）",
+    "summary": "连接池是应用访问 MySQL 的\"水管\"，参数直接影响高并发下的吞吐、排队与超时。本项目使用 HikariCP，演示不同连接池大小对高并发性能的影响及调优思路。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景16-连接池参数调优.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-31"
+  },
+  {
+    "title": "场景15：MySQL 高可用（主从切换 / 故障演练）",
+    "summary": "单点 MySQL 一旦故障，整个服务不可用。高可用（HA） 的核心是：故障时能快速探测 + 自动切换，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景15-MySQL高可用.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-29"
+  },
+  {
+    "title": "场景14：慢查询定位与优化闭环",
+    "summary": "慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要完整闭环：定位 → 分析 → 优化 → 验证，而不是拍脑袋改。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景14-慢查询定位与优化闭环.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-28"
+  },
+  {
+    "title": "场景13：InnoDB 参数调优对吞吐的影响",
+    "summary": "InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用\"强持久性\"配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景13-InnoDB参数调优.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-27"
+  },
+  {
+    "title": "场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）",
+    "summary": "在分布式/多实例场景下，单机 synchronized/ReentrantLock 无法跨进程互斥，需要分布式锁。MySQL 分布式锁的核心：",
+    "tags": [
+      "MySQL",
       "锁",
       "索引"
     ],
-    "url": "deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html",
+    "url": "deep/mysql/场景12-分布式锁.html",
     "series": "mysql",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-03-25"
+  },
+  {
+    "title": "场景11：主从延迟治理（写后读一致性方案）",
+    "summary": "读写分离（场景6）把读压力分流到从库，但引入主从延迟：写主库后，从库需要经复制（binlog → relay log → SQL apply）才能同步，延迟窗口内从库读到的是旧数据…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景11-主从延迟治理.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-23"
+  },
+  {
+    "title": "场景10：Redis 缓存 + MySQL 双写一致性",
+    "summary": "Redis 缓存能大幅提升读性能（内存读 vs 磁盘读），但引入缓存与数据库双写一致性问题：更新 MySQL 后，缓存若不更新，业务会读到过期数据（脏数据）。本场景演示双写不一致的…",
+    "tags": [
+      "MySQL",
+      "Redis",
+      "缓存"
+    ],
+    "url": "deep/mysql/场景10-Redis缓存与MySQL双写一致性.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-17"
+  },
+  {
+    "title": "场景1：连接池与超卖问题（四种扣减策略对比）",
+    "summary": "高并发秒杀/抢购场景下，多个请求同时扣减同一商品的库存。若不加任何并发控制，会导致超卖（库存减为负数）；而错误的加锁策略又会带来性能损耗或死锁。",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/场景1-连接池与超卖问题.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-11"
   },
   {
     "title": "MySQL 高并发场景 1-18 结论汇总（只要结论）",
@@ -928,7 +1157,30 @@
     "url": "deep/mysql/场景1-18结论汇总.html",
     "series": "mysql",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-03-10"
+  },
+  {
+    "title": "写入路径对比：单体 MySQL 批量 vs 本地磁盘追加",
+    "summary": "同样的数据写入，两条线路性能差异巨大： - 线路1：单体 MySQL 批量写入（JDBC batch + rewriteBatchedStatements，落 InnoDB）。 -…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/写入路径对比-MySQL批量vs磁盘追加.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-08"
+  },
+  {
+    "title": "Sysbench 单体 MySQL 硬件上限压测",
+    "summary": "用 Sysbench 测出单体 MySQL（无集群、无主从）的硬件性能上限： - 读上限：oltpreadonly（纯查询） - 读写混合上限：oltpreadwrite（OLTP…",
+    "tags": [
+      "MySQL",
+      "压测"
+    ],
+    "url": "deep/mysql/Sysbench单体MySQL硬件上限压测.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-03-07"
   },
   {
     "title": "MySQL 面试精华 & 脑图速记",
@@ -939,18 +1191,7 @@
     "url": "deep/mysql/MySQL面试精华与脑图速记.html",
     "series": "mysql",
     "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "MySQL 连接层参数详细辨析",
-    "summary": "基于 MySQL 5.7/8.0，线程缓存 threadcachesize 参数，区分：连接、会话、线程、事务。 > 重要前提：MySQL 一个 TCP 连接 ≈ 一个会话(ses…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/连接层参数详细辨析.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-03-06"
   },
   {
     "title": "MySQL 四层架构、执行顺序、监控与 BufferPool 汇总",
@@ -961,7 +1202,7 @@
     "url": "deep/mysql/MySQL四层架构与监控汇总.html",
     "series": "mysql",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-03-03"
   },
   {
     "title": "MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制",
@@ -976,7 +1217,45 @@
     "url": "deep/mysql/MySQL原理篇.html",
     "series": "mysql",
     "category": "deep",
-    "date": "2026-10-11"
+    "date": "2026-03-02"
+  },
+  {
+    "title": "MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）",
+    "summary": "本文为《MySQL事务隔离、锁机制、索引差异 核心汇总文档》与《间隙锁、临键锁 区间详解》两份文档的合并精简版，只保留结论，重复内容已去重整合。覆盖：事务隔离/MVCC、InnoD…",
+    "tags": [
+      "MySQL",
+      "事务",
+      "锁",
+      "索引"
+    ],
+    "url": "deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-02-24"
+  },
+  {
+    "title": "MySQL（InnoDB）事务与锁排查治理手册",
+    "summary": "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…",
+    "tags": [
+      "MySQL",
+      "事务",
+      "锁"
+    ],
+    "url": "deep/mysql/MySQL-事务与锁排查治理手册.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-02-23"
+  },
+  {
+    "title": "Copilot Chat Conversation Export: MySQL故障排查实战总结",
+    "summary": "User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…",
+    "tags": [
+      "MySQL"
+    ],
+    "url": "deep/mysql/my_sql故障排查实战总结.html",
+    "series": "mysql",
+    "category": "deep",
+    "date": "2026-02-22"
   },
   {
     "title": "KingbaseES / PostgreSQL 锁与长事务排查手册",
@@ -990,285 +1269,6 @@
     "url": "deep/mysql/KingbaseES-锁与事务排查手册.html",
     "series": "mysql",
     "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "K8s 实战学习路线图（已学 + 待学）",
-    "summary": "目标定位：认识 K8s，不是验证功能。本文件是学习进度的总账，记录已亲手跑通的能力、对应的清单文件、关键认知，以及尚未涉及但实战常用的功能与建议路线。 > > 最后更新：2026-…",
-    "tags": [
-      "K8s",
-      "云原生"
-    ],
-    "url": "deep/k8s/K8S-LEARNING-ROADMAP.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Java 秒杀/库存场景压测脚本设计清单",
-    "summary": "本文用于设计 Java 秒杀、库存扣减、订单创建和异步消息链路的压测脚本。重点覆盖：",
-    "tags": [
-      "压测"
-    ],
-    "url": "deep/bench/Java秒杀库存场景压测脚本设计清单.html",
-    "series": "bench",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Ingress + HPA 实践清单（sc-user）",
-    "summary": "两份清单已生成，风格对齐既有 sc-user 资源（命名空间 sc-demo）：",
-    "tags": [
-      "K8s",
-      "云原生",
-      "Elasticsearch"
-    ],
-    "url": "deep/k8s/ingress-hpa.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ILM 全面实操手册（针对 ES 7.2 的合并修订版）",
-    "summary": "直接结论（要点）：",
-    "tags": [
-      "Elasticsearch",
-      "ILM"
-    ],
-    "url": "deep/es/ILM 全面实操手册（针对 ES 7.2 的合并修订版）.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ILM 全面实操手册（修订版）",
-    "summary": "结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split …",
-    "tags": [
-      "Elasticsearch",
-      "ILM"
-    ],
-    "url": "deep/es/ILM 全面实操手册（修订版）.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档",
-    "summary": "（全文无省略、无占位符，可直接复制保存为 .md 文件，生产+面试完整使用）",
-    "tags": [
-      "Elasticsearch",
-      "索引",
-      "分库分表",
-      "ILM"
-    ],
-    "url": "deep/es/ES_分片ILM_完整终版手册-3.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册",
-    "summary": "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…",
-    "tags": [
-      "Elasticsearch",
-      "分库分表",
-      "ILM"
-    ],
-    "url": "deep/es/ES路由分片ILM&Reindex别名完整手册.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Elasticsearch 分片节点分配算法 超详细详解",
-    "summary": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。",
-    "tags": [
-      "Elasticsearch",
-      "分库分表"
-    ],
-    "url": "deep/es/Elasticsearch 分片节点分配算法 超详细详解.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES面试+运维命令独立速查手册（增补集群架构面试题完整版）",
-    "summary": "本文档拆分自完整版ES手册，分为三大模块：集群架构高频面试题（新增）+ 核心业务面试题 + 全量运维命令 + 批量运维脚本，所有答案为面试满分标准答案，命令可直接复制上线使用，适合…",
-    "tags": [
-      "Elasticsearch"
-    ],
-    "url": "deep/es/ES面试+运维命令独立速查手册（增补集群架构面试题完整版）.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）",
-    "summary": "本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…",
-    "tags": [
-      "Elasticsearch",
-      "分库分表"
-    ],
-    "url": "deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）",
-    "summary": "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…",
-    "tags": [
-      "Elasticsearch",
-      "分库分表"
-    ],
-    "url": "deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册",
-    "summary": "1. 索引/分片/节点层级基础关系",
-    "tags": [
-      "Elasticsearch",
-      "索引",
-      "分库分表",
-      "ILM"
-    ],
-    "url": "deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册",
-    "summary": "1. 索引与分片核心基础",
-    "tags": [
-      "Elasticsearch",
-      "分库分表",
-      "ILM"
-    ],
-    "url": "deep/es/ES_分片ILM_完整终版手册-2.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）",
-    "summary": "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…",
-    "tags": [
-      "Elasticsearch"
-    ],
-    "url": "deep/es/ES7.17 写入全流程-2.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES 运维常用命令速查手册（独立文档，可直接复制使用）",
-    "summary": "1. 分片路由与倾斜排查命令 2. 集群分片均衡 & 磁盘水位配置 3. ILM 生命周期常规运维命令 4. ILM 冷热层级向上回退全套命令（Warm↔Hot / Cold↔Wa…",
-    "tags": [
-      "Elasticsearch"
-    ],
-    "url": "deep/es/ES_运维命令速查手册.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）",
-    "summary": "本文承接前文ES路由、分片分配、冷热分层全套内容，ILM是ES冷热分层唯一原生实现方案，全程无业务代码、无定时任务，配置驱动实现索引自动冷热流转；同时厘清所有人都踩过的时间误区、调…",
-    "tags": [
-      "Elasticsearch",
-      "索引",
-      "源码",
-      "ILM"
-    ],
-    "url": "deep/es/ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）.html",
-    "series": "es",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Copilot Chat Conversation Export: MySQL故障排查实战总结",
-    "summary": "User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…",
-    "tags": [
-      "MySQL"
-    ],
-    "url": "deep/mysql/my_sql故障排查实战总结.html",
-    "series": "mysql",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Compose → K8s 概念对照（给已经会 docker-compose 的人）",
-    "summary": "如果你只记一句话：Compose 描述的是\"一台机器上如何起一组容器\"，K8s 描述的是\"一个集群里期望状态长什么样\"。 前者的单位是容器，后者的单位是\"契约 + 调和循环\"。这个…",
-    "tags": [
-      "K8s",
-      "云原生"
-    ],
-    "url": "deep/k8s/compose-vs-k8s.html",
-    "series": "k8s",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层",
-    "summary": "「高并发实测」系列第 3 篇。 > > 环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …",
-    "tags": [
-      "技术笔记"
-    ],
-    "url": "blog/03-Agent工程化实测.html",
-    "series": "博客",
-    "category": "blog",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）",
-    "summary": "原则：带着病历找药。每个中间件都必须对应一个\"已实测出的问题\"，并说清\"治好了没\"——不是堆组件。 > 当前栈：Spring AI 1.1.8 + 百炼 MaaS + RAG 向量…",
-    "tags": [
-      "AI Agent",
-      "Spring AI",
-      "压测"
-    ],
-    "url": "deep/agent/Agent中间件优化选型.html",
-    "series": "agent",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "AI Agent 项目集评估与改进建议",
-    "summary": "评估范围：D:\\ai-agent-project 根目录下的 Agent 教学项目、可观测性项目和 rdx-bx-backend 业务后端沙盒。 > 评估时间：2026-09-20…",
-    "tags": [
-      "AI Agent",
-      "Spring AI"
-    ],
-    "url": "deep/agent/项目评估与改进建议.html",
-    "series": "agent",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "AI Agent 新手教学（后端工程师·零基础版）",
-    "summary": "你是谁：会写后端、懂接口/并发/缓存，但从没碰过 AI Agent。 > 这份文档怎么读：从上到下，每一课 = 一个概念 + 你项目里的代码 + 你现在动手试什么。别跳，前 5 课…",
-    "tags": [
-      "AI Agent",
-      "Spring AI"
-    ],
-    "url": "deep/agent/AI-Agent新手教学.html",
-    "series": "agent",
-    "category": "deep",
-    "date": "2026-10-11"
-  },
-  {
-    "title": "01-知乎回答-源码阅读方法版",
-    "summary": "我的做法是三步：先立一个可证伪的假设 → 去源码里找到定义和调用链 → 写代码把它跑出来验证。只看不跑，读完记住的还是别人的结论；带着问题读，一个 object.c 能顶十篇解读文…",
-    "tags": [
-      "源码"
-    ],
-    "url": "blog/01-知乎回答-源码阅读方法版.html",
-    "series": "博客",
-    "category": "blog",
-    "date": "2026-10-11"
+    "date": "2026-02-15"
   }
 ]

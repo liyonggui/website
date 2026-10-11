@@ -1,7 +1,7 @@
 ---
 title: "场景 1 — Lettuce Pipeline 压测问题排查与优化"
 summary: "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…"
-date: 2026-10-11
+date: 2026-06-11
 author: "小番茄程序猿"
 tags:
   - Redis

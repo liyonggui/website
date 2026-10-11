@@ -1,7 +1,7 @@
 ---
 title: "Redis 数据类型原理"
 summary: "从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。 > > 注：本文所有字节数与阈值均为\"典型 64-bit Linux + je…"
-date: 2026-10-11
+date: 2026-06-03
 author: "小番茄程序猿"
 tags:
   - Redis

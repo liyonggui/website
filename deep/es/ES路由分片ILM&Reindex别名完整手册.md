@@ -1,7 +1,7 @@
 ---
 title: "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册"
 summary: "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…"
-date: 2026-10-11
+date: 2026-08-01
 author: "小番茄程序猿"
 tags:
   - Elasticsearch

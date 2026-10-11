@@ -1,7 +1,7 @@
 ---
 title: "场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）"
 summary: "已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需…"
-date: 2026-10-11
+date: 2026-06-15
 author: "小番茄程序猿"
 tags:
   - Redis

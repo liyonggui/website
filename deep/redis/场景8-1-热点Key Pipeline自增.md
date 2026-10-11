@@ -1,7 +1,7 @@
 ---
 title: "场景 8: 热点 Key Pipeline INCR 自增"
 summary: "Redis Cluster + Pipeline 高并发 INCR 同一个热点 key:"
-date: 2026-10-11
+date: 2026-07-06
 author: "小番茄程序猿"
 tags:
   - Redis

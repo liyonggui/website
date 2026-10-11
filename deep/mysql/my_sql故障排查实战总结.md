@@ -1,7 +1,7 @@
 ---
 title: "Copilot Chat Conversation Export: MySQL故障排查实战总结"
 summary: "User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…"
-date: 2026-10-11
+date: 2026-02-22
 author: "小番茄程序猿"
 tags:
   - MySQL

@@ -1,7 +1,7 @@
 ---
 title: "Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层"
 summary: "「高并发实测」系列第 3 篇。 > > 环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …"
-date: 2026-10-11
+date: 2026-09-13
 author: "小番茄程序猿"
 tags:
   - 技术笔记

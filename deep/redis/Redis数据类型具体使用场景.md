@@ -1,7 +1,7 @@
 ---
 title: "Redis 数据类型具体使用场景"
 summary: "基于《Redis数据类型原理》整理。Redis 有 5 种基础数据类型（String / Hash / List / Set / ZSet）+ 3 种内置专用结构（Bitmaps …"
-date: 2026-10-11
+date: 2026-06-01
 author: "小番茄程序猿"
 tags:
   - Redis

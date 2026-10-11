@@ -14,7 +14,7 @@
 <meta property="og:description" content="Redis 缓存能大幅提升读性能（内存读 vs 磁盘读），但引入缓存与数据库双写一致性问题：更新 MySQL 后，缓存若不更新，业务会读到过期数据（脏数据）。本场景演示双写不一致的…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景10-Redis缓存与MySQL双写一致性.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景10：Redis 缓存 + MySQL 双写一致性", "description": "Redis 缓存能大幅提升读性能（内存读 vs 磁盘读），但引入缓存与数据库双写一致性问题：更新 MySQL 后，缓存若不更新，业务会读到过期数据（脏数据）。本场景演示双写不一致的…", "url": "https://liyonggui.github.io/website/deep/mysql/场景10-Redis缓存与MySQL双写一致性.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景10-Redis缓存与MySQL双写一致性.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "MySQL, Redis, 缓存, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景10：Redis 缓存 + MySQL 双写一致性", "description": "Redis 缓存能大幅提升读性能（内存读 vs 磁盘读），但引入缓存与数据库双写一致性问题：更新 MySQL 后，缓存若不更新，业务会读到过期数据（脏数据）。本场景演示双写不一致的…", "url": "https://liyonggui.github.io/website/deep/mysql/场景10-Redis缓存与MySQL双写一致性.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景10-Redis缓存与MySQL双写一致性.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-17", "keywords": "MySQL, Redis, 缓存, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/article.css"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -52,7 +52,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景10：Redis 缓存 + MySQL 双写一致性</h1>
-<div class="meta-row"><span class="m-item">2026-10-11</span><span class="m-item">mysql 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=Redis">Redis</a><a class="m-tag" href="../../tags.html?t=缓存">缓存</a></span></div>
+<div class="meta-row"><span class="m-item">2026-03-17</span><span class="m-item">mysql 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=Redis">Redis</a><a class="m-tag" href="../../tags.html?t=缓存">缓存</a></span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -223,10 +223,10 @@
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/mysql/补测B3-热点行锁治理.html"><span class="rel-title">补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/KingbaseES-锁与事务排查手册.html"><span class="rel-title">KingbaseES / PostgreSQL 锁与长事务排查手册</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL-事务与锁排查治理手册.html"><span class="rel-title">MySQL（InnoDB）事务与锁排查治理手册</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&面试版）.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档（开发&amp;面试版）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/MySQL原理篇.html"><span class="rel-title">MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/连接层参数详细辨析.html"><span class="rel-title">MySQL 连接层参数详细辨析</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测B9：连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测B8：容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测B7：统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

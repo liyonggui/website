@@ -1,7 +1,7 @@
 ---
 title: "数据同步工具对比：mysqldump / DataX / Flink CDC"
 summary: "定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。"
-date: 2026-10-11
+date: 2026-04-27
 author: "小番茄程序猿"
 tags:
   - MySQL

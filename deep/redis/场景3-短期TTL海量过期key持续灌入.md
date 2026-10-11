@@ -1,7 +1,7 @@
 ---
 title: "场景 3 — 短期 TTL 海量过期 key 持续灌入"
 summary: "问题背景（一句话）： 大量短 TTL（秒级）key 同时创建导致在到期时 Redis 的 active-expire 采样式扫描集中触发，从而在主线程上造成短时阻塞，导致 P99/…"
-date: 2026-10-11
+date: 2026-06-17
 author: "小番茄程序猿"
 tags:
   - Redis

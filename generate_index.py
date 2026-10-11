@@ -179,7 +179,7 @@ def build_rss(records):
 
 
 STATIC_PAGES = [
-    ("", "1.0"), ("index.html", "1.0"), ("projects.html", "0.9"),
+    ("", "1.0"), ("projects.html", "0.9"),
     ("blog.html", "0.8"), ("deep.html", "0.9"),
     ("tags.html", "0.5"), ("archives.html", "0.5"), ("search.html", "0.5"),
 ]

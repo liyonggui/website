@@ -431,6 +431,8 @@ def process_dir(rel_dir, active, back_label, catalog):
         with open(src, "r", encoding="utf-8") as f:
             text = f.read()
         meta, text = parse_front_matter(text)
+        if str(meta.get("draft", "")).strip().lower() in ("true", "yes", "1"):
+            continue  # 草稿不生成公开 HTML（索引同样排除）
         heading, text = extract_title(text, fn[:-3])
         title = str(meta.get("title") or heading or fn[:-3]).strip()
         body, toc = md_to_html(demote_h1(text))

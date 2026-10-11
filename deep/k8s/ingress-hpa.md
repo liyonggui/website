@@ -1,7 +1,7 @@
 ---
 title: "Ingress + HPA 实践清单（sc-user）"
 summary: "两份清单已生成，风格对齐既有 sc-user 资源（命名空间 sc-demo）："
-date: 2026-10-11
+date: 2026-09-01
 author: "小番茄程序猿"
 tags:
   - K8s

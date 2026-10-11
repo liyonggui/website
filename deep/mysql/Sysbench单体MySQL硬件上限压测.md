@@ -1,7 +1,7 @@
 ---
 title: "Sysbench 单体 MySQL 硬件上限压测"
 summary: "用 Sysbench 测出单体 MySQL（无集群、无主从）的硬件性能上限： - 读上限：oltpreadonly（纯查询） - 读写混合上限：oltpreadwrite（OLTP…"
-date: 2026-10-11
+date: 2026-03-07
 author: "小番茄程序猿"
 tags:
   - MySQL

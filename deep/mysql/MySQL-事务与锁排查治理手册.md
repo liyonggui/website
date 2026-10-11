@@ -1,7 +1,7 @@
 ---
 title: "MySQL（InnoDB）事务与锁排查治理手册"
 summary: "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…"
-date: 2026-10-11
+date: 2026-02-23
 author: "小番茄程序猿"
 tags:
   - MySQL

@@ -1,7 +1,7 @@
 ---
 title: "KingbaseES / PostgreSQL 锁与长事务排查手册"
 summary: "适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 zhcl，运维账号 dgclylf，客户端 KStudio，经 aTrust 零信任 VPN 连接。 > …"
-date: 2026-10-11
+date: 2026-02-15
 author: "小番茄程序猿"
 tags:
   - MySQL

@@ -1,7 +1,7 @@
 ---
 title: "ILM 全面实操手册（修订版）"
 summary: "结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split …"
-date: 2026-10-11
+date: 2026-08-07
 author: "小番茄程序猿"
 tags:
   - Elasticsearch

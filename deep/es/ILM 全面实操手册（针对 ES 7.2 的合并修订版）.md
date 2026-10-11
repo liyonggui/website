@@ -1,7 +1,7 @@
 ---
 title: "ILM 全面实操手册（针对 ES 7.2 的合并修订版）"
 summary: "直接结论（要点）："
-date: 2026-10-11
+date: 2026-08-09
 author: "小番茄程序猿"
 tags:
   - Elasticsearch

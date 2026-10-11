@@ -1,7 +1,7 @@
 ---
 title: "Redis 单体工具类使用文档"
 summary: "面向单节点单机 Redis（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回 RedisResult<T>，业务层通过 isSuccess() 判断结果，getData()…"
-date: 2026-10-11
+date: 2026-05-31
 author: "小番茄程序猿"
 tags:
   - Redis

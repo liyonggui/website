@@ -1,7 +1,7 @@
 ---
 title: "phase6 评测代码与原理详解（三路判分·中位数·CI门禁）"
 summary: "配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 D:\\ai-agent-project\\pha…"
-date: 2026-10-11
+date: 2026-10-01
 author: "小番茄程序猿"
 tags:
   - AI Agent

@@ -1,7 +1,7 @@
 ---
 title: "ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）"
 summary: "java // 1. 确定路由key：优先自定义routing，没有则使用文档id String effectiveRouting = routing != null ? rout…"
-date: 2026-10-11
+date: 2026-08-02
 author: "小番茄程序猿"
 tags:
   - Elasticsearch

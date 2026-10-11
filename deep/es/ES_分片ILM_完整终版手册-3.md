@@ -1,7 +1,7 @@
 ---
 title: "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档"
 summary: "（全文无省略、无占位符，可直接复制保存为 .md 文件，生产+面试完整使用）"
-date: 2026-10-11
+date: 2026-07-27
 author: "小番茄程序猿"
 tags:
   - Elasticsearch
