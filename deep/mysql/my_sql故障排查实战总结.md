@@ -1,0 +1,214 @@
+# Copilot Chat Conversation Export: MySQL故障排查实战总结
+
+**User:** @liyonggui
+**Thread URL:** https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c1b4d
+
+## @liyonggui
+
+MySQL生产中实际遇到的问题排查总结
+
+## Copilot
+
+下面是一个可直接用于生产排查的实战总结（按问题类别 → 诊断要点 → 常用命令/快速定位 → 解决思路 → 预防建议）。把它放进运维手册或故障工单模板里即可直接使用。
+
+概览结论（先看这三项）
+- 先看主机资源（CPU、内存、磁盘 I/O、网络），再看 MySQL 本身（SHOW PROCESSLIST / SHOW ENGINE INNODB STATUS / slow query log / error log），最后查看复制/备份状态与外部依赖。
+- 把系统变为只读或降级到只读副本以减少影响（严重故障时）。
+- 生产故障排查顺序：收集 -> 限制影响 -> 根因定位 -> 临时缓解 -> 根因修复 -> 回放与预防。
+
+常见问题类别与排查步骤（重点命令与要点）
+
+1) 响应变慢 / 查询慢
+- 典型症状：业务请求延迟↑、QPS↓、单个查询占时很长。
+- 快速定位：
+  - 查看慢查询日志（开启并分析）：pt-query-digest / mysqldumpslow
+  - SHOW PROCESSLIST; 查看长期 running 的线程
+  - SELECT * FROM performance_schema.threads / sys.processlist;
+  - EXPLAIN / EXPLAIN ANALYZE <sql>
+  - 使用 pt-stalk 在高负载时捕获诊断信息
+- 常用命令：
+  - tail -n 200 /var/log/mysql/slow.log
+  - mysql -e "SHOW FULL PROCESSLIST\G"
+  - mysql -e "EXPLAIN FORMAT=TRADITIONAL <sql>"
+- 根因 & 解决：
+  - 缺索引，优化 SQL 或添加合适索引（避免全表扫描）。
+  - 不合理的 JOIN / 子查询，改写为索引友好或拆分查询。
+  - 大表热点查询（按时间分区 / 分表 / 缓存）。
+  - 临时表落盘（调整 tmp_table_size / max_heap_table_size，或优化查询避免大临时表）。
+- 预防：
+  - 开启慢查询日志（long_query_time 合理设置），定期分析。
+  - 建立索引审计、上线前 explain review。
+  - 使用监控（Prometheus + mysqld_exporter / PMM）告警慢查询比率。
+
+2) 死锁 / 锁等待 / 元数据锁（DDL）阻塞
+- 典型症状：事务等待、请求挂起、SHOW PROCESSLIST 出现 "Locked" 或 "Waiting for table metadata lock"
+- 快速定位：
+  - SHOW ENGINE INNODB STATUS\G（deadlock 部分）
+  - INFORMATION_SCHEMA.INNODB_TRX / INNODB_LOCKS / INNODB_LOCK_WAITS
+  - performance_schema.metadata_locks
+- 常用命令：
+  - mysql -e "SELECT * FROM information_schema.INNODB_TRX\G"
+  - mysql -e "SHOW ENGINE INNODB STATUS\G"
+  - pt-deadlock-logger（Percona 工具）
+- 根因 & 解决：
+  - 死锁：看 InnoDB 状态，按事务顺序重试或优化 SQL、缩短事务、统一索引/访问顺序。
+  - 长事务阻塞 purge/insert：终止长事务或分批提交（不要频繁做大事务）。
+  - DDL 元数据锁：避免在高并发时做长在线 DDL；优先使用 pt-online-schema-change 或线上支持的 online DDL。
+- 预防：
+  - 编码实践：短事务、尽量先读后写、避免跨表复杂锁顺序。
+  - 定期检查长事务：监控 INNODB_TRX.
+
+3) 复制延迟 / 主从不同步 / 中断
+- 典型症状：slave_io_running / slave_sql_running 为 No，Seconds_Behind_Master 大、复制出错。
+- 快速定位：
+  - SHOW SLAVE STATUS\G（或 SHOW REPLICA STATUS）
+  - 检查主从网络延迟、磁盘 I/O、binlog 写入是否正常
+- 常用命令：
+  - mysql -e "SHOW SLAVE STATUS\G"
+  - mysqlbinlog --start-position/--start-datetime（回放 binlog）
+- 根因 & 解决：
+  - SQL 语句报错（数据问题）：手工修复或过滤单条错误（慎用 SQL_SKIP），推荐使用 mysqlbinlog + 手工修复后 replay。
+  - 大事务或慢查询在从库执行慢：提升从库资源或使用 parallel replication（MySQL 5.7+ 的多线程复制或增强的 group_replication）。
+  - 二进制日志配置不当：sync_binlog / innodb_flush_log_at_trx_commit 等。
+- 预防：
+  - 监控 replication status、建立告警。
+  - 对写入量大的操作做小批次，避免长事务。
+  - 定期验证数据一致性（pt-table-checksum / gh-ost/Orchestrator 提供工具）。
+
+4) IO 瓶颈 / 磁盘满 / 文件句柄耗尽
+- 典型症状：iowait 高、磁盘满、mysqld 无法写入、InnoDB 崩溃
+- 快速定位：
+  - iostat -x 1 5, vmstat 1 5, dstat
+  - df -h, df -i (inode)
+  - 查看 error log（磁盘相关错误）
+- 常用命令：
+  - iostat -xm 1 5
+  - ls -lh /var/lib/mysql | wc -l
+  - lsof -p <mysqld_pid> | wc -l
+- 根因 & 解决：
+  - 磁盘写入延迟：扩容 IOPS、更换更快的存储或优化 IO 密集操作（批量写、减少 fsync）。
+  - binlog/慢日志/错误日志没有轮转导致磁盘占满：配置 logrotate、定期清理过旧 binlog（配合备份政策）。
+  - 文件句柄不足：调整 ulimit / open_files_limit。
+- 预防：
+  - 监控磁盘使用率与 inode 使用率，定期清理或归档。
+  - 设置合理的 innodb_io_capacity、innodb_flush_neighbors（针对 SSD/HDD）。
+
+5) 内存耗尽 / OOM
+- 典型症状：mysqld 被 OOM killer 杀掉，系统 swap，性能急剧下降
+- 快速定位：
+  - dmesg | grep -i oom
+  - free -m, top
+- 常用命令：
+  - cat /proc/meminfo
+  - ps aux --sort=-rss | head
+- 根因 & 解决：
+  - innodb_buffer_pool 设置过大 → 减小 buffer_pool。
+  - too many connections 导致 per-connection buffer 消耗过高（sort_buffer_size、join_buffer_size、read_buffer_size）。
+  - 大量临时表或大型查询导致内存暴涨，优化 SQL 或限制 max_connections。
+- 预防：
+  - 计算内存预算（OS + buffer pool + 连接最大占用），将 innodb_buffer_pool_size 设为机器内存的 60~80%（视是否启用其他服务）。
+  - 使用 connection pool 限制并发数，避免直接将 max_connections 设太高。
+
+6) 服务崩溃 / 无法启动
+- 典型症状：mysqld 无法启动或频繁重启
+- 快速定位：
+  - 查看错误日志 /var/log/mysql/error.log 或 mysqld.log
+  - systemctl status mysqld
+- 常用命令：
+  - tail -n 200 /var/log/mysql/error.log
+- 根因 & 解决：
+  - 配置错误、innodb 损坏（需要 innodb_force_recovery 逐级尝试导出数据恢复）、磁盘损坏、权限问题。
+  - 启动参数不当（内存分配过大）。
+- 预防：
+  - 变更配置前在预发布环境做测试、始终保留可回滚的配置。
+  - 定期备份并测试恢复流程。
+
+7) 备份/恢复失败（备份不可用或恢复时间太长）
+- 典型症状：备份失败、恢复过程耗时过长、备份影响在线写入
+- 方法与工具：
+  - logical backup：mysqldump（慢，适合小库）
+  - physical hot backup：Percona XtraBackup（支持热备份且恢复快）
+  - LVM 快照 + xtrabackup/rsync 组合
+- 要点：
+  - 定期做恢复演练（仅备份不可保证可恢复）。
+  - 结合 binlog 做 PITR（point-in-time recovery）。
+  - 备份存储策略、防篡改、异地存储。
+
+8) 安全与权限问题
+- 典型症状：异常连接、权限误配置、SQL 注入造成数据泄露
+- 建议：
+  - 最小权限原则、使用 SSL/TLS、审计敏感操作、限制来源 IP。
+  - 定期 rotate 密码、使用单点登录或 vault 管理凭证。
+  - 开启审计或 proxy 层日志（如 ProxySQL、MySQL Enterprise Audit）。
+
+9) 字符集/排序规则问题
+- 典型症状：中文乱码、索引失效、排序不一致
+- 排查：
+  - SHOW VARIABLES LIKE 'character_set%';
+  - SHOW CREATE TABLE <tbl>;
+- 解决：
+  - 统一 client/connection/database/table/column 的字符集（推荐 utf8mb4），谨慎用 CONVERT/ALTER 时备份。
+
+10) 架构与设计层面问题（热点 / 单点瓶颈）
+- 常见：
+  - 单库承载所有写热点（考虑分库分表、业务路由、拆库）。
+  - 自增主键导致主写节点 hotspot：使用组合主键、UUID、或后端 sharding。
+- 解决思路：
+  - 读写分离（主从）、缓存（Redis/Memcached）、异步化写入、分区/分表策略。
+
+常用现场救援命令清单（可直接抄到 playbook）
+- 基本状态
+  - uptime; free -m; df -h; iostat -xm 1 3; top -b -n1 | head
+- MySQL 视角
+  - mysql -e "SHOW GLOBAL STATUS\G"
+  - mysql -e "SHOW GLOBAL VARIABLES LIKE 'innodb_buffer_pool_size'\G"
+  - mysql -e "SHOW PROCESSLIST\G"
+  - mysql -e "SHOW ENGINE INNODB STATUS\G"
+  - mysql -e "SHOW SLAVE STATUS\G"
+  - mysql -e "SHOW VARIABLES LIKE 'slow_query_log'; SHOW VARIABLES LIKE 'long_query_time';"
+- 日志定位
+  - tail -n 200 /var/log/mysql/error.log
+  - tail -n 200 /var/log/mysql/slow.log
+- 快速抓包/采样
+  - pt-stalk --variable 'Threads_connected>200' --count 3 --sleep 15 (Percona Toolkit)
+  - pt-query-digest /var/log/mysql/slow.log
+- 重启/降级
+  - systemctl stop mysqld ; mysqld_safe --skip-grant-tables （仅救援时用）
+  - SET GLOBAL read_only = ON; （配合 super_privilege）
+
+故障案例（精简示例）
+- 案例 A：业务延迟，CPU 低但 iowait 高 → 定位为磁盘延迟，慢查询常写 temp 表 → 临时：限制并发导出操作/设置 read_only 到从库做读；长期：换 SSD / 优化查询 / 提高 innodb_io_capacity。
+- 案例 B：复制中断，slave_sql 报主键冲突 → 因主库某次 DELETE 后相同行再次 INSERT；用 pt-table-checksum 校验数据一致性，使用 mysqlbinlog 在测试环境回放定位具体语句后在从库修复或采用 gtids 操作。
+
+监控、告警与工具建议
+- 监控项：QPS、TPS、Threads_connected、Threads_running、Innodb_rows_read/changed、Innodb_semaphores、Innodb_buffer_pool_hit_rate、Slow_queries、Bytes_sent/received、Replication lag、Disk IO wait、Error log 增长速率。
+- 推荐工具：Prometheus + mysqld_exporter + Grafana、Percona Monitoring and Management (PMM)、pt-query-digest、Percona Toolkit、Orchestrator（拓扑管理与故障转移）、ProxySQL（流量控制）、innotop/mytop（实时追踪）。
+- 日志分析：pt-query-digest 定期分析慢查询并产出优化清单。
+
+运维/排查流程模板（一键式步骤）
+1. 收集基础信息（时间窗口、影响范围、业务日志、主机资源、MySQL 状态）
+2. 先限制影响：若写入造成问题，SET GLOBAL read_only=ON（谨慎）；或将流量切到备用。
+3. 执行快速诊断命令（见上面“常用现场救援命令清单”）
+4. 根据结果采取应急措施（kill 长耗时会话 / 暂停大批量作业 / 临时扩容 IOPS / 临时切换读写）
+5. 做根因分析并验证修复（慢查询优化 / schema 变更 / 调整参数）
+6. 回放操作并恢复流量，持续观察 1~2 小时
+7. 编写事件总结：时间线、根因、影响、临时措施、长期修复、如何避免复发
+
+常见参数与经验阈值（参考，需结合机器实际）
+- innodb_buffer_pool_size = 60%~80% RAM（仅 MySQL 节点且无其他大内存服务）
+- innodb_flush_log_at_trx_commit = 1（最安全），为性能考虑可设 2（丢失一秒的风险）
+- sync_binlog = 1（保证 binlog 不丢）
+- max_connections 根据业务并发，但注意每连接消耗（不要盲目上调）
+- tmp_table_size / max_heap_table_size：避免大型临时表落盘
+
+最后的建议（最佳实践）
+- 建立标准化的故障单模板与演练（演练恢复流程、故障转移、备份恢复）。
+- 监控与自动化：关键指标报警 + 自动抓取诊断包（pt-stalk）。
+- 变更保护：schema/配置修改必须走审批、预发布验证与回滚方案。
+- 备份与恢复演练：备份不等于可恢复，至少每季度演练恢复流程。
+- 文档化：每次故障都写成 RCA（原因、修复、预防），持续改进 runbook。
+
+如果你希望，我可以：
+- 把上面的内容整理成一个可打印的“一页故障排查速查表”（PDF/Markdown）。
+- 根据你们的 MySQL 版本（如 5.7 / 8.0 / Percona）和部署架构（单机/主从/组复制/云 RDS），定制更具体的配置与阈值建议。
+要哪个我现在就生成？

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>项目 · 小番茄程序猿作品集</title>
+  <meta name="description" content="高并发微服务与 AI Agent 工程化项目清单：Redis、MySQL、Spring Cloud、Elasticsearch、K8s、以及 Spring AI phase1-6 与 rdx-agent。" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <div class="brand">小番茄程序猿<span>.</span>dev</div>
+      <nav class="nav-links" id="navLinks">
+        <a href="index.html">首页</a>
+        <a href="projects.html" class="active">项目</a>
+        <a href="blog.html">博客</a>
+        <a href="deep.html">深度</a>
+      </nav>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" style="padding-bottom:24px">
+      <div class="wrap">
+        <div class="eyebrow">Project Portfolio</div>
+        <h1>项目清单</h1>
+        <p class="lead">两条主线：<b>高并发后端家族</b>（压测 + 治理 + 微服务）与 <b>AI Agent 工程化家族</b>（Spring AI 渐进式实战）。每个项目都附带可复现的压测/运行命令与实测数据。</p>
+      </div>
+    </section>
+
+    <section style="padding-top:24px">
+      <div class="wrap">
+        <div class="section-head"><h2>高并发后端家族</h2><p>位于 <code>D:\high-concurrency-projects</code></p></div>
+
+        <div class="grid grid-2">
+          <div class="card proj" id="redis">
+            <div class="proj-top"><h3>Redis 高并发缓存架构</h3><span class="metric">11 场景压测</span></div>
+            <p>覆盖 Pipeline 边界/槽位、哨兵 vs 集群写入选型、热点 Key、String 三种编码（int/embstr/raw）压测、分布式信号量竞争等。含 Lettuce/Pipeline 问题排查与优化，产出 benchmark 图表与面试简述。</p>
+            <div class="tag-row"><span class="tag">Redis</span><span class="tag">k6</span><span class="tag gray">Disruptor</span><span class="tag gray">Kafka</span><span class="tag gray">Lettuce</span></div>
+          </div>
+
+          <div class="card proj" id="mysql">
+            <div class="proj-top"><h3>MySQL 治理与调优</h3><span class="metric">18 主场景 + 12 补测</span></div>
+            <p>事务隔离/锁体系、悲观锁 vs 乐观锁、分库分表、读写分离与主从延迟、冷热分离、连接池调优、死锁监控。附 KingbaseES 锁与事务排查手册与 Sysbench 硬件上限压测。</p>
+            <div class="tag-row"><span class="tag">MySQL</span><span class="tag">Kingbase</span><span class="tag gray">Sysbench</span><span class="tag gray">MVCC</span></div>
+          </div>
+
+          <div class="card proj" id="springcloud">
+            <div class="proj-top"><h3>Spring Cloud 高并发电商</h3><span class="metric">Seata AT · 全链路压测</span></div>
+            <p>order/user/inventory 三服务，Seata AT 分布式事务（order_db/user_db/inventory_db/seata_db），Spring Cache + Redis 旁路缓存，SQL 乐观锁处理并发。k6 全链路压测报告 + 容量规划与扩容指南。</p>
+            <div class="tag-row"><span class="tag">Spring Cloud</span><span class="tag">Seata</span><span class="tag gray">Sentinel</span><span class="tag gray">RocketMQ</span><span class="tag gray">Redis</span></div>
+          </div>
+
+          <div class="card proj" id="es">
+            <div class="proj-top"><h3>Elasticsearch 源码研读</h3><span class="metric">传输层 / 集群协调</span></div>
+            <p>深入研读 ES Java 源码：传输层、集群协调、搜索执行层 Query + Fetch 两阶段，梳理核心技术实现逻辑。</p>
+            <div class="tag-row"><span class="tag">Elasticsearch</span><span class="tag gray">Java 源码</span></div>
+          </div>
+
+          <div class="card proj" id="k3s">
+            <div class="proj-top"><h3>K3s / K8s 运维</h3><span class="metric">manifests + 网络策略</span></div>
+            <p>Namespace/ConfigMap/Secret/Deployment/Service/Ingress + Redis StatefulSet，NetworkPolicy 默认拒绝 + Redis 仅允许访问。配套学习路线与 compose vs k8s 对比。</p>
+            <div class="tag-row"><span class="tag">Kubernetes</span><span class="tag gray">K3s</span><span class="tag gray">NetPol</span></div>
+          </div>
+
+          <div class="card proj" id="jeepay">
+            <div class="proj-top"><h3>Jeepay 支付集成</h3><span class="metric">下单→回调闭环</span></div>
+            <p>覆盖下单、支付触发、调用 Jeepay、接收回调全流程；修复回调仅更新支付状态未回写订单状态（PAID）的缺陷，以及容器内 localhost 访问宿主机的网络配置。</p>
+            <div class="tag-row"><span class="tag">Jeepay</span><span class="tag gray">支付</span><span class="tag gray">Docker</span></div>
+          </div>
+
+          <div class="card proj" id="k6">
+            <div class="proj-top"><h3>k6 压测体系</h3><span class="metric">50→300 并发梯度</span></div>
+            <p>基准脚本 + 多档并发（50/100/150/200/250/300）压测脚本，秒杀/库存/余额/突发尖峰等场景，输出 benchmark HTML 报告。</p>
+            <div class="tag-row"><span class="tag">k6</span><span class="tag gray">性能压测</span></div>
+          </div>
+
+          <div class="card proj" id="demo">
+            <div class="proj-top"><h3>秒杀 Demo</h3><span class="metric">多档 benchmark 报告</span></div>
+            <p>库存场景压测 Demo，docker-compose 一键起，自带 100/150/200/250/300 并发 benchmark HTML 报告与 init.sql。</p>
+            <div class="tag-row"><span class="tag">秒杀</span><span class="tag gray">Docker</span></div>
+          </div>
+
+          <div class="card proj" id="member">
+            <div class="proj-top"><h3>Member 项目</h3><span class="metric">docker-compose 微服务</span></div>
+            <p>会员域微服务，docker-compose 编排，作为高并发家族的配套子模块。</p>
+            <div class="tag-row"><span class="tag gray">微服务</span><span class="tag gray">Docker</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head"><h2>AI Agent 工程化家族</h2><p>位于 <code>D:\ai-agent-project</code> · Spring AI + 百炼 MaaS（OpenAI 兼容）+ 本机瑞达星后端</p></div>
+
+        <div class="grid grid-2">
+          <div class="card proj" id="phase1">
+            <div class="proj-top"><h3>Phase 1 · 最小 Agent</h3><span class="metric">8080 · 实测 576+ 已发货</span></div>
+            <p>@Tool 工具循环 + 流式输出，打通"模型调用工具→拿结果→再推理"的最小闭环。</p>
+            <div class="tag-row"><span class="tag">Spring AI</span><span class="tag gray">@Tool</span><span class="tag gray">流式</span></div>
+          </div>
+
+          <div class="card proj" id="phase2">
+            <div class="proj-top"><h3>Phase 2 · RAG</h3><span class="metric">8082 · 召回 83%</span></div>
+            <p>embedding + 向量库 + 带引用问答 + 召回评测。深读分层/Document/SimpleVectorStore/混合检索+rerank。</p>
+            <div class="tag-row"><span class="tag">RAG</span><span class="tag gray">Embedding</span><span class="tag gray">向量库</span></div>
+          </div>
+
+          <div class="card proj" id="phase3">
+            <div class="proj-top"><h3>Phase 3 · 业务 Agent</h3><span class="metric">8083 · 多轮记忆</span></div>
+            <p>真实业务接口当 @Tool + 多轮记忆 + SSE。实测北京 1/2/11 院校、追问上海走记忆。</p>
+            <div class="tag-row"><span class="tag">Agent</span><span class="tag gray">多轮记忆</span><span class="tag gray">SSE</span></div>
+          </div>
+
+          <div class="card proj" id="phase4">
+            <div class="proj-top"><h3>Phase 4 · Agent 运维</h3><span class="metric">8084 · 缓存 A/B p95 836→12ms</span></div>
+            <p>可观测 + 降级 + LLM 舱壁 + 缓存 + 自研熔断，k6 压测。舱壁 6/s→90% 503，缓存 A/B p95 从 836ms 降到 12ms，熔断 16 次拒绝。</p>
+            <div class="tag-row"><span class="tag">护栏</span><span class="tag gray">舱壁</span><span class="tag gray">熔断</span><span class="tag gray">k6</span></div>
+          </div>
+
+          <div class="card proj" id="phase5">
+            <div class="proj-top"><h3>Phase 5 · MCP</h3><span class="metric">8085/8086 · 真实取数</span></div>
+            <p>把 /wxma 封成 MCP Server（streamable-http），Agent 改 MCP 客户端动态发现工具，通道真实取数。</p>
+            <div class="tag-row"><span class="tag">MCP</span><span class="tag gray">Server</span><span class="tag gray">Client</span></div>
+          </div>
+
+          <div class="card proj" id="phase6">
+            <div class="proj-top"><h3>Phase 6 · 评测</h3><span class="metric">8087 · 关键词 100% / 裁判均分 1.8</span></div>
+            <p>评测 harness：关键词硬校验 + LLM-as-judge，通过率/均分；CI 门禁任一维通过率 &lt; 90 则失败。实测关键词 100%、LLM 裁判 pass 100%。</p>
+            <div class="tag-row"><span class="tag">Eval</span><span class="tag gray">LLM-as-judge</span><span class="tag gray">CI 门禁</span></div>
+          </div>
+
+          <div class="card proj" id="rdxagent">
+            <div class="proj-top"><h3>rdx-agent 产品层</h3><span class="metric">8090 · gold 13/13</span></div>
+            <p>rag_search（向量+BM25+RRF+rerank）+ MCP 业务工具 + Redis（向量/缓存/记忆）+ resilience4j + Langfuse 评测 + 鉴权/脱敏。语义缓存带维度一致性护栏（guardRejects=1）。</p>
+            <div class="tag-row"><span class="tag">Spring AI</span><span class="tag">RAG</span><span class="tag gray">MCP</span><span class="tag gray">Langfuse</span></div>
+          </div>
+
+          <div class="card proj" id="rdxbackend">
+            <div class="proj-top"><h3>rdx-bx-backend 沙盒</h3><span class="metric">端口 80</span></div>
+            <p>瑞达星后端沙盒（可改，原仓不碰），作为 Agent 业务工具的被测后端与基础设施来源。</p>
+            <div class="tag-row"><span class="tag gray">SpringBlade</span><span class="tag gray">沙盒</span></div>
+          </div>
+        </div>
+
+        <div style="margin-top:28px">
+          <a class="btn btn-primary" href="blog.html">看相关技术博客 →</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+
+  <script src="assets/js/comments.js"></script>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+      <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function () { l.classList.toggle("open"); });
+  </script>
+</body>
+</html>

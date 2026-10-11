@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小番茄程序猿 · 全栈作品集与博客</title>
+  <meta name="description" content="Java 高级后端 / AI Agent 工程师作品集：高并发微服务、Redis/MySQL 治理、Spring Cloud、Elasticsearch 源码，以及 Spring AI Agent 工程化实战。" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <div class="brand">小番茄程序猿<span>.</span>dev</div>
+      <nav class="nav-links" id="navLinks">
+        <a href="index.html" class="active">首页</a>
+        <a href="projects.html">项目</a>
+        <a href="blog.html">博客</a>
+        <a href="deep.html">深度</a>
+      </nav>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <div class="eyebrow">Java 高级后端 · AI Agent 工程化</div>
+        <h1>把高并发与 Agent<br />都做成能跑、能量化的工程。</h1>
+        <p class="lead">
+          这里是我的作品集与技术博客。一边是 Redis / MySQL / Spring Cloud 高并发微服务的压测与治理实战，
+          一边是从最小 Agent 到 RAG、MCP、评测的 Spring AI 进阶工程——每个项目都带实测数据与可复现命令。
+        </p>
+        <div class="cta">
+          <a class="btn btn-primary" href="projects.html">看项目 →</a>
+          <a class="btn btn-ghost" href="blog.html">读博客</a>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="n">9+</div><div class="l">高并发子项目</div></div>
+          <div class="stat"><div class="n">29</div><div class="l">压测 / 治理场景</div></div>
+          <div class="stat"><div class="n">6</div><div class="l">AI Agent 阶段工程</div></div>
+          <div class="stat"><div class="n">12+</div><div class="l">技术长文</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>精选项目</h2>
+          <p>从源码到压测报告，覆盖高并发后端与 AI Agent 两条主线。</p>
+        </div>
+        <div class="grid grid-2">
+          <a class="card" href="projects.html#redis">
+            <h3>Redis 高并发缓存架构</h3>
+            <p>11 个压测场景：Pipeline 边界、哨兵 vs 集群、热点 Key、三种 String 编码对比，附 benchmark 图表与面试简述。</p>
+            <div class="tag-row"><span class="tag">Redis</span><span class="tag">k6</span><span class="tag gray">Disruptor</span></div>
+            <div class="more">查看 →</div>
+          </a>
+          <a class="card" href="projects.html#mysql">
+            <h3>MySQL 治理与调优</h3>
+            <p>18 主场景 + 12 补测：事务/锁、分库分表、读写分离、冷热分离，外加 KingbaseES 排查手册。</p>
+            <div class="tag-row"><span class="tag">MySQL</span><span class="tag">Kingbase</span><span class="tag gray">Sysbench</span></div>
+            <div class="more">查看 →</div>
+          </a>
+          <a class="card" href="projects.html#springcloud">
+            <h3>Spring Cloud 高并发电商</h3>
+            <p>order/user/inventory 三服务 + Seata AT 分布式事务 + k6 全链路压测报告，容量规划与扩容指南。</p>
+            <div class="tag-row"><span class="tag">Spring Cloud</span><span class="tag">Seata</span><span class="tag gray">Sentinel</span></div>
+            <div class="more">查看 →</div>
+          </a>
+          <a class="card" href="projects.html#rdxagent">
+            <h3>rdx-agent 产品层</h3>
+            <p>向量 + BM25 + RRF + rerank 混合检索、语义缓存护栏、resilience4j 容错、Langfuse 评测数据集。</p>
+            <div class="tag-row"><span class="tag">Spring AI</span><span class="tag">RAG</span><span class="tag gray">MCP</span></div>
+            <div class="more">查看 →</div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>最新博客</h2>
+          <p>正在多平台连载的高并发与 Agent 工程化实测笔记。</p>
+        </div>
+        <div class="grid grid-2">
+          <a class="card" href="blog.html">
+            <h3>RAG 评测三层反转</h3>
+            <p>召回、重排、答案三层分别量化，反转"召回高=效果好"的直觉误区。</p>
+            <div class="tag-row"><span class="tag">RAG</span><span class="tag gray">评测</span></div>
+            <div class="more">阅读 →</div>
+          </a>
+          <a class="card" href="blog.html">
+            <h3>Redis String 三种编码压测</h3>
+            <p>int / embstr / raw 在不同负载下的编码转换与性能拐点实测。</p>
+            <div class="tag-row"><span class="tag">Redis</span><span class="tag gray">压测</span></div>
+            <div class="more">阅读 →</div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>深度技术</h2>
+          <p>项目背后的底层原理与方法论——数据库内核、压测方法论、云原生、AI Agent 原理，105 篇可阅原文。</p>
+        </div>
+        <div class="grid grid-2">
+          <a class="card" href="deep.html#mysql">
+            <h3>MySQL / Redis / ES 底层</h3>
+            <p>事务锁 MVCC、分库分表、数据类型底层、写入全流程与 ILM 冷热分层。</p>
+            <div class="more">进入专栏 →</div>
+          </a>
+          <a class="card" href="deep.html#agent">
+            <h3>AI Agent 原理详解</h3>
+            <p>RAG / MCP / 护栏 / 评测的代码与原理，phase1-6 渐进工程。</p>
+            <div class="more">进入专栏 →</div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>联系</h2>
+          <p>交流高并发架构、AI Agent 工程化，或面试合作都欢迎。</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card"><h3>邮箱</h3><p>见 GitHub 主页 / 私信</p><div class="more"><a href="https://github.com/" target="_blank" rel="noopener">GitHub 主页 →</a></div></div>
+          <div class="card"><h3>GitHub</h3><p>高并发与 AI Agent 工程源码</p><div class="more"><a href="https://github.com/" target="_blank" rel="noopener">github.com →</a></div></div>
+          <div class="card"><h3>博客平台</h3><p>CSDN · 掘金 · 知乎 同步连载</p><div class="more"><a href="blog.html">文章索引 →</a></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+
+  <script src="assets/js/comments.js"></script>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+      <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function () { l.classList.toggle("open"); });
+    l.querySelectorAll("a").forEach(function (a) { a.addEventListener("click", function () { l.classList.remove("open"); }); });
+  </script>
+</body>
+</html>

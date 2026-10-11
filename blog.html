@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>博客 · 小番茄程序猿作品集</title>
+  <meta name="description" content="高并发与 AI Agent 工程化技术博客：Redis 压测、线程池、RAG 评测、Agent 工程化实测，CSDN / 掘金 / 知乎多平台连载。" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <div class="brand">小番茄程序猿<span>.</span>dev</div>
+      <nav class="nav-links" id="navLinks">
+        <a href="index.html">首页</a>
+        <a href="projects.html">项目</a>
+        <a href="blog.html" class="active">博客</a>
+        <a href="deep.html">深度</a>
+      </nav>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" style="padding-bottom:24px">
+      <div class="wrap">
+        <div class="eyebrow">Blog</div>
+        <h1>技术博客</h1>
+        <p class="lead">高并发与 AI Agent 工程化的实测笔记，CSDN / 掘金 / 知乎多平台连载。点标题阅读 Markdown 原文（每篇仅保留一份权威稿）。</p>
+      </div>
+    </section>
+
+    <section style="padding-top:24px">
+      <div class="wrap">
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat juejin">掘金</span><span class="plat csdn">CSDN</span><span class="plat zhihu">知乎</span></div>
+            <h3><a href="blog/01-Redis-String三种编码压测.md">Redis String 三种编码压测（int / embstr / raw）</a></h3>
+            <p>三种编码在不同负载下的编码转换与性能拐点实测，回答"到底该用哪种"。</p>
+            <div class="meta">高并发 · Redis · 压测</div>
+          </div>
+        </div>
+
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat juejin">掘金</span><span class="plat csdn">CSDN</span></div>
+            <h3><a href="blog/04-RAG评测三层反转.md">RAG 评测三层反转</a></h3>
+            <p>召回、重排、答案三层分别量化，反转"召回高=效果好"的直觉误区。</p>
+            <div class="meta">AI Agent · RAG · 评测</div>
+          </div>
+        </div>
+
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat juejin">掘金</span><span class="plat csdn">CSDN</span></div>
+            <h3><a href="blog/03-Agent工程化实测.md">Agent 工程化实测</a></h3>
+            <p>从最小 Agent 闭环到工程化落地（护栏、缓存、可观测、评测）的实测记录。</p>
+            <div class="meta">AI Agent · Spring AI · 工程化</div>
+          </div>
+        </div>
+
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat juejin">掘金</span></div>
+            <h3><a href="blog/02-异步不等于更快.md">异步不等于更快</a></h3>
+            <p>拆解"异步提升吞吐"与"异步降低延迟"是两回事的认知误区。</p>
+            <div class="meta">并发 · 性能 · 认知</div>
+          </div>
+        </div>
+
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat csdn">CSDN</span></div>
+            <h3><a href="blog/02-线程池退化实测-CSDN版.md">线程池退化实测</a></h3>
+            <p>线程池在高负载下退化现象的实测与归因，附调优建议。</p>
+            <div class="meta">并发 · 线程池 · 压测</div>
+          </div>
+        </div>
+
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat juejin">掘金</span></div>
+            <h3><a href="blog/05-第4篇更正-承重墙是错的.md">第 4 篇更正：承重墙是错的</a></h3>
+            <p>对前一篇结论的诚实纠错——"承重墙"假设不成立，记录推翻过程。</p>
+            <div class="meta">方法论 · 纠错</div>
+          </div>
+        </div>
+
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat zhihu">知乎</span></div>
+            <h3><a href="blog/01-知乎回答-源码阅读方法版.md">知乎回答：源码阅读方法</a></h3>
+            <p>如何高效阅读框架/中间件源码的方法论与实操路径。</p>
+            <div class="meta">学习方法 · 源码</div>
+          </div>
+        </div>
+
+        <div class="post">
+          <div style="flex:1">
+            <div class="plats"><span class="plat zhihu">知乎</span></div>
+            <h3><a href="blog/01-知乎回答版.md">知乎回答</a></h3>
+            <p>知乎平台技术回答原文。</p>
+            <div class="meta">知乎 · 技术回答</div>
+          </div>
+        </div>
+
+        <p style="color:var(--ink-faint);font-size:13.5px;margin-top:24px">
+          完整多平台草稿在 <code>D:\high-concurrency-projects\博客\</code>；本站每篇仅保留一份权威稿，原文以 Markdown 形式打开（本地预览或部署后均可访问）。
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+
+  <script src="assets/js/comments.js"></script>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+      <span>纯静态站点 · 可免费部署于 GitHub Pages</span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function () { l.classList.toggle("open"); });
+  </script>
+</body>
+</html>
