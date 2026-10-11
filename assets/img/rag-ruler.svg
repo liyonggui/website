@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="1200" height="675" fill="#f8fafc"/>
+<text x="600" y="46" text-anchor="middle" style="font:bold 27px 'Microsoft YaHei';fill:#1f2937">同一份检索结果，两把尺子，两个结论</text>
+<text x="600" y="76" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#6b7280">5 题 gold 集，每题答案只落在 1 个块，候选池 10 取 topK=4</text>
+
+<text x="90" y="128" style="font:bold 20px 'Microsoft YaHei';fill:#374151">检索到的 4 个块（绿=真含答案）</text>
+<rect x="90" y="146" width="180" height="62" rx="8" fill="#16a34a"/>
+<text x="180" y="184" text-anchor="middle" style="font:bold 19px 'Microsoft YaHei';fill:#ffffff">块 A · 相关</text>
+<rect x="282" y="146" width="180" height="62" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/>
+<text x="372" y="184" text-anchor="middle" style="font:17px 'Microsoft YaHei';fill:#94a3b8">块 B · 无关</text>
+<rect x="474" y="146" width="180" height="62" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/>
+<text x="564" y="184" text-anchor="middle" style="font:17px 'Microsoft YaHei';fill:#94a3b8">块 C · 无关</text>
+<rect x="666" y="146" width="180" height="62" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/>
+<text x="756" y="184" text-anchor="middle" style="font:17px 'Microsoft YaHei';fill:#94a3b8">块 D · 无关</text>
+<text x="880" y="170" style="font:16px 'Microsoft YaHei';fill:#6b7280">排名 1  2  3  4</text>
+<text x="880" y="196" style="font:bold 17px 'Microsoft YaHei';fill:#374151">排序：完美</text>
+
+<rect x="90" y="248" width="480" height="210" fill="#fef2f2" stroke="#fecaca"/>
+<text x="114" y="284" style="font:bold 21px 'Microsoft YaHei';fill:#b91c1c">尺子①  precision@4</text>
+<g style="font:18px 'Microsoft YaHei';fill:#7f1d1d">
+<text x="114" y="322">分子 = 保留块里有几块相关</text>
+<text x="114" y="354">分母 = 我保留了几块（=4）</text>
+<text x="114" y="394">答案只占 1 块 → 单题最低 <tspan style="font:bold 20px">0.25</tspan></text>
+<text x="114" y="428" style="font:bold 19px">天花板由数据特性决定，不由排序决定</text>
+</g>
+<text x="490" y="284" text-anchor="end" style="font:bold 34px 'Microsoft YaHei';fill:#b91c1c">0.55</text>
+
+<rect x="620" y="248" width="480" height="210" fill="#f0fdf4" stroke="#bbf7d0"/>
+<text x="644" y="284" style="font:bold 21px 'Microsoft YaHei';fill:#15803d">尺子②  hit@1 / MRR</text>
+<g style="font:18px 'Microsoft YaHei';fill:#14532d">
+<text x="644" y="322">分子 = 第一个相关块排在第几</text>
+<text x="644" y="354">排第 1 → 满分；与保留几块无关</text>
+<text x="644" y="394">逐 case 首现排名：<tspan style="font:bold 20px">全为 1</tspan></text>
+<text x="644" y="428" style="font:bold 19px">确定性计算，不经过模型裁判，零噪声</text>
+</g>
+<text x="1020" y="284" text-anchor="end" style="font:bold 34px 'Microsoft YaHei';fill:#15803d">1.0</text>
+
+<rect x="90" y="486" width="1010" height="86" fill="#ffffff" stroke="#e5e7eb"/>
+<text x="114" y="518" style="font:bold 20px 'Microsoft YaHei';fill:#374151">加上 rerank 之后：顺序变了，但相关块还是 1 个</text>
+<g style="font:18px 'Microsoft YaHei';fill:#4b5563">
+<text x="114" y="550">precision@4  <tspan style="font:bold 19px;fill:#b91c1c">0.55 → 0.50</tspan>（差值 = 噪声，见方差图）　　　MRR  <tspan style="font:bold 19px;fill:#15803d">1.0 → 1.0，delta = 0</tspan>　　　<tspan style="font:bold 19px;fill:#374151">rerank 没有活可干</tspan></text>
+</g>
+
+<text x="600" y="616" text-anchor="middle" style="font:bold 20px 'Microsoft YaHei';fill:#1f2937">0.55 不是"检索差"的读数，是"答案占几块 ÷ 保留几块"的算术结果。</text>
+<text x="600" y="650" text-anchor="middle" style="font:17px 'Microsoft YaHei';fill:#6b7280">一个难看的数字，先问：是系统差，还是尺子错。</text>
+</svg>

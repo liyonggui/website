@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>瑞达星 × Agent 全链路（代码级）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="agent">瑞达星 × Agent 全链路（代码级）</h1>
 <blockquote>
 <p>谁接入谁：<strong>只有瑞达星后端 <code>/wxma</code> 被 Agent 接入</strong>（读的是"择校/专业/课程"公开浏览接口）。
@@ -159,7 +160,24 @@
 <ul>
 <li><code>assets/phase3-vs-phase5.png</code>（源 <code>assets/phase3-vs-phase5.svg</code>，Chrome headless 2x 导出，右下留白避掘金水印）：两条接入路径对比图，可直接作文2配图。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、涉及的仓库/工程</a></li>
+      <li class="lv2"><a href="#_2">二、后端侧代码链（沙盒，真类名/方法/缓存键）</a></li>
+      <li class="lv2"><a href="#agent-wxma">三、Agent 侧两条等价路径（同一 /wxma，两种接线）</a></li>
+      <li class="lv3"><a href="#aphase34-tool">路径 A：phase3/4 — 本地硬编码 @Tool</a></li>
+      <li class="lv3"><a href="#bphase5-mcp-agent">路径 B：phase5 — MCP 动态发现（工具与 Agent 解耦）</a></li>
+      <li class="lv3"><a href="#_3">消费方</a></li>
+      <li class="lv2"><a href="#phase5">四、一张时序图（一次 phase5 全链问答）</a></li>
+      <li class="lv2"><a href="#_4">五、要点回顾（后端视角）</a></li>
+      <li class="lv2"><a href="#_5">配图</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>写入路径对比：单体 MySQL 批量 vs 本地磁盘追加</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="mysql-vs">写入路径对比：单体 MySQL 批量 vs 本地磁盘追加</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>同样的数据写入，两条线路性能差异巨大：
@@ -180,7 +181,26 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/write-compar
 <blockquote>
 <p><strong>MySQL 批量 vs 磁盘追加写入</strong>：同样的数据，MySQL 批量 12 万行/s，磁盘顺序追加 169 万行/s（快 14 倍）。加大并发找拐点：MySQL 并发 8 达峰值（21.5 万行/s），32 时降到 12 万（连接池/锁/刷盘瓶颈）；磁盘低并发即达带宽极限。启示：高吞吐写入优先磁盘追加，落库场景用 batch + 大事务 + rewriteBatchedStatements。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、原理</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、实测结果</a></li>
+      <li class="lv3"><a href="#10-8batch-500">基础对比（10 万行，并发 8，batch 500）</a></li>
+      <li class="lv3"><a href="#s">并发对比（行/s）——找拐点</a></li>
+      <li class="lv3"><a href="#_5">拐点扫描</a></li>
+      <li class="lv2"><a href="#_6">五、核心结论</a></li>
+      <li class="lv2"><a href="#_7">六、工程要点</a></li>
+      <li class="lv2"><a href="#executebatch">七、踩坑记录（executeBatch 返回负数）</a></li>
+      <li class="lv2"><a href="#_8">八、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

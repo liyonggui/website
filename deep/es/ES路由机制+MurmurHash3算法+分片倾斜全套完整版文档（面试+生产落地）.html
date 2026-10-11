@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES路由机制\+MurmurHash3算法\+分片倾斜全套完整版文档（面试\+生产落地）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="esmurmurhash3">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）</h1>
 <h2 id="es">一、ES写入分片路由核心公式（源码原生）</h2>
 <h3 id="1-es717">1. 路由计算源码公式（ES7.17 固定不变）</h3>
@@ -521,7 +522,45 @@
 <p>前期分片宁可多不可少，配合冷热分层，彻底规避后期扩容重构风险</p>
 </li>
 </ol>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#es">一、ES写入分片路由核心公式（源码原生）</a></li>
+      <li class="lv3"><a href="#1-es717">1. 路由计算源码公式（ES7.17 固定不变）</a></li>
+      <li class="lv3"><a href="#2">2. 核心前置结论</a></li>
+      <li class="lv2"><a href="#murmurhash3">二、MurmurHash3 全网最全知识点汇总（精准避坑）</a></li>
+      <li class="lv3"><a href="#1">1. 算法基础介绍</a></li>
+      <li class="lv3"><a href="#2_1">2. 高频误区逐一纠正（面试必问）</a></li>
+      <li class="lv3"><a href="#3">3. 哈希碰撞通俗案例</a></li>
+      <li class="lv3"><a href="#4-128">4. 为什么路由不用128位哈希降低碰撞？</a></li>
+      <li class="lv3"><a href="#5-128">5. 什么时候必须用128位哈希？</a></li>
+      <li class="lv2"><a href="#id">三、最优路由方案：雪花算法ID作为默认路由</a></li>
+      <li class="lv3"><a href="#1-id">1. 雪花ID结构</a></li>
+      <li class="lv3"><a href="#2-ides">2. 为什么雪花ID是ES最理想路由？</a></li>
+      <li class="lv3"><a href="#3_1">3. 总结</a></li>
+      <li class="lv2"><a href="#routing">四、业务强制自定义routing场景\&amp;amp;分片倾斜根源</a></li>
+      <li class="lv3"><a href="#1-routing">1. 必须自定义routing的业务场景</a></li>
+      <li class="lv3"><a href="#2_2">2. 分片倾斜根本原因（核心考点）</a></li>
+      <li class="lv3"><a href="#3_2">3. 三类线上倾斜痛点</a></li>
+      <li class="lv2"><a href="#routing_1">五、生产解决方案：Routing二次打散（根治分片倾斜）</a></li>
+      <li class="lv3"><a href="#1_1">1. 解决方案原理</a></li>
+      <li class="lv3"><a href="#2-java">2. 可直接上线：路由二次打散工具类（完整Java代码）</a></li>
+      <li class="lv3"><a href="#3_3">3. 业务写入\&amp;amp;查询使用示例</a></li>
+      <li class="lv2"><a href="#reindexdsl">六、存量历史数据倾斜修复：Reindex一键迁移DSL</a></li>
+      <li class="lv3"><a href="#reindexid">Reindex脚本（基于文档内雪花ID自动拆分路由）</a></li>
+      <li class="lv3"><a href="#_1">参数说明</a></li>
+      <li class="lv2"><a href="#_2">七、分片倾斜线上排查命令（一键复用）</a></li>
+      <li class="lv2"><a href="#_3">八、面试一页纸极简背诵答案（直接口述）</a></li>
+      <li class="lv2"><a href="#_4">一、集群节点角色划分</a></li>
+      <li class="lv3"><a href="#1-elasticsearchyml">1. 节点角色配置 elasticsearch.yml</a></li>
+      <li class="lv2"><a href="#ilm">二、创建统一ILM生命周期策略（全自动流转）</a></li>
+      <li class="lv3"><a href="#_5">策略说明</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

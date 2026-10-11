@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景4-分布式信号量多Writer竞争Pipeline槽位</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h2 id="4-writer-pipeline">场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</h2>
 <hr />
 <h3 id="tldr">TL;DR</h3>
@@ -734,7 +735,9 @@ slots=24: cmd/s=316k → 略有恢复，但边际递减明显
   吞吐 (cmd/s) — 延迟 (P99) — 公平性 (retries/starvation)
   三者缺一不可: retries=0 不表示无竞争，吞吐才是最终健康指标
 </code></pre></div>
-  </article>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

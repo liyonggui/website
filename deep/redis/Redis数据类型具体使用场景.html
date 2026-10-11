@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis 数据类型具体使用场景</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="redis">Redis 数据类型具体使用场景</h1>
 <blockquote>
 <p>基于《Redis数据类型原理》整理。Redis 有 5 种基础数据类型（String / Hash / List / Set / ZSet）+ 3 种内置专用结构（Bitmaps / Geospatial / Streams），选择哪种类型取决于<strong>业务的数据形态与访问模式</strong>。本文给出每种类型的<strong>具体使用场景 + 命令示例 + 选型要点</strong>，并标注内存/性能注意事项。</p>
@@ -596,7 +597,42 @@ CLIENT<span class="w"> </span>LIST<span class="w">                    </span><sp
 <blockquote>
 <p>完整的内存模型、编码原理与调优策略见《Redis数据类型原理》文档。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#string">一、String —— 字符串</a></li>
+      <li class="lv3"><a href="#_1">具体使用场景</a></li>
+      <li class="lv3"><a href="#_2">选型要点</a></li>
+      <li class="lv2"><a href="#hash">二、Hash —— 哈希（对象）</a></li>
+      <li class="lv3"><a href="#_3">具体使用场景</a></li>
+      <li class="lv3"><a href="#_4">选型要点</a></li>
+      <li class="lv2"><a href="#list-quicklist">三、List —— 列表（quicklist）</a></li>
+      <li class="lv3"><a href="#_5">具体使用场景</a></li>
+      <li class="lv3"><a href="#_6">选型要点</a></li>
+      <li class="lv2"><a href="#set">四、Set —— 集合（无序去重）</a></li>
+      <li class="lv3"><a href="#_7">具体使用场景</a></li>
+      <li class="lv3"><a href="#_8">选型要点</a></li>
+      <li class="lv2"><a href="#zset">五、ZSet —— 有序集合（带分数排序）</a></li>
+      <li class="lv3"><a href="#_9">具体使用场景</a></li>
+      <li class="lv3"><a href="#_10">选型要点</a></li>
+      <li class="lv2"><a href="#_11">六、内置专用结构（基于基础类型，场景化命令）</a></li>
+      <li class="lv3"><a href="#61-bitmaps">6.1 Bitmaps —— 位图</a></li>
+      <li class="lv3"><a href="#62-geospatial">6.2 Geospatial —— 地理位置</a></li>
+      <li class="lv3"><a href="#63-streams">6.3 Streams —— 消息队列 / 事件流</a></li>
+      <li class="lv2"><a href="#_12">七、选型决策速查表</a></li>
+      <li class="lv3"><a href="#redis_1">通用选型原则（来自《Redis数据类型原理》）</a></li>
+      <li class="lv2"><a href="#_13">八、实操 / 监控 / 调优要点</a></li>
+      <li class="lv3"><a href="#81">8.1 常见复杂度提示（哪些命令在大数据量要慎用）</a></li>
+      <li class="lv3"><a href="#82">8.2 监控命令与诊断工具</a></li>
+      <li class="lv3"><a href="#83">8.3 持久化与复制注意</a></li>
+      <li class="lv3"><a href="#84">8.4 集群注意</a></li>
+      <li class="lv3"><a href="#85">8.5 推荐使用的替代 / 扩展</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

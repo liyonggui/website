@@ -49,7 +49,8 @@
     <a class="back" href="../blog.html">← 返回博客索引</a>
     <h1>RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="rag-precision-055mrr">RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</h1>
 <blockquote>
 <p>「高并发实测」系列第 4 篇。</p>
@@ -460,7 +461,27 @@
 <p>上一篇：《Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层》。
 再上一篇：《高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%》。
 第一篇：《别再死背 44 字节了：Redis String 三种编码压测》。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">〇、一分钟带走版</a></li>
+      <li class="lv2"><a href="#83">一、场景：一个 83% 让我觉得挺不错</a></li>
+      <li class="lv2"><a href="#_2">二、第一次反转：一个难看的数字，差点让我白花一笔钱</a></li>
+      <li class="lv2"><a href="#precisionk-mrr">三、机制：precision@k 和 MRR 到底谁在测排序</a></li>
+      <li class="lv2"><a href="#055-050">四、第二次反转：0.55 到 0.50 到底是不是&quot;变差了&quot;</a></li>
+      <li class="lv2"><a href="#_3">五、第三次反转：我用组内方差，判了组间差异</a></li>
+      <li class="lv2"><a href="#_4">六、还有两把尺子，也只有它们能抓到&quot;模型在偷懒&quot;</a></li>
+      <li class="lv2"><a href="#_5">七、最狠的一次：过不了的是裁判，不是系统</a></li>
+      <li class="lv2"><a href="#_6">八、如果继续做，我会排这几件事</a></li>
+      <li class="lv2"><a href="#_7">复现（命令与代码路径）</a></li>
+      <li class="lv2"><a href="#_8">九、局限（照例先说）</a></li>
+      <li class="lv2"><a href="#_9">写在最后</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis 单体工具类使用文档</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="redis">Redis 单体工具类使用文档</h1>
 <p>面向<strong>单节点单机 Redis</strong>（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回
 <code>RedisResult&lt;T&gt;</code>，业务层通过 <code>isSuccess()</code> 判断结果，<code>getData()</code> 取数据。</p>
@@ -345,7 +346,38 @@ mvn<span class="w"> </span>spring-boot:run
 <li>排查命令：<code>mvn clean test</code>（clean 强制当前 JDK 全量重编，避开 IDE 残留 class）；或在 IDE 中把 Project SDK / 各测试运行配置的 JDK 统一设为 JDK 8。</li>
 <li>当前测试套件：<code>mvn clean test</code> → <strong>49 个用例全部通过</strong>。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、总体设计</a></li>
+      <li class="lv3"><a href="#redisresultt">统一返回结果 RedisResult&amp;lt;T&amp;gt;</a></li>
+      <li class="lv3"><a href="#_2">异常分类</a></li>
+      <li class="lv2"><a href="#applicationyml">二、连接配置（application.yml）</a></li>
+      <li class="lv2"><a href="#_3">三、模块使用示例</a></li>
+      <li class="lv3"><a href="#1-keyrediskeyutil">模块1：通用 Key（RedisKeyUtil）</a></li>
+      <li class="lv3"><a href="#2stringredisstringutil">模块2：String（RedisStringUtil）</a></li>
+      <li class="lv3"><a href="#3listredislistutil">模块3：List（RedisListUtil）</a></li>
+      <li class="lv3"><a href="#4hashredishashutil">模块4：Hash（RedisHashUtil）</a></li>
+      <li class="lv3"><a href="#5setredissetutil">模块5：Set（RedisSetUtil）</a></li>
+      <li class="lv3"><a href="#6zsetrediszsetutil">模块6：ZSet（RedisZSetUtil）</a></li>
+      <li class="lv3"><a href="#7redisadvancedutil">模块7：高级结构（RedisAdvancedUtil）</a></li>
+      <li class="lv3"><a href="#8redistransactionutil">模块8：事务（RedisTransactionUtil）</a></li>
+      <li class="lv3"><a href="#9lua-redisscriptutil">模块9：Lua 脚本（RedisScriptUtil）</a></li>
+      <li class="lv3"><a href="#10redisopsutil">模块10：只读运维（RedisOpsUtil）</a></li>
+      <li class="lv2"><a href="#_4">四、生产安全规范汇总</a></li>
+      <li class="lv2"><a href="#_5">五、运行与测试</a></li>
+      <li class="lv2"><a href="#_6">六、实现要点与已知坑（踩坑记录）</a></li>
+      <li class="lv3"><a href="#1-string-stringredistemplate">1. String 模块使用 StringRedisTemplate（原始字符串序列化）</a></li>
+      <li class="lv3"><a href="#2">2. 事务读写需保持同一序列化模板</a></li>
+      <li class="lv3"><a href="#3-lettuce">3. 原生命令须取真实 Lettuce 连接</a></li>
+      <li class="lv3"><a href="#4-memory-usage-lua-lettuce">4. MEMORY USAGE 改用 Lua 脚本绕过 Lettuce 缺陷</a></li>
+      <li class="lv3"><a href="#5-jdk">5. 测试 JDK 版本一致性</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

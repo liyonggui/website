@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景 2 — 大结构 Hash 批量写入</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="2-hash">场景 2 — 大结构 Hash 批量写入</h1>
 <h2 id="tldr">TL;DR</h2>
 <p>多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemory=256MB，policy=allkeys-lru。对比无持久化、RDB、AOF（percentage=100/500）四种模式下内存峰值、COW 尺寸、淘汰量和 OOM 风险。</p>
@@ -1733,7 +1734,57 @@ dmesg<span class="w"> </span><span class="p">|</span><span class="w"> </span>gre
 <span class="w">    </span><span class="n">pipeline</span><span class="p">.</span><span class="na">setex</span><span class="p">(</span><span class="n">newKey</span><span class="p">,</span><span class="w"> </span><span class="n">ttl</span><span class="p">,</span><span class="w"> </span><span class="n">val</span><span class="p">);</span><span class="w">  </span><span class="c1">// 纯写入，零删除开销</span>
 <span class="p">}</span>
 </code></pre></div>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#tldr">TL;DR</a></li>
+      <li class="lv2"><a href="#_1">压测架构</a></li>
+      <li class="lv2"><a href="#_2">基线测试：无持久化</a></li>
+      <li class="lv2"><a href="#rdb-fork">RDB fork 风险测试</a></li>
+      <li class="lv2"><a href="#aof-percentage-100-vs-500">AOF 对比：percentage 100 vs 500</a></li>
+      <li class="lv3"><a href="#aof-percentage100-rewrite">AOF percentage=100（文件翻倍即 rewrite）</a></li>
+      <li class="lv3"><a href="#aof-percentage500-5-rewrite">AOF percentage=500（文件增长到 5 倍才 rewrite）</a></li>
+      <li class="lv2"><a href="#_3">四模式终局对比</a></li>
+      <li class="lv2"><a href="#value">超大 Value 管道写入压测</a></li>
+      <li class="lv3"><a href="#tldr_1">TL;DR</a></li>
+      <li class="lv3"><a href="#_4">压测架构</a></li>
+      <li class="lv3"><a href="#rdb">无 RDB 模式：梯度带宽压测</a></li>
+      <li class="lv3"><a href="#rdb-fork-cow">RDB 模式：fork COW 放大率</a></li>
+      <li class="lv3"><a href="#rdb-cow-value">RDB COW 风险估算（超大 Value 版）</a></li>
+      <li class="lv3"><a href="#value-tcp">超大 Value 的网卡与 TCP 风险</a></li>
+      <li class="lv3"><a href="#value_1">生产建议（超大 Value 场景）</a></li>
+      <li class="lv3"><a href="#_5">压测现象与根因分析</a></li>
+      <li class="lv3"><a href="#_6">根除方案</a></li>
+      <li class="lv2"><a href="#_8">核心发现</a></li>
+      <li class="lv3"><a href="#1-cow-copy-on-write">1. COW 大小 = 父进程在子进程存活期间的写入触发的 copy-on-write 总字节数</a></li>
+      <li class="lv3"><a href="#2-aof-vs-rdb-cow">2. AOF vs RDB 的 COW 对比</a></li>
+      <li class="lv3"><a href="#3-aof-percentage100-cow">3. 高写入场景下 AOF percentage=100 有最低的单次峰值内存压力（COW 角度）</a></li>
+      <li class="lv3"><a href="#4-oom">4. OOM 风险近似估算公式（历史观测 + 预测）</a></li>
+      <li class="lv2"><a href="#_9">解决方案与建议</a></li>
+      <li class="lv3"><a href="#_10">一、强烈建议（立刻采纳）</a></li>
+      <li class="lv3"><a href="#_11">二、高效运维</a></li>
+      <li class="lv3"><a href="#_12">三、配置调优</a></li>
+      <li class="lv3"><a href="#_13">四、进一步试验（用于完善结论）</a></li>
+      <li class="lv2"><a href="#_14">补充说明与注意事项（避免误解）</a></li>
+      <li class="lv2"><a href="#_15">附录：常用诊断命令</a></li>
+      <li class="lv3"><a href="#cow">内存与 COW 检查</a></li>
+      <li class="lv3"><a href="#thp">THP 检查与关闭</a></li>
+      <li class="lv3"><a href="#oom">系统内存与 OOM 检查</a></li>
+      <li class="lv3"><a href="#_16">实时监控（在压测期间使用）</a></li>
+      <li class="lv2"><a href="#key">补充场景：管道批量删除冷热混合 key（已实测 ✅）</a></li>
+      <li class="lv3"><a href="#_17">背景与问题</a></li>
+      <li class="lv3"><a href="#_18">根因：冷热混合引发的三连击</a></li>
+      <li class="lv3"><a href="#_19">理论影响矩阵</a></li>
+      <li class="lv3"><a href="#_20">生产规避方案</a></li>
+      <li class="lv3"><a href="#_21">待测维度</a></li>
+      <li class="lv3"><a href="#del-vs-unlink-vs-rename-3">实测：DEL vs UNLINK vs RENAME 3 轮对比</a></li>
+      <li class="lv3"><a href="#_24">实测结论</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景4：间隙锁 / Next-Key Lock</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="4-next-key-lock">场景4：间隙锁 / Next-Key Lock</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>InnoDB 在 <strong>REPEATABLE READ</strong> 隔离级别下，通过<strong>间隙锁（Gap Lock）</strong>和 <strong>Next-Key Lock</strong> 防止幻读，但也因此引入了<strong>锁范围扩大</strong>与<strong>间隙锁死锁</strong>等并发问题。生产上常因对锁机制理解不清，出现<strong>插入被阻塞</strong>、<strong>死锁频发</strong>或<strong>锁范围过大拖垮并发</strong>。</p>
@@ -145,7 +146,24 @@ RECORD, X,REC_NOT_GAP   记录锁 ×3（A 的 3 条记录）
 <blockquote>
 <p><strong>间隙锁 / Next-Key Lock</strong>：InnoDB 在 REPEATABLE READ 下，非唯一索引等值或范围查询会加 Next-Key Lock（记录锁+间隙锁），防止幻读但扩大锁范围。实测：A 锁某分类范围会阻塞 B 在该分类插入（等待 2 秒）；两个事务锁不同分类后互相插入会触发死锁（错误码 1213）。主键等值只加记录锁，锁范围最小；生产应多用主键/唯一索引等值，避免大范围 UPDATE。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、三种锁类型</a></li>
+      <li class="lv2"><a href="#next-key-lock">三、Next-Key Lock 产生的条件</a></li>
+      <li class="lv2"><a href="#_3">四、实测结果</a></li>
+      <li class="lv3"><a href="#1-gaplockinsert-block">1. 间隙锁阻塞插入（/gaplock/insert-block）</a></li>
+      <li class="lv3"><a href="#2-gaplockdeadlock">2. 间隙锁死锁（/gaplock/deadlock）</a></li>
+      <li class="lv3"><a href="#3-next-key-lock-gaplocklocks">3. Next-Key Lock 范围（/gaplock/locks）</a></li>
+      <li class="lv2"><a href="#_4">五、生产启示</a></li>
+      <li class="lv2"><a href="#_5">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

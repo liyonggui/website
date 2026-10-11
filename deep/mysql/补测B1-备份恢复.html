@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B1：备份恢复（binlog PITR / 误删误更新恢复）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b1binlog-pitr">补测B1：备份恢复（binlog PITR / 误删误更新恢复）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高并发治理除了"读写/一致性"，还需<strong>数据保底</strong>：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的<strong>时间点恢复（PITR）</strong>是核心兜底方案。</p>
@@ -215,7 +216,33 @@ PITR恢复: 10000（数据全部找回）
 <blockquote>
 <p><strong>备份恢复（PITR）</strong>：数据安全兜底。全量备份（mysqldump/Xtrabackup）+ binlog 增量 + 时间点恢复，可把误删/误更新恢复到任意时间点。RPO 取决于备份频率与 binlog 保留期（binlog_expire_logs_seconds）。实测误删 3000 行后 PITR 恢复 10000 行全部找回。要点：binlog 必须 ON + ROW 格式、定期备份、恢复演练验证备份有效性。MySQL8.4 中 <code>SHOW MASTER STATUS</code> 改名 <code>SHOW BINARY LOG STATUS</code>。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#pitr">二、PITR 原理</a></li>
+      <li class="lv2"><a href="#_2">三、演示接口</a></li>
+      <li class="lv2"><a href="#_3">四、实测结果</a></li>
+      <li class="lv2"><a href="#_4">五、如何定位误操作</a></li>
+      <li class="lv3"><a href="#1">1. 发现异常</a></li>
+      <li class="lv3"><a href="#2-binlog">2. 查看当前 binlog 文件与位置</a></li>
+      <li class="lv3"><a href="#3-binlog">3. 按时间 / 按表定位 binlog 事件</a></li>
+      <li class="lv3"><a href="#4">4. 判断&quot;误操作前&quot;的时间点 / 位置</a></li>
+      <li class="lv3"><a href="#5">5. 本项目演示的定位</a></li>
+      <li class="lv2"><a href="#pitr_1">六、如何恢复（PITR 具体流程）</a></li>
+      <li class="lv3"><a href="#a-binlog-rpo">方案 A：恢复到最近一次全量备份 + binlog 重放到误操作前（推荐，RPO 最小）</a></li>
+      <li class="lv3"><a href="#b">方案 B：仅找回被误删的数据（不整体回滚，风险小）</a></li>
+      <li class="lv3"><a href="#c">方案 C：误更新恢复（把错误值改回）</a></li>
+      <li class="lv3"><a href="#a">本项目演示的恢复（方案 A 简化版）</a></li>
+      <li class="lv3"><a href="#_5">恢复操作注意事项</a></li>
+      <li class="lv2"><a href="#_6">七、工程要点</a></li>
+      <li class="lv2"><a href="#_7">八、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

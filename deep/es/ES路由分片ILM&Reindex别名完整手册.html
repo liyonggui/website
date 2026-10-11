@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="elasticsearch-ilmreindex">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</h1>
 <h2 id="_1">目录</h2>
 <ol>
@@ -660,7 +661,42 @@ ctx._routing = ctx._source.province + "_" + suffix;
 冷热分层依托ILM实现索引单向Hot→Warm→Cold→Delete流转，仅依据索引创建/滚动时间判断，不识别文档业务时间；采用后台轮询调度，对比自研Cron定时任务流量更平滑、自带幂等状态、异常自愈更强，仅修改索引data_tier标签完成层级迁移，只能节约存储成本，无法治理热分片倾斜。
 字段改名改类型、重新分片、修改路由规则均无法原地变更，统一采用<strong>新建索引+Reindex脚本迁移+业务双写+原子别名切换</strong>方案；业务上线初期即规划固定访问别名，底层索引迭代重构无需修改业务代码，做到无感切换、回滚便捷。ILM、分片均衡属于集群常驻自动配置，而Reindex重构属于一次性人工运维变更流程，无法全自动配置执行。
 该分片思想通用于MySQL分库分表、Redis集群、Kafka分区；成熟中间件动态配置、内置自愈能力，运维成本更低，中小企业优先用好开源方案，不盲目自研分布式分片轮子。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#_3">层级结构</a></li>
+      <li class="lv2"><a href="#_4">两条核心铁律</a></li>
+      <li class="lv2"><a href="#1">1、路由计算公式（底层固定）</a></li>
+      <li class="lv3"><a href="#_5">硬性约束</a></li>
+      <li class="lv2"><a href="#1_1">类型1：路由数据倾斜（业务层面，分片均衡算法无法解决）</a></li>
+      <li class="lv3"><a href="#_7">成因</a></li>
+      <li class="lv3"><a href="#_8">典型场景</a></li>
+      <li class="lv2"><a href="#1_2">1、分配整体流程</a></li>
+      <li class="lv3"><a href="#_10">前置过滤规则（优先级最高）</a></li>
+      <li class="lv2"><a href="#1_3">1、单分片合理容量（核心规划依据）</a></li>
+      <li class="lv2"><a href="#61">6.1 底层核心原理</a></li>
+      <li class="lv2"><a href="#66-ilm">6.6 ILM故障排查对照表</a></li>
+      <li class="lv2"><a href="#67-ilm">6.7 ILM常用运维命令</a></li>
+      <li class="lv2"><a href="#68-ilm">6.8 ILM策略修改快速判断口诀</a></li>
+      <li class="lv2"><a href="#_15">前置核心结论</a></li>
+      <li class="lv2"><a href="#71">7.1 场景一：全量修改字段名称、字段类型</a></li>
+      <li class="lv3"><a href="#_16">不可原地修改清单</a></li>
+      <li class="lv3"><a href="#_17">完整零停机步骤</a></li>
+      <li class="lv3"><a href="#_18">常见误区澄清</a></li>
+      <li class="lv2"><a href="#_20">核心认知</a></li>
+      <li class="lv3"><a href="#1_4">现象1：节点分片数量分布不均衡</a></li>
+      <li class="lv3"><a href="#2-unassigned">现象2：集群黄/红，分片 unassigned 未分配</a></li>
+      <li class="lv3"><a href="#3">现象3：分片搬迁速度极慢</a></li>
+      <li class="lv3"><a href="#4">现象4：分片数量均衡，但单个分片数据爆满倾斜</a></li>
+      <li class="lv3"><a href="#5io">现象5：高峰期分片搬迁打满IO</a></li>
+      <li class="lv3"><a href="#6">现象6：冷热分片跨层级乱跑</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

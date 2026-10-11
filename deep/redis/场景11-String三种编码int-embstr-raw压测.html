@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="11redis-string-intembstrraw-hash-listpackhashtable-zset-listpackskiplist-set-intsetlistpackhashtable">场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</h1>
 <blockquote>
 <p>已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需启动 <code>redis</code> + <code>lettuce-bench</code></p>
@@ -2294,7 +2295,91 @@ curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </spa
 <span class="c1"># 查看状态</span>
 curl<span class="w"> </span>http://localhost:8082/set-encoding/status
 </code></pre></div>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#1">1. 测试动机</a></li>
+      <li class="lv2"><a href="#2">2. 三种编码的具体业务场景</a></li>
+      <li class="lv3"><a href="#21-int">2.1 int 编码（数值场景）</a></li>
+      <li class="lv3"><a href="#22-embstr">2.2 embstr 编码（短文本场景）</a></li>
+      <li class="lv3"><a href="#23-raw">2.3 raw 编码（长文本 / 可变拼接场景）</a></li>
+      <li class="lv3"><a href="#24">2.4 三种编码选型速查表</a></li>
+      <li class="lv2"><a href="#3">3. 压测架构</a></li>
+      <li class="lv2"><a href="#4">4. 实测数据</a></li>
+      <li class="lv3"><a href="#41-set-get-incr">4.1 基础编码对比（SET / GET / INCR）</a></li>
+      <li class="lv3"><a href="#42-raw-value-append">4.2 raw 最优场景（大 value + APPEND 增量构建）</a></li>
+      <li class="lv2"><a href="#5-raw">5. raw 最优场景专项验证（加大数据）</a></li>
+      <li class="lv3"><a href="#50-raw">5.0 为什么要单独测 raw</a></li>
+      <li class="lv3"><a href="#51-raw-value-setget">5.1 raw 大 value 规模衰减（SET/GET）</a></li>
+      <li class="lv3"><a href="#52-append-raw-vs-embstr">5.2 APPEND 增量构建：raw 预分配 vs embstr 重分配（关键验证）</a></li>
+      <li class="lv3"><a href="#53-raw">5.3 raw 最优场景结论</a></li>
+      <li class="lv2"><a href="#6">6. 根因分析（原始基础对比）</a></li>
+      <li class="lv3"><a href="#61-incrint-560k-opss">6.1 为什么 INCR（int 编码）最快——560K ops/s</a></li>
+      <li class="lv3"><a href="#62-embstr-rawset-253">6.2 为什么 embstr 优于 raw（SET +25.3%）</a></li>
+      <li class="lv3"><a href="#63-get-142-set253">6.3 为什么 GET 差异（+14.2%）小于 SET（+25.3%）</a></li>
+      <li class="lv3"><a href="#64-modifyintraw-int-raw">6.4 为什么 MODIFY（int→raw）介于 int 和 raw 之间</a></li>
+      <li class="lv3"><a href="#65-slowlog">6.5 slowlog 趋势</a></li>
+      <li class="lv2"><a href="#7">7. 生产选型建议</a></li>
+      <li class="lv2"><a href="#8">8. 压测代码文件</a></li>
+      <li class="lv2"><a href="#9-hash">9. Hash 两种编码原理</a></li>
+      <li class="lv2"><a href="#91-hash">9.1 Hash 两种编码的具体业务场景</a></li>
+      <li class="lv3"><a href="#911-listpack">9.1.1 listpack 编码（小对象 / 字段少的实体）</a></li>
+      <li class="lv3"><a href="#912-hashtable-value">9.1.2 hashtable 编码（字段多 / 大 value 的对象）</a></li>
+      <li class="lv3"><a href="#913-hash">9.1.3 Hash 编码选型速查表</a></li>
+      <li class="lv2"><a href="#10">10. 压测架构</a></li>
+      <li class="lv2"><a href="#11-c16-batch50-warmup5s-sample10s">11. 实测数据（c=16, batch=50, warmup=5s + sample=10s）</a></li>
+      <li class="lv2"><a href="#12-hash">12. Hash 编码根因分析</a></li>
+      <li class="lv3"><a href="#121-listpack-hashtable">12.1 为什么 listpack 全面碾压 hashtable</a></li>
+      <li class="lv3"><a href="#122-hgetall-16335">12.2 HGETALL 差异最大（+16335%）——灾难级</a></li>
+      <li class="lv3"><a href="#123-hsethget-22601464-hgetall">12.3 为什么 HSET/HGET 差异（+2260%/+1464%）小于 HGETALL</a></li>
+      <li class="lv3"><a href="#124-hash">12.4 Hash 生产选型建议（综合公平对比结论）</a></li>
+      <li class="lv2"><a href="#13-hashtable-listpack">13. 实测：hashtable 何时优于 listpack（公平对比验证）</a></li>
+      <li class="lv3"><a href="#130-127f-listpack-vs-128f-hashtable-value-32b">13.0 公平对比实测数据（127f listpack vs 128f hashtable，同 value 32B）</a></li>
+      <li class="lv3"><a href="#131-listpack-on">13.1 本质差异：listpack 是 O(N) 顺序扫描</a></li>
+      <li class="lv3"><a href="#132-hashtable-4">13.2 hashtable 的 4 个潜在优势场景（验证结果）</a></li>
+      <li class="lv3"><a href="#133-listpack">13.3 为什么之前 listpack 全胜？——对比不公平</a></li>
+      <li class="lv3"><a href="#134">13.4 公平对比设计（本次实测验证）</a></li>
+      <li class="lv3"><a href="#135-on-vs-o1">13.5 实测结论（验证了 O(N) vs O(1) 的翻转）</a></li>
+      <li class="lv3"><a href="#136">13.6 结论</a></li>
+      <li class="lv2"><a href="#14-hash">14. Hash 压测代码文件</a></li>
+      <li class="lv2"><a href="#15-zset">15. ZSet 两种编码原理</a></li>
+      <li class="lv2"><a href="#151-zset">15.1 ZSet 两种编码的具体业务场景</a></li>
+      <li class="lv3"><a href="#1511-listpack-member">15.1.1 listpack 编码（小排行榜 / 少 member）</a></li>
+      <li class="lv3"><a href="#1512-skiplist-member">15.1.2 skiplist 编码（大排行榜 / 长 member）</a></li>
+      <li class="lv3"><a href="#1513-zset">15.1.3 ZSet 编码选型速查表</a></li>
+      <li class="lv2"><a href="#16-zset">16. ZSet 压测架构</a></li>
+      <li class="lv2"><a href="#17-zset-c16-batch50-warmup5s-sample10s">17. ZSet 实测数据（c=16, batch=50, warmup=5s + sample=10s）</a></li>
+      <li class="lv2"><a href="#18-zset">18. ZSet 编码根因分析</a></li>
+      <li class="lv3"><a href="#181-zadd-skiplist-11">18.1 为什么 ZADD 上 skiplist 反而更快（+11%）</a></li>
+      <li class="lv3"><a href="#182-zscore-zrange">18.2 为什么 ZSCORE / ZRANGE 两者接近</a></li>
+      <li class="lv3"><a href="#183-128-member-skiplist">18.3 128 member 未触发 skiplist 的原因</a></li>
+      <li class="lv3"><a href="#184-zset">18.4 ZSet 生产选型建议</a></li>
+      <li class="lv2"><a href="#19-zset">19. ZSet 压测代码文件</a></li>
+      <li class="lv2"><a href="#20-set">20. Set 三种编码原理</a></li>
+      <li class="lv2"><a href="#201-set">20.1 Set 三种编码的具体业务场景</a></li>
+      <li class="lv3"><a href="#2011-intset">20.1.1 intset 编码（纯整数小集合）</a></li>
+      <li class="lv3"><a href="#2012-listpack">20.1.2 listpack 编码（短字符串小集合）</a></li>
+      <li class="lv3"><a href="#2013-hashtable">20.1.3 hashtable 编码（大集合 / 长字符串）</a></li>
+      <li class="lv3"><a href="#2014-set">20.1.4 Set 编码选型速查表</a></li>
+      <li class="lv2"><a href="#21-set">21. Set 压测架构</a></li>
+      <li class="lv2"><a href="#22-set-c16-batch50-warmup5s-sample10s">22. Set 实测数据（c=16, batch=50, warmup=5s + sample=10s）</a></li>
+      <li class="lv3"><a href="#221-intset-50-listpack-50-hashtable-500">22.1 基础对比（intset 50整数 / listpack 50字符串 / hashtable 500长字符串）</a></li>
+      <li class="lv3"><a href="#222">22.2 公平对比（控制变量）</a></li>
+      <li class="lv2"><a href="#23-set">23. Set 编码根因分析</a></li>
+      <li class="lv3"><a href="#231-intset-sadd-17-sismember-15-scard-10">23.1 为什么 intset 全面碾压（SADD +17% / SISMEMBER +15% / SCARD +10%）</a></li>
+      <li class="lv3"><a href="#232-smembers-hashtable-30-14719-vs-476344">23.2 为什么 SMEMBERS 是最大分水岭（hashtable 慢 30 倍+，14719 vs 476344）</a></li>
+      <li class="lv3"><a href="#233-srandmember-hashtable-258756-vs-522726">23.3 为什么 SRANDMEMBER 差异明显（hashtable 慢一半，258756 vs 522726）</a></li>
+      <li class="lv3"><a href="#234-srem-hashtable-307076-vs-intset-44885946">23.4 为什么 SREM 差异大（hashtable 307076 vs intset 448859，+46%）</a></li>
+      <li class="lv3"><a href="#235-saddsismember-hashtable-1517">23.5 为什么 SADD/SISMEMBER hashtable 差距小（仅 15~17%）</a></li>
+      <li class="lv3"><a href="#236-128-hashtable">23.6 128 短字符串未触发 hashtable 的原因</a></li>
+      <li class="lv3"><a href="#237-set">23.7 Set 生产选型建议</a></li>
+      <li class="lv2"><a href="#24-set">24. Set 压测代码文件</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

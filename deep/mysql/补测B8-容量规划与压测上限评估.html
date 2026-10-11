@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B8：容量规划与压测上限评估</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b8">补测B8：容量规划与压测上限评估</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高并发系统上线前需<strong>量化容量上限</strong>：能支撑多少 QPS/TPS、连接数上限、buffer_pool/IO 饱和点，支撑容量预估与扩容决策。否则无法回答"系统能扛多少并发"。</p>
@@ -150,7 +151,22 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/capacity/ben
 <blockquote>
 <p><strong>容量规划与压测</strong>：评估系统 QPS/TPS/连接数上限。实测（并发20）：写 TPS≈1976、读 QPS≈15504（读比写高约8倍）。按 max_connections=1000 的 80% 推算写上限≈184万 TPS。容量 = f(CPU、buffer_pool、IO、连接数)；读多用读写分离、写多用分库分表线性扩容；定期压测定点修正。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、评估思路</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、实测结果</a></li>
+      <li class="lv3"><a href="#qps">补充：连接复用对 QPS 的影响（实测）</a></li>
+      <li class="lv2"><a href="#_5">五、容量规划要点</a></li>
+      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

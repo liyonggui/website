@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Java 秒杀/库存场景压测脚本设计清单</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="java">Java 秒杀/库存场景压测脚本设计清单</h1>
 <p>本文用于设计 Java 秒杀、库存扣减、订单创建和异步消息链路的压测脚本。重点覆盖：</p>
 <ul>
@@ -448,7 +449,46 @@ faultMode：
 <blockquote>
 <p>秒杀压测最重要的结论不是“能承受多少 QPS”，而是“在什么流量、热点、库存和故障条件下，系统仍然正确、可控并且能够恢复”。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、先定义被测链路</a></li>
+      <li class="lv3"><a href="#_2">推荐拆分</a></li>
+      <li class="lv2"><a href="#_3">二、脚本必须具备的能力</a></li>
+      <li class="lv2"><a href="#_4">三、请求数据模型</a></li>
+      <li class="lv3"><a href="#1">1. 用户数据</a></li>
+      <li class="lv3"><a href="#2">2. 商品数据</a></li>
+      <li class="lv3"><a href="#3">3. 请求比例</a></li>
+      <li class="lv2"><a href="#_5">四、核心压测场景</a></li>
+      <li class="lv3"><a href="#1_1">场景 1：正常流量基线</a></li>
+      <li class="lv3"><a href="#2_1">场景 2：单商品热点</a></li>
+      <li class="lv3"><a href="#3_1">场景 3：库存耗尽</a></li>
+      <li class="lv3"><a href="#4">场景 4：同一用户重复下单</a></li>
+      <li class="lv3"><a href="#5">场景 5：网络重试和请求重放</a></li>
+      <li class="lv3"><a href="#6">场景 6：同步写库与异步下单</a></li>
+      <li class="lv3"><a href="#7">场景 7：分片库存对比</a></li>
+      <li class="lv3"><a href="#8mq">场景 8：MQ 消费能力不足</a></li>
+      <li class="lv3"><a href="#9">场景 9：依赖故障</a></li>
+      <li class="lv2"><a href="#_6">五、脚本执行阶段</a></li>
+      <li class="lv3"><a href="#1_2">阶段 1：预热</a></li>
+      <li class="lv3"><a href="#2_2">阶段 2：阶梯加压</a></li>
+      <li class="lv3"><a href="#3_2">阶段 3：稳态运行</a></li>
+      <li class="lv3"><a href="#4_1">阶段 4：停止压测和恢复</a></li>
+      <li class="lv2"><a href="#_7">六、结果校验脚本清单</a></li>
+      <li class="lv3"><a href="#1_3">1. 库存校验</a></li>
+      <li class="lv3"><a href="#2_3">2. 订单校验</a></li>
+      <li class="lv3"><a href="#3_3">3. 消息校验</a></li>
+      <li class="lv3"><a href="#4_2">4. 状态机校验</a></li>
+      <li class="lv2"><a href="#java_1">七、Java 压测脚本实现检查</a></li>
+      <li class="lv2"><a href="#_8">八、推荐的脚本参数</a></li>
+      <li class="lv2"><a href="#_9">九、结果记录模板</a></li>
+      <li class="lv2"><a href="#_10">十、秒杀场景的通过标准示例</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

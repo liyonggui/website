@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>RAG 代码与原理详解（phase2 深读 · 新手向）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="rag-phase2">RAG 代码与原理详解（phase2 深读 · 新手向）</h1>
 <blockquote>
 <p>配套 <code>AI-Agent新手教学.md</code> 第 3 课的深挖版。对照 <code>D:\ai-agent-project\phase2-rag</code> 的代码读。
@@ -113,7 +114,22 @@
 <p><strong>落地结构</strong>：<code>Query → 向量topK20 + BM25 topK20 → RRF融合 → cross-encoder rerank → top4 → 喂LLM</code>。Spring AI 有模块化 RAG(<code>RetrievalAugmentationAdvisor</code>/<code>DocumentRetriever</code>/<code>QueryTransformer</code>查询改写/rerank)；BM25 生产向量库(Redis/PgVector)自带混合，不用手搓。</p>
 <hr />
 <p><strong>一句话总纲</strong>：embedding 把语义压成方向、余弦量像不像(RAG地基与天花板)；SimpleVectorStore 是内存暴力版，生产换 RedisVectorStore 只动依赖+Bean+配置；混合检索补精确词、rerank 补排序精度，但先分清"系统差 vs 指标/数据特性"再决定上不上重武器。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#1-linkedhashmap-hashmap">① 为什么用 LinkedHashMap 不用 HashMap</a></li>
+      <li class="lv2"><a href="#2-phase2-ragcontroller">② phase2 逐层（从 RagController 往下）</a></li>
+      <li class="lv2"><a href="#3-documentspring-ai">③ Document（Spring AI 自带类）</a></li>
+      <li class="lv2"><a href="#4-simplevectorstore-score">④ SimpleVectorStore 内部（score 从哪来）</a></li>
+      <li class="lv2"><a href="#5-embedding">⑤ embedding 为什么能把语义变成方向</a></li>
+      <li class="lv2"><a href="#6-redisvectorstore">⑥ 生产换 RedisVectorStore：改哪些</a></li>
+      <li class="lv2"><a href="#7-rerank-embedding">⑦ 混合检索 + rerank（补 embedding 短板）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

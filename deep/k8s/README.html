@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>k3s 实战：一个可跑通、可炸给你看的单机集群</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="k3s">k3s 实战：一个可跑通、可炸给你看的单机集群</h1>
 <p>这份东西不是"K8s 入门教程"，而是把前面几轮聊的结论落成<strong>能在你机器上跑、并且每个关键结论都有对应现场证据</strong>的一套材料。目标只有一个：让你亲手看到那些"背下来但没感觉"的机制——ConfigMap 不热更新、liveness 探针写错导致全站重启、requests 是调度门槛、NetworkPolicy 默认全通、local-path 的数据其实躺在本地目录里、滚动更新为什么会有一小撮 502。</p>
 <p>看完你应该能回答："我的 BladeX 单体上 K8s，第一天会踩什么坑。"</p>
@@ -391,7 +392,26 @@ sudo<span class="w"> </span>bash<span class="w"> </span><span class="m">99</span
 <p>卸完在 Windows 上执行 <code>wsl --shutdown</code> 把内存真正还回去——这就是我们前面说的"按需启停"形态：不用的时候 vmmem 直接消失。</p>
 <p>下一步按你的目的挑：</p>
 <p>想<strong>动手加深</strong>，把 <code>20-deployment.yaml</code> 换成你真实项目的镜像（改末尾那 5 处），跑通"改代码→CI 出镜像→改 tag→<code>kubectl rollout undo</code> 回滚"这一整条链路，这是最能沉淀成简历素材的一段。想<strong>换个更轻的底座</strong>，同样的 manifests 在 kind 上完全可用（kind 需要的是 docker，也就是你上一轮定的裸 WSL2 + docker-ce，不用额外 VM）。想<strong>整理成面试口径</strong>，我建议把演练 3、5、8 各写成一页"现象→定位→根因→修复→预防"，这三条比"我会写 Deployment YAML"有说服力得多。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">目录结构</a></li>
+      <li class="lv2"><a href="#wsl2-systemd">前置：WSL2 里的 systemd</a></li>
+      <li class="lv2"><a href="#k3s_1">装 k3s</a></li>
+      <li class="lv2"><a href="#scripts01-verifysh">底座自检：scripts/01-verify.sh</a></li>
+      <li class="lv2"><a href="#apply">按序 apply</a></li>
+      <li class="lv2"><a href="#ingress">Ingress：故意不给你&quot;开箱即用&quot;</a></li>
+      <li class="lv2"><a href="#_2">故障演练：这才是这套材料的主菜</a></li>
+      <li class="lv2"><a href="#_3">这套东西能验证什么、不能验证什么</a></li>
+      <li class="lv2"><a href="#_4">与生产对齐清单</a></li>
+      <li class="lv2"><a href="#_5">常见报错 → 定位</a></li>
+      <li class="lv2"><a href="#_6">收尾与下一步</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

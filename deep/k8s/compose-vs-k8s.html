@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Compose → K8s 概念对照（给已经会 docker-compose 的人）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="compose-k8s-docker-compose">Compose → K8s 概念对照（给已经会 docker-compose 的人）</h1>
 <p>如果你只记一句话：<strong>Compose 描述的是"一台机器上如何起一组容器"，K8s 描述的是"一个集群里期望状态长什么样"。</strong>
 前者的单位是容器，后者的单位是"契约 + 调和循环"。这个差别会让下面每一条对照都有隐性折扣。</p>
@@ -164,7 +165,18 @@ Compose <code>up -d</code> 之后容器在跑就算完。K8s 里"在跑"只是�
 <li>有状态依赖先<strong>不要</strong>上 K8s：MySQL/KingbaseES 继续用外部实例，集群里只跑无状态应用。这一步克制能省掉 80% 的事故面。</li>
 <li>灰度：先 <code>replicas: 1</code> 跑通，再 2，再加 HPA。一次只引入一个变量。</li>
 </ol>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">字段映射</a></li>
+      <li class="lv2"><a href="#_2">三件真正需要重建心智的事</a></li>
+      <li class="lv2"><a href="#spring-boot-bladex">迁移一个 Spring Boot 单体（比如 BladeX）的最小清单顺序</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

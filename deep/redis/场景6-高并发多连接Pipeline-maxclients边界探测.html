@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>docker-compose.yml 中限制 maxclients 为一个较小值（便于触发边界）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h2 id="6-pipeline-maxclients">场景 6: 高并发多连接 Pipeline — maxclients 边界探测</h2>
 <h3 id="61">6.1 背景与问题</h3>
 <div class="codehilite"><pre><span></span><code>生产现象:
@@ -850,7 +851,9 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
 <p><strong>DIRECT+Semaphore 以仅 10 条连接打满 ~155k cmd/s 吞吐 + Redis 零拒绝 + Pub/Sub 天然支持，是单租户高吞吐场景的最优方案。无论选哪种方案，都必须把 maxclients / reserved_for_ops / instance_count 纳入配置和监控策略。</strong></p>
 </blockquote>
 <p>```</p>
-  </article>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

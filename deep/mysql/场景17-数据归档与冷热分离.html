@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景17：数据归档与冷热分离</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="17">场景17：数据归档与冷热分离</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致：
@@ -151,7 +152,23 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/archive/rese
 <blockquote>
 <p><strong>冷热分离归档</strong>：数据累积导致大表查询慢，把超期冷数据归档到归档表、热表瘦身。实测 18 万行订单表归档 30 天前冷数据后，热表瘦身到 1.55 万行（11.6 倍），查询吞吐从 108 提到 1223（约 11 倍），p99 从 1998ms 降到 148ms。原理：数据量小→索引有效+缓存命中高。工程上用定时任务按业务边界归档，或 MySQL 分区表 DROP 过期分区，冷数据放数仓/OSS 按需查询。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、核心思路</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、实测结果</a></li>
+      <li class="lv3"><a href="#1">1. 初始化与归档</a></li>
+      <li class="lv3"><a href="#2-50">2. 冷热查询性能对比（并发50）</a></li>
+      <li class="lv2"><a href="#_5">五、工程要点</a></li>
+      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis 1主1从（StatefulSet 主从复制）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="redis-11statefulset">Redis 1主1从（StatefulSet 主从复制）</h1>
 <p>在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解
 <strong>StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 DNS</strong>，以及 Redis 主从复制本身。</p>
@@ -128,7 +129,22 @@ kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </sp
 <li>想要「主挂了自动切换」→ 上 <strong>哨兵（1主1从3哨兵）</strong>：哨兵监控主从、自动选主，客户端经哨兵发现主库。配置和发现逻辑更重，放最后。</li>
 <li>想看 Pod 固定身份价值 → 把 <code>replicas</code> 改成 3，会出 redis-2（也是从库，replicaof 指向 redis-0）。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">这次改了什么（相对单实例）</a></li>
+      <li class="lv2"><a href="#wsl">部署 / 更新（WSL）</a></li>
+      <li class="lv2"><a href="#_2">验证主从</a></li>
+      <li class="lv2"><a href="#_3">验证数据同步</a></li>
+      <li class="lv2"><a href="#_4">验证持久化（主库）</a></li>
+      <li class="lv2"><a href="#_5">重要认知（本课重点）</a></li>
+      <li class="lv2"><a href="#_6">下一步</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

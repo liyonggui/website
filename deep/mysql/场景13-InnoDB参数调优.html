@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景13：InnoDB 参数调优对吞吐的影响</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="13innodb">场景13：InnoDB 参数调优对吞吐的影响</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用"<strong>强持久性</strong>"配置：每次事务提交都执行 <code>fsync</code> 刷盘，保证崩溃不丢数据，但<strong>牺牲写入性能</strong>。调优的本质是<strong>「性能 vs 持久性」的权衡</strong>——降低刷盘频率可显著提升吞吐，但崩溃时可能丢失少量已提交数据。</p>
@@ -169,7 +170,21 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tunin
 <blockquote>
 <p><strong>InnoDB 调优核心是「性能 vs 持久性」权衡</strong>。<code>innodb_flush_log_at_trx_commit</code>：1 每次提交 fsync 刷 redo（最安全最慢）、2 写 OS 缓存每秒刷、0 后台每秒刷（最快最多丢 1s）；<code>sync_binlog</code> 同理控制 binlog 刷盘。账务类保 <code>(1,1)</code> 强持久，日志类可降 <code>(2,0)/(0,0)</code> 换吞吐。<code>innodb_buffer_pool_size</code> 设 60%~75% 内存提升读命中；开启 binlog 的复制主库注意 sync_binlog 对写的影响。参数可用 <code>SET GLOBAL</code> 动态调，但生产需写 my.cnf 重启持久化，并在目标环境压测确定最佳值。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、关键参数</a></li>
+      <li class="lv2"><a href="#_3">三、动态调参演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、实测结果与趋势</a></li>
+      <li class="lv2"><a href="#_5">五、调优准则</a></li>
+      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

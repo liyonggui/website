@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Elasticsearch 分片 / 路由 / ILM 全面实操手册（针对 ES 7.2 的合并修订版）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <p>直接结论（要点）：</p>
 <ul>
 <li>我检查了你刚发的 7.2 文档片段，发现若干与 ES 7.2 版本兼容性、API/setting 名称、脚本健壮性以及操作风险的误导点（尤其是 data_tier、ILM snapshot、searchable snapshots/SLM、Math.abs 溢出、split/shrink 的约束与前置条件等）。我已修正示例脚本中的取模/溢出问题、补充了 7.2 可行的替代做法（使用 node attributes 做冷热分层分配）、标注需要升级到 &gt;=7.10 才能用 data_tier/searchable snapshots/SLM 等新特性，以及把两份内容（你最初那份我之前修订的文档 + 你最新的 7.2 片段）合并成一份面向 ES 7.2 的、可直接落地的完整手册并在文中标注版本差异与注意事项。</li>
@@ -499,7 +500,33 @@ curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><
 <li>修正并改进 warm_to_hot.sh 示例实现的索引筛选逻辑（用 GET _settings + jq）。</li>
 <li>合并并重构原两份内容的章节结构与示例，使文档成为一份完整可读的 7.2 运维手册。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv3"><a href="#murmurhash3">MurmurHash3 版本用途</a></li>
+      <li class="lv3"><a href="#routing">Routing 字符串长度规范</a></li>
+      <li class="lv2"><a href="#_1">三、两类分片倾斜成因 + 路由二次打散解决方案</a></li>
+      <li class="lv3"><a href="#1">类型1：路由数据倾斜（业务层面）</a></li>
+      <li class="lv3"><a href="#2">类型2：节点分片分配倾斜（集群层面）</a></li>
+      <li class="lv2"><a href="#_2">四、分片节点分配算法完整解析（补充与细化）</a></li>
+      <li class="lv2"><a href="#_3">五、索引与节点容量规划规范（生产落地标准）</a></li>
+      <li class="lv2"><a href="#ilm-index-lifecycle-management72">六、ILM （Index Lifecycle Management）冷/温/热分层（7.2 兼容说明）</a></li>
+      <li class="lv3"><a href="#_4">注意（版本兼容）</a></li>
+      <li class="lv3"><a href="#delete-snapshot72">关于在 delete 前自动 snapshot（7.2 限制）</a></li>
+      <li class="lv2"><a href="#reindex-72">七、Reindex 数据重构全场景方案（兼容 7.2）</a></li>
+      <li class="lv2"><a href="#rollovers">八、索引别名架构设计 + 索引上线初始化标准模板（含 rollovers）</a></li>
+      <li class="lv2"><a href="#rollover-72">九、Rollover 时序滚动索引（日志/时序）完整初始化（7.2）</a></li>
+      <li class="lv2"><a href="#ilm-warmcold-hot-72">十、ILM 反向回流（Warm/Cold 向 Hot 回退）—— 7.2 实操</a></li>
+      <li class="lv2"><a href="#72">十一、快照 / 备份（7.2 实务）</a></li>
+      <li class="lv2"><a href="#_5">十二、运维监控与告警（新增建议，便于生产）</a></li>
+      <li class="lv2"><a href="#_6">十三、常见操作脚本与修正（示例）</a></li>
+      <li class="lv2"><a href="#3">十四、面试 / 总结要点（3 分钟版）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

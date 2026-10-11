@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="agent">Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）</h1>
 <blockquote>
 <p>原则：<strong>带着病历找药</strong>。每个中间件都必须对应一个"已实测出的问题"，并说清"治好了没"——不是堆组件。
@@ -215,7 +216,29 @@
 </tbody>
 </table>
 <p><strong>共同纪律</strong>：每上一个，先定"用哪个指标证明它有效"（phase6 三路 + <code>/evalrag</code> + 命中率），<strong>改前改后各跑一轮、取中位数</strong>——评测闭环就是为这件事准备的。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、性能类（延迟 / 成本 / 吞吐）</a></li>
+      <li class="lv3"><a href="#1-semantic-cache-redis-stack-ftrdx-agenthit-012s-vs-miss-27s">1. 语义缓存 Semantic Cache ⭐⭐⭐ ✅ 已落地并迁到 Redis Stack FT（rdx-agent：hit 0.12s vs miss ~27s；跨进程持久化实测通过）</a></li>
+      <li class="lv3"><a href="#2-ai-provider-higress-api-429-fallback-failover">2. AI 网关（模型路由 / 多 provider / 统一限流）⭐⭐ ◑ 落地（Higress 跑起来；模型流量+限流经 API 脚本化并实测 429；多厂商 fallback 机制已配、但 failover 未验成，已回滚稳定路由）</a></li>
+      <li class="lv3"><a href="#3-resilience4j-rdx-agentbulkhead-semaphore-circuitbreaker-llm">3. resilience4j 替换手写舱壁/熔断 ⭐⭐ ✅ 已落地（rdx-agent：Bulkhead 换 Semaphore + CircuitBreaker 护 LLM 调用）</a></li>
+      <li class="lv3"><a href="#4-mq">4. 异步削峰（MQ / 任务队列）⭐</a></li>
+      <li class="lv2"><a href="#_2">二、准确度类（检索 / 生成质量）</a></li>
+      <li class="lv3"><a href="#5-rerank-api-rdx-agent-rag_searchtop10qwen37-text-reranktop4-04s">5. 专用 Rerank API ⭐⭐⭐ ✅ 已落地（rdx-agent rag_search：向量top10→qwen3.7-text-rerank→top4，实测 ~0.4s/次）</a></li>
+      <li class="lv3"><a href="#6-bm25-rdx-agentknnftrrfrerank">6. 混合检索（向量 + BM25）⭐⭐ ✅ 已落地（rdx-agent：向量KNN+FT词法→RRF→rerank）</a></li>
+      <li class="lv3"><a href="#7-guardrails-demo">7. Guardrails / 内容安全 ⭐（生产必接，demo 不急）</a></li>
+      <li class="lv3"><a href="#8-langfuse-datasets-experiments-gold-trace">8. Langfuse Datasets + Experiments ⭐⭐ ✅ 已落地（gold 集进库 + 数据集实验 + 逐条 trace 打分）</a></li>
+      <li class="lv2"><a href="#_3">三、可观测类</a></li>
+      <li class="lv3"><a href="#9-otel-collector-prometheus-grafana">9. OTel Collector + Prometheus + Grafana ⭐</a></li>
+      <li class="lv3"><a href="#10-phase7">10. 编排框架（phase7 用）</a></li>
+      <li class="lv2"><a href="#_4">四、优先级与路线</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

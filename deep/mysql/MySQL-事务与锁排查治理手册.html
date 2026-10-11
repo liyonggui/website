@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>my.cnf [mysqld]</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h2 id="mysqlinnodb">MySQL（InnoDB）事务与锁排查治理手册</h2>
 <blockquote>
 <p>适用环境：生产 <strong>MySQL 8.4.10</strong>（经实测为<strong>裁剪/云版本</strong>——标准 8.4 应有的 <code>idle_transaction_timeout</code> 在本实例报 <code>1193 Unknown system variable</code>，故<strong>所有参数务必先探针确认存在，再 <code>SET PERSIST</code></strong>）。
@@ -697,7 +698,37 @@
 <blockquote>
 <p>维护说明：参数取值按实际业务量级压测后微调，先分档、后迭代；本 build 缺失的参数以探针结果为准。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#mysqlinnodb">MySQL（InnoDB）事务与锁排查治理手册</a></li>
+      <li class="lv3"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#1">1. 使用说明与环境判定</a></li>
+      <li class="lv2"><a href="#2-sql">2. 生产常用配置基线（可执行 SQL）</a></li>
+      <li class="lv3"><a href="#21-set-persist">2.1 安全兜底类（超时 + 可观测，建议直接 SET PERSIST）</a></li>
+      <li class="lv3"><a href="#22">2.2 按业务评估类（改前务必评估，别盲上）</a></li>
+      <li class="lv3"><a href="#23-mycnf">2.3 持久化与复制安全（my.cnf 为主，生产强相关，按需核对）</a></li>
+      <li class="lv3"><a href="#24-mdl">2.4 开启 MDL 监控（排查「改表卡死」必备，一次性）</a></li>
+      <li class="lv3"><a href="#25-1-1193">2.5 一键落地脚本（复制即用，先跑 1 的体检确认无 1193）</a></li>
+      <li class="lv2"><a href="#26">2.6 参数详解（逐个说明含义）</a></li>
+      <li class="lv3"><a href="#a-set-persist">A. 动态参数（可 SET PERSIST，影响新建连接）</a></li>
+      <li class="lv3"><a href="#b-mycnf">B. 只读 / my.cnf 参数（多数需重启，属生产基线核对）</a></li>
+      <li class="lv2"><a href="#3-mvcc-undopurge">3. 事务、MVCC 与 undo/purge</a></li>
+      <li class="lv2"><a href="#4-innodb-mdl">4. InnoDB 锁体系（含 MDL）</a></li>
+      <li class="lv3"><a href="#41">4.1 锁的分类（由粗到细）</a></li>
+      <li class="lv3"><a href="#42">4.2 谁与谁冲突（速记）</a></li>
+      <li class="lv3"><a href="#43">4.3 死锁与等待</a></li>
+      <li class="lv2"><a href="#5-sql">5. 排查工具箱（可执行 SQL）</a></li>
+      <li class="lv2"><a href="#6-kill-mdl">6. 治理与处置（KILL / MDL / 死锁 / 生产红线）</a></li>
+      <li class="lv2"><a href="#7">7. 预防与最佳实践</a></li>
+      <li class="lv2"><a href="#8">8. 常见坑与注意事项</a></li>
+      <li class="lv2"><a href="#9-kingbasees-postgresql">9. 附录：与 KingbaseES / PostgreSQL 对照</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

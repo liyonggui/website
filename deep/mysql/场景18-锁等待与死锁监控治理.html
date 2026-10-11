@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景18：锁等待与死锁监控治理</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="18">场景18：锁等待与死锁监控治理</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高并发下，多个事务争用同一行/间隙锁会产生<strong>锁等待</strong>（事务串行化、吞吐下降），更严重的是<strong>死锁</strong>（事务互相持有对方需要的锁，死循环等待）。治理需要"制造 → 监控 → 诊断 → 治理"闭环。</p>
@@ -113,7 +114,25 @@ innodb_deadlocks         = 有死锁记录（SHOW ENGINE INNODB STATUS 检测）
 <blockquote>
 <p><strong>锁等待与死锁治理</strong>：锁等待=并发争用串行化（A 持锁 B 等待），死锁=事务互相持有对方所需锁、InnoDB 自动检测回滚一个（错误码 1213，需应用重试）。监控用 <code>performance_schema.data_locks</code> + <code>sys.innodb_lock_waits</code> 定位阻塞者/被阻塞者。治理核心：减小锁粒度（主键/唯一索引命中）、缩短事务、固定加锁顺序（防死锁）、控制并发、<code>innodb_lock_wait_timeout</code> 超时兜底。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、核心概念</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、实测结果</a></li>
+      <li class="lv3"><a href="#1">1. 锁参数</a></li>
+      <li class="lv3"><a href="#2">2. 制造锁等待</a></li>
+      <li class="lv3"><a href="#3">3. 制造死锁</a></li>
+      <li class="lv3"><a href="#4">4. 监控诊断</a></li>
+      <li class="lv2"><a href="#_5">五、治理方案</a></li>
+      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

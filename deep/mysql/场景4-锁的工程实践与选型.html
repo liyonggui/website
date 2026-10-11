@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景4：锁的工程实践、选型与规避（开发视角）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="4">场景4：锁的工程实践、选型与规避（开发视角）</h1>
 <p>在掌握 InnoDB 锁机制（S/X、意向锁、间隙锁、Next-Key）后，补充工程落地经验：<strong>锁的降级、开发注意事项、高并发下如何选锁、如何规避锁</strong>。</p>
 <h2 id="lock-practicedegradation">一、锁的降级（半一致性读）— 实测 <code>/lock-practice/degradation</code></h2>
@@ -176,7 +177,27 @@
 <blockquote>
 <p><strong>锁的工程实践</strong>：高并发选锁看冲突率——冲突高用原子 UPDATE（WHERE条件，无锁等待），冲突少用乐观锁，多语句读改写用悲观锁。规避锁的常用手段：原子操作、缩小锁范围（主键等值）、拆分热点行、读写分离、降级隔离级别（READ COMMITTED 半一致性读只锁匹配行，实测锁范围从 Next-Key 降为记录锁）。开发注意：固定加锁顺序防死锁、缩短事务、捕获 1213 重试、避免无索引 UPDATE 锁全表。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#lock-practicedegradation">一、锁的降级（半一致性读）— 实测 /lock-practice/degradation</a></li>
+      <li class="lv2"><a href="#_1">二、高并发下如何选择锁（决策框架）</a></li>
+      <li class="lv2"><a href="#_2">三、规避锁的策略（不解决锁问题，而是减少锁竞争）</a></li>
+      <li class="lv2"><a href="#_3">四、锁的开发注意事项（避坑清单）</a></li>
+      <li class="lv3"><a href="#1-lock-practiceordered-lock">1. 死锁规避（实测 /lock-practice/ordered-lock）</a></li>
+      <li class="lv3"><a href="#2">2. 事务边界</a></li>
+      <li class="lv3"><a href="#3">3. 隔离级别选择</a></li>
+      <li class="lv3"><a href="#4_1">4. 锁超时与死锁检测</a></li>
+      <li class="lv3"><a href="#5">5. 索引设计</a></li>
+      <li class="lv3"><a href="#6">6. 诊断工具</a></li>
+      <li class="lv2"><a href="#lock-practiceatomic">五、原子操作规避锁（实测 /lock-practice/atomic）</a></li>
+      <li class="lv2"><a href="#_4">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

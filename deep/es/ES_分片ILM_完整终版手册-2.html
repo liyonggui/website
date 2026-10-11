@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES分片\+路由\+ILM冷热\+Rollover\+Reindex\+全层级回流 最终完整版手册</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="esilmrolloverreindex">ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册</h1>
 <h2 id="_1">全文目录</h2>
 <ol>
@@ -565,7 +566,56 @@
 <blockquote>
 <p>（注：部分内容可能由 AI 生成）</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">全文目录</a></li>
+      <li class="lv2"><a href="#11">1.1 集群层级结构</a></li>
+      <li class="lv2"><a href="#12">1.2 两条不可违背铁律</a></li>
+      <li class="lv2"><a href="#13">1.3 总分片计算公式</a></li>
+      <li class="lv2"><a href="#21">2.1 文档路由分片计算公式（底层固定不可改）</a></li>
+      <li class="lv2"><a href="#22">2.2 两种哈希算法分工</a></li>
+      <li class="lv2"><a href="#23">2.3 关键误区</a></li>
+      <li class="lv2"><a href="#31">3.1 业务层：路由数据倾斜（均衡算法解决不了）</a></li>
+      <li class="lv3"><a href="#_2">成因</a></li>
+      <li class="lv3"><a href="#key">生产解决方案：路由key二次后缀打散</a></li>
+      <li class="lv3"><a href="#java">可用Java工具类</a></li>
+      <li class="lv2"><a href="#32-es">3.2 集群层：节点分片数量倾斜（ES自动均衡可修复）</a></li>
+      <li class="lv2"><a href="#41-es">4.1 ES分片均衡打分公式</a></li>
+      <li class="lv2"><a href="#42">4.2 磁盘三级水位（硬性拦截，优先级最高）</a></li>
+      <li class="lv2"><a href="#43-io">4.3 分片搬迁限流配置（生产必配，防IO雪崩）</a></li>
+      <li class="lv2"><a href="#51">5.1 单分片标准容量（生产红线）</a></li>
+      <li class="lv2"><a href="#52">5.2 主分片规划原则</a></li>
+      <li class="lv2"><a href="#53">5.3 节点磁盘使用率红线</a></li>
+      <li class="lv2"><a href="#61-ilm">6.1 ILM核心铁律（必考）</a></li>
+      <li class="lv2"><a href="#62-ilm">6.2 四阶段标准生产ILM策略</a></li>
+      <li class="lv2"><a href="#63-ilm">6.3 ILM常见故障排障命令</a></li>
+      <li class="lv2"><a href="#71-reindex">7.1 哪些操作不能原地修改，必须Reindex</a></li>
+      <li class="lv2"><a href="#72">7.2 标准零停机重构流程</a></li>
+      <li class="lv2"><a href="#73-reindex">7.3 字段迁移Reindex脚本</a></li>
+      <li class="lv2"><a href="#81">8.1 别名核心思想</a></li>
+      <li class="lv2"><a href="#82">8.2 原子别名切换（无感切流/回滚）</a></li>
+      <li class="lv2"><a href="#91">9.1 架构说明</a></li>
+      <li class="lv2"><a href="#92">9.2 滚动索引模板</a></li>
+      <li class="lv2"><a href="#93">9.3 初始化首个可写索引</a></li>
+      <li class="lv2"><a href="#101">10.1 统一结论（回答你刚才的问题）</a></li>
+      <li class="lv2"><a href="#103-delete">10.3 致命边界：Delete删除阶段无法回退（新增快照全套补充说明）</a></li>
+      <li class="lv3"><a href="#es">重点答疑：ES快照是否需要手动配置？（面试高频追问）</a></li>
+      <li class="lv3"><a href="#ilm">生产两种ILM删除防丢数据兜底方案（完整可直接复制）</a></li>
+      <li class="lv3"><a href="#_3">一句话面试背诵总结</a></li>
+      <li class="lv3"><a href="#1warm-hot">场景1：Warm 温层 → Hot 热层</a></li>
+      <li class="lv3"><a href="#2cold-warm">场景2：Cold 冷层 → Warm 温层</a></li>
+      <li class="lv3"><a href="#3cold-hot">场景3：Cold 冷层 跨层直接回 Hot 热层</a></li>
+      <li class="lv2"><a href="#103">10.3 通用进度查看命令（所有回流统一）</a></li>
+      <li class="lv2"><a href="#104-4">10.4 回流之后必须处理的4个不可逆动作</a></li>
+      <li class="lv2"><a href="#105-delete">10.5 致命边界：Delete阶段无法回退</a></li>
+      <li class="lv2"><a href="#106-shell">10.6 批量一键回流Shell脚本（全通用，改一行适配冷热）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

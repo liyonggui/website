@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Elasticsearch 分片节点分配算法 超详细详解</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="elasticsearch">Elasticsearch 分片节点分配算法 超详细详解</h1>
 <p>覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。</p>
 <h2 id="_1">一、前置基础概念</h2>
@@ -494,7 +495,51 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
 8. 排查优先用 allocation explain 定位未分配真实原因，磁盘水位、主副本同节点、冷热层级、节点分片上限是四大高频诱因；
 9. 可通过均衡权重、搬迁并发、均衡阈值调节收敛速度，高峰期可临时关闭rebalance防IO冲击；
 10. 分配算法只管分片放在哪个节点，解决不了自定义routing热点倾斜。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、前置基础概念</a></li>
+      <li class="lv3"><a href="#1">1. 什么是分片分配</a></li>
+      <li class="lv2"><a href="#1-index-balance-055">1. Index Balance 索引均衡算法（权重默认 0.55）</a></li>
+      <li class="lv3"><a href="#_2">作用</a></li>
+      <li class="lv3"><a href="#_3">适用场景</a></li>
+      <li class="lv2"><a href="#2-shard-balance-045">2. Shard Balance 全局分片均衡算法（权重默认 0.45）</a></li>
+      <li class="lv3"><a href="#_4">作用</a></li>
+      <li class="lv2"><a href="#3-disk-threshold-balance">3. Disk Threshold Balance 磁盘容量均衡算法（隐性强优先级）</a></li>
+      <li class="lv2"><a href="#1_1">1. 主分片选举规则</a></li>
+      <li class="lv2"><a href="#1routing">类型1：业务Routing分片倾斜（分片内部数据不均）</a></li>
+      <li class="lv2"><a href="#2">类型2：节点分配不均衡（分片个数摆放不均）</a></li>
+      <li class="lv2"><a href="#_9">典型异常举例</a></li>
+      <li class="lv2"><a href="#3">前置通用排查入口（所有问题先执行这3条）</a></li>
+      <li class="lv3"><a href="#1_2">1、查看集群整体分片状态</a></li>
+      <li class="lv3"><a href="#2_1">2、分片无法分配/未分配原因最核心命令</a></li>
+      <li class="lv3"><a href="#3_1">3、查看集群均衡、磁盘水位默认配置</a></li>
+      <li class="lv2"><a href="#1_3">现象1：节点总分片数量差距极大（分片摆放不均衡，分配算法收敛慢）</a></li>
+      <li class="lv3"><a href="#_12">典型表现</a></li>
+      <li class="lv3"><a href="#_13">根因</a></li>
+      <li class="lv2"><a href="#3rebalance">现象3：分片搬迁特别慢，rebalance卡住半天不动</a></li>
+      <li class="lv3"><a href="#_14">根因</a></li>
+      <li class="lv3"><a href="#_15">处理步骤</a></li>
+      <li class="lv2"><a href="#4index-balance">现象4：同一个索引分片扎堆某个节点（Index Balance失衡）</a></li>
+      <li class="lv3"><a href="#_16">表现</a></li>
+      <li class="lv3"><a href="#_17">根因</a></li>
+      <li class="lv3"><a href="#_18">处理</a></li>
+      <li class="lv2"><a href="#5hot">现象5：冷热分层分片乱跑，热分片跑到冷节点、温分片进hot节点</a></li>
+      <li class="lv3"><a href="#_19">根因</a></li>
+      <li class="lv3"><a href="#_20">排障步骤</a></li>
+      <li class="lv2"><a href="#6gb">现象6：分片内部数据容量倾斜（分片个数均衡，但单个分片几十GB，其他很小）</a></li>
+      <li class="lv3"><a href="#_21">根因</a></li>
+      <li class="lv3"><a href="#_22">解决方案</a></li>
+      <li class="lv2"><a href="#7">现象7：开启机架感知后分片极度不均衡、部分分片无法分配</a></li>
+      <li class="lv3"><a href="#_23">根因</a></li>
+      <li class="lv3"><a href="#_24">排查</a></li>
+      <li class="lv2"><a href="#1io">1、临时关闭集群分片重平衡（高峰期防止IO打崩）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

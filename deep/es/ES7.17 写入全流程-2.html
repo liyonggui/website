@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES7\.17 写入全流程\+底层存储算法精准拆解（完整版文档）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="es717">ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）</h1>
 <h2 id="_1">文档说明</h2>
 <p>本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注<strong>使用算法、底层数据结构、磁盘存储格式、源码逻辑</strong>，适配后端面试、源码学习、性能调优使用，所有内容贴合Lucene底层及ES原生源码实现。</p>
@@ -445,7 +446,40 @@ A：词条全局排序、构建FST压缩词条词典</p>
 <blockquote>
 <p>（注：部分内容可能由 AI 生成）</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">文档说明</a></li>
+      <li class="lv2"><a href="#_2">目录</a></li>
+      <li class="lv2"><a href="#1">1. 文档分片路由哈希算法</a></li>
+      <li class="lv2"><a href="#2">2. 分片节点物理分配算法</a></li>
+      <li class="lv2"><a href="#1-translog">1. Translog基础存储结构</a></li>
+      <li class="lv2"><a href="#2_1">2. 日志编码与刷盘核心算法</a></li>
+      <li class="lv3"><a href="#1_1">（1）序列化算法</a></li>
+      <li class="lv3"><a href="#2_2">（2）刷盘持久化两种策略</a></li>
+      <li class="lv3"><a href="#3">（3）日志清理算法</a></li>
+      <li class="lv2"><a href="#3_1">3. 宕机恢复算法</a></li>
+      <li class="lv2"><a href="#1_2">1. 核心底层数据结构</a></li>
+      <li class="lv2"><a href="#2_3">2. 不同字段内存存储规则</a></li>
+      <li class="lv2"><a href="#3_2">3. 并发写入控制算法</a></li>
+      <li class="lv2"><a href="#1_3">1. 分词底层算法</a></li>
+      <li class="lv2"><a href="#2_4">2. 倒排索引两大核心结构</a></li>
+      <li class="lv2"><a href="#3_3">3. 词条全局排序（面试必考）</a></li>
+      <li class="lv2"><a href="#4-lucene">4. 词典压缩核心算法（Lucene核心）</a></li>
+      <li class="lv2"><a href="#5-posting-list">5. 倒排链表Posting List压缩算法</a></li>
+      <li class="lv2"><a href="#1-segment">1. 磁盘Segment六大核心文件及对应存储算法</a></li>
+      <li class="lv2"><a href="#2_5">2. 磁盘写入落盘算法</a></li>
+      <li class="lv2"><a href="#3_4">3. 文档原始内容压缩算法</a></li>
+      <li class="lv2"><a href="#1_4">1. 小段筛选算法</a></li>
+      <li class="lv2"><a href="#2_6">2. 索引合并重排两大核心算法</a></li>
+      <li class="lv2"><a href="#3_5">3. 逻辑删除物理清理算法</a></li>
+      <li class="lv2"><a href="#4-io">4. 合并IO限流算法</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

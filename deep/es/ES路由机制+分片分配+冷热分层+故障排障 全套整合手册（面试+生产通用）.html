@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES路由机制\+分片分配\+冷热分层\+故障排障 全套整合手册（面试\+生产通用）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="es">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（面试+生产通用）</h1>
 <h2 id="_1">前言</h2>
 <p>本文打通ES<strong>文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障</strong>全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：<strong>路由数据倾斜（分片内数据不均）、节点分片分配倾斜（分片个数摆放不均）</strong>，全覆盖日常开发、面试、线上运维场景。</p>
@@ -428,7 +429,41 @@
 需要我再压缩成<strong>半页纸极简版（仅300字内考场速背）</strong>吗？</p>
 </li>
 </ol>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">前言</a></li>
+      <li class="lv2"><a href="#1">1. 路由寻址固定公式（源码不可变）</a></li>
+      <li class="lv2"><a href="#2">2. 核心硬性规则</a></li>
+      <li class="lv2"><a href="#3">3. 路由字符串长度规范（避坑）</a></li>
+      <li class="lv2"><a href="#1_1">1. 两个版本及使用场景</a></li>
+      <li class="lv2"><a href="#2_1">2. 哈希碰撞核心答疑</a></li>
+      <li class="lv2"><a href="#3_1">3. 高频误区纠正</a></li>
+      <li class="lv2"><a href="#1-1">1. 倾斜1：路由数据倾斜（业务层，分配算法无法解决）</a></li>
+      <li class="lv3"><a href="#_3">产生原因</a></li>
+      <li class="lv3"><a href="#_4">典型场景</a></li>
+      <li class="lv3"><a href="#_5">根治方案：路由二次打散（生产通用）</a></li>
+      <li class="lv3"><a href="#_6">完整可用工具类</a></li>
+      <li class="lv3"><a href="#mysql">关键答疑：打散后能否关联MySQL原始数据？</a></li>
+      <li class="lv2"><a href="#2-2es">2. 倾斜2：节点分片分配倾斜（集群层，ES内置算法可解决）</a></li>
+      <li class="lv3"><a href="#_7">产生原因</a></li>
+      <li class="lv3"><a href="#es_2">ES三大前置过滤规则（优先级最高）</a></li>
+      <li class="lv3"><a href="#_8">两大分片打分均衡算法</a></li>
+      <li class="lv2"><a href="#1_2">1. 四层节点角色划分</a></li>
+      <li class="lv2"><a href="#2-ilm">2. 完整ILM生命周期策略（直接复制上线）</a></li>
+      <li class="lv2"><a href="#3_2">3. 冷热分层核心结论</a></li>
+      <li class="lv2"><a href="#1_3">1. 分片数量计算公式</a></li>
+      <li class="lv2"><a href="#2_2">2. 核心选型建议</a></li>
+      <li class="lv2"><a href="#3_3">3. 分片副本配置说明</a></li>
+      <li class="lv2"><a href="#dsl">高峰期应急常用DSL</a></li>
+      <li class="lv2"><a href="#_11">一、路由核心原理</a></li>
+      <li class="lv2"><a href="#3_5">八、3分钟口述总结（背这个即可应对连环提问）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

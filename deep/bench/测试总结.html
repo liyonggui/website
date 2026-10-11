@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>高并发写入测试总结</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="_1">高并发写入测试总结</h1>
 <blockquote>
 <p>日期: 2026-06-17 ~ 06-18 | 硬件: 4C/8T 笔记本 (单台) | Docker 部署 MySQL/Redis/ES/Mongo/Kafka</p>
@@ -485,7 +486,34 @@ CPU 绑定的极限: ~5,000-5,500 QPS (版本 A/B 反复撞)
 </tr>
 </tbody>
 </table>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_2">〇、独立存储测试（四轮，模拟生产分机部署）</a></li>
+      <li class="lv3"><a href="#_3">测试方法</a></li>
+      <li class="lv3"><a href="#qps">独立存储 QPS 数据</a></li>
+      <li class="lv3"><a href="#p95-300">P95 延迟对比 @ 300 并发</a></li>
+      <li class="lv3"><a href="#vs">独立测试 vs 全量写入对比</a></li>
+      <li class="lv3"><a href="#_4">关键发现</a></li>
+      <li class="lv2"><a href="#_5">一、架构概览</a></li>
+      <li class="lv2"><a href="#_6">二、测试的三个版本</a></li>
+      <li class="lv3"><a href="#a-es-3-round-1">版本 A: ES 同步 + 3 异步 (Round 1)</a></li>
+      <li class="lv3"><a href="#b-4-round-2">版本 B: 全部 4 异步 (Round 2)</a></li>
+      <li class="lv3"><a href="#c-mysql-3-round-3">版本 C: MySQL 同步 + 3 异步 (Round 3, 原始版, 最终最优)</a></li>
+      <li class="lv2"><a href="#_7">三、逐版本数据</a></li>
+      <li class="lv2"><a href="#_8">四、拖慢因素分析</a></li>
+      <li class="lv3"><a href="#1-casutilrunsafe">因素 1: CasUtil.runSafe 同步阻塞消费者线程</a></li>
+      <li class="lv3"><a href="#2-callerrunspolicy">因素 2: CallerRunsPolicy — 线程池退化为同步 (核心杀手)</a></li>
+      <li class="lv3"><a href="#3-4c8t">因素 3: 4C/8T 物理天花板</a></li>
+      <li class="lv3"><a href="#4-batchinsert-db-queueoffer">因素 4: batchInsert() 是真实 DB 写，不是 queue.offer()</a></li>
+      <li class="lv2"><a href="#_9">五、设计原则总结</a></li>
+      <li class="lv2"><a href="#_10">六、如果要继续优化</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

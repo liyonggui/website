@@ -49,7 +49,8 @@
     <a class="back" href="../blog.html">← 返回博客索引</a>
     <h1>01-知乎回答版</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <p>前面几位把 Redis String 的编码原理、内存布局讲得很清楚了。我这篇只做一件事：<strong>把这套机制放到十几万 QPS 下压一遍，看这几种编码到底差多少钱</strong>。</p>
 <p>先说结论：embstr 比 raw 的 SET 快 <strong>25.3%</strong>、GET 快 <strong>14.2%</strong>；INCR 最快，<strong>53 万 ops/s</strong>；但对 embstr 反复 <code>APPEND</code>，<strong>max 延迟会抖出 287ms 毛刺</strong>，而 raw 预分配只要 39ms——最后这个坑，原理向的回答里基本都没写。</p>
 <blockquote>
@@ -280,7 +281,20 @@ OBJECT ENCODING k        # raw —— 一次追加，编码已经换了
 <hr />
 <p><strong>几句实话（局限）</strong>：数据为单轮采样，max 是本次观测到的单次极值，绝对值请当量级参考；未记录内存分配器（jemalloc / libc）与 lazyfree 配置，它们会影响 malloc 相关路径的绝对耗时；单机 + Pipeline 客户端会压低吞吐上限，所以别拿这些数字和 redis-benchmark 对比。<strong>要看的是相对差距。</strong> 同一套方法我还测了 Hash、Set、ZSet 的编码对比，结论同样和八股文有出入，改天写。</p>
 <p>八股可以被背，结论只能被跑出来。有出入欢迎拿数据来抬杠。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、三种编码的基础对比</a></li>
+      <li class="lv2"><a href="#value-raw">二、value 变大时，raw 掉多少</a></li>
+      <li class="lv2"><a href="#_2">三、最有价值的发现：平均值骗了你</a></li>
+      <li class="lv2"><a href="#_3">四、生产选型速查</a></li>
+      <li class="lv2"><a href="#30">五、30 秒自己验证</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

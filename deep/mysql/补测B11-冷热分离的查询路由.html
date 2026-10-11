@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B11：冷热分离的查询路由</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b11">补测B11：冷热分离的查询路由</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>数据冷热分离后（热表存近期高频数据、归档表存历史冷数据），查询需<strong>应用层路由</strong>：热数据查热表、历史数据查归档表，避免查询扫全量大表。</p>
@@ -120,7 +121,22 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/hotcold/benc
 <blockquote>
 <p><strong>冷热分离查询路由</strong>：按业务时间把热数据路由到热表、历史冷数据路由到归档表，避免查全量大表。实测10.8万行：路由查询0.9ms vs 全表2.1ms（快2.1倍）。要点：按 create_time 分界路由、建索引、范围查询避免索引失效、大数据量才体现优势。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、路由原理</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#108">四、实测结果（10.8万行）</a></li>
+      <li class="lv2"><a href="#_4">五、工程要点</a></li>
+      <li class="lv2"><a href="#_5">六、踩坑记录（性能对比失真）</a></li>
+      <li class="lv2"><a href="#_6">七、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

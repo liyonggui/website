@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景8：批量写入优化</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="8">场景8：批量写入优化</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>MySQL 单条 INSERT 的瓶颈主要在<strong>网络往返</strong>和<strong>事务提交</strong>：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。<strong>批量写入</strong>通过减少 SQL 次数、合并事务、驱动级优化，可带来数量级的吞吐提升。</p>
@@ -144,7 +145,20 @@
 <blockquote>
 <p><strong>批量写入优化</strong>：逐条 INSERT（autocommit）每条一个事务 + 一次网络往返，1 万行耗时 229 秒、仅 43 行/秒；事务内逐条 3606 行/秒（减少提交）；单条多值 INSERT 10204 行/秒（减少 SQL 次数）；<strong>JDBC addBatch + rewriteBatchedStatements</strong> 11049 行/秒，比逐条快 <strong>257 倍</strong>。核心：批量写入减少 fsync 次数与网络往返，<code>rewriteBatchedStatements=true</code> 是关键开关，batchSize 取 500~1000 最佳。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、四种写入方式</a></li>
+      <li class="lv2"><a href="#1-batchsize500">三、实测结果（1 万行，batchSize=500）</a></li>
+      <li class="lv2"><a href="#_3">四、生产避坑准则</a></li>
+      <li class="lv2"><a href="#_4">五、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

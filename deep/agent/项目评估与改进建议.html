@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>AI Agent 项目集评估与改进建议</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="ai-agent">AI Agent 项目集评估与改进建议</h1>
 <blockquote>
 <p>评估范围：<code>D:\ai-agent-project</code> 根目录下的 Agent 教学项目、可观测性项目和 <code>rdx-bx-backend</code> 业务后端沙盒。<br />
@@ -632,7 +633,70 @@ Tool Gateway
 <blockquote>
 <p>面向后端工程师转 Agent 的完整作品集、技术文章素材和可演示的工程化样板。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#1">1. 结论摘要</a></li>
+      <li class="lv2"><a href="#2">2. 项目清单与定位</a></li>
+      <li class="lv2"><a href="#3">3. 分项目评价</a></li>
+      <li class="lv2"><a href="#31">3.1 根目录和总览文档</a></li>
+      <li class="lv3"><a href="#_1">优点</a></li>
+      <li class="lv3"><a href="#_2">问题</a></li>
+      <li class="lv3"><a href="#_3">建议</a></li>
+      <li class="lv2"><a href="#32-phase1-minimal-agent">3.2 phase1-minimal-agent</a></li>
+      <li class="lv3"><a href="#_4">优点</a></li>
+      <li class="lv3"><a href="#_5">问题</a></li>
+      <li class="lv3"><a href="#_6">建议</a></li>
+      <li class="lv2"><a href="#33-phase2-rag">3.3 phase2-rag</a></li>
+      <li class="lv3"><a href="#_7">优点</a></li>
+      <li class="lv3"><a href="#_8">问题</a></li>
+      <li class="lv3"><a href="#_9">建议</a></li>
+      <li class="lv2"><a href="#34-phase3-agent">3.4 phase3-agent</a></li>
+      <li class="lv3"><a href="#_10">优点</a></li>
+      <li class="lv3"><a href="#_11">问题</a></li>
+      <li class="lv3"><a href="#_12">建议</a></li>
+      <li class="lv2"><a href="#35-phase4-agent-ops">3.5 phase4-agent-ops</a></li>
+      <li class="lv3"><a href="#_13">优点</a></li>
+      <li class="lv3"><a href="#_14">问题</a></li>
+      <li class="lv3"><a href="#_15">建议</a></li>
+      <li class="lv2"><a href="#36-phase5-mcp-server">3.6 phase5-mcp-server</a></li>
+      <li class="lv3"><a href="#_16">优点</a></li>
+      <li class="lv3"><a href="#_17">问题</a></li>
+      <li class="lv3"><a href="#_18">建议</a></li>
+      <li class="lv2"><a href="#37-phase5-mcp-client">3.7 phase5-mcp-client</a></li>
+      <li class="lv3"><a href="#_19">优点</a></li>
+      <li class="lv3"><a href="#_20">关键问题：工具轨迹记录并发不安全</a></li>
+      <li class="lv3"><a href="#_21">建议</a></li>
+      <li class="lv2"><a href="#38-phase6-eval">3.8 phase6-eval</a></li>
+      <li class="lv3"><a href="#_22">优点</a></li>
+      <li class="lv3"><a href="#_23">问题</a></li>
+      <li class="lv3"><a href="#_24">建议</a></li>
+      <li class="lv2"><a href="#39-observability">3.9 observability</a></li>
+      <li class="lv3"><a href="#_25">优点</a></li>
+      <li class="lv3"><a href="#_26">风险</a></li>
+      <li class="lv3"><a href="#_27">建议</a></li>
+      <li class="lv2"><a href="#310-rdx-bx-backend">3.10 rdx-bx-backend</a></li>
+      <li class="lv3"><a href="#_28">优点</a></li>
+      <li class="lv3"><a href="#_29">主要问题</a></li>
+      <li class="lv3"><a href="#_30">建议</a></li>
+      <li class="lv2"><a href="#4">4. 跨项目高优先级问题</a></li>
+      <li class="lv2"><a href="#p0">P0：密钥和凭据泄露风险</a></li>
+      <li class="lv2"><a href="#p1phase5">P1：phase5 轨迹记录的并发正确性</a></li>
+      <li class="lv2"><a href="#p1agent">P1：Agent 子项目自动化测试不足</a></li>
+      <li class="lv2"><a href="#p1-ide">P1：构建产物和 IDE 文件被跟踪</a></li>
+      <li class="lv2"><a href="#5">5. 推荐改进路线</a></li>
+      <li class="lv2"><a href="#_31">第一阶段：安全与仓库卫生</a></li>
+      <li class="lv2"><a href="#agent">第二阶段：修复 Agent 运行正确性</a></li>
+      <li class="lv2"><a href="#_32">第三阶段：建立自动化质量门禁</a></li>
+      <li class="lv2"><a href="#_33">第四阶段：提高生产化程度</a></li>
+      <li class="lv2"><a href="#6">6. 推荐目标架构</a></li>
+      <li class="lv2"><a href="#7">7. 最终评价</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>MySQL 高并发场景 1-18 结论汇总（只要结论）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="mysql-1-18">MySQL 高并发场景 1-18 结论汇总（只要结论）</h1>
 <blockquote>
 <p>仅保留每个场景的核心结论与关键实测数据，过程细节见各场景独立文档。</p>
@@ -206,7 +207,34 @@
 <hr />
 <h2 id="_1">全项目一句话总结</h2>
 <p><strong>MySQL 高并发治理 = 事务隔离/锁控数据一致性 + 索引/慢查询控查询效率 + 读写分离/分库分表/缓存/归档控数据规模 + 连接池/批量写/参数调优控吞吐 + 高可用/故障转移/锁死锁监控保稳定。</strong></p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#1">场景1：连接池与超卖问题</a></li>
+      <li class="lv2"><a href="#2">场景2：事务隔离级别</a></li>
+      <li class="lv2"><a href="#3-vs">场景3：悲观锁 vs 乐观锁</a></li>
+      <li class="lv2"><a href="#4-next-key-lock">场景4：间隙锁 / Next-Key Lock 与死锁</a></li>
+      <li class="lv2"><a href="#5">场景5：索引失效与慢查询</a></li>
+      <li class="lv2"><a href="#6">场景6：读写分离与主从延迟</a></li>
+      <li class="lv2"><a href="#7">场景7：分库分表</a></li>
+      <li class="lv2"><a href="#8">场景8：批量写入优化</a></li>
+      <li class="lv2"><a href="#9innodb-mvcc">场景9：InnoDB 并发控制（MVCC）</a></li>
+      <li class="lv2"><a href="#10redis-mysql">场景10：Redis 缓存 + MySQL 双写一致性</a></li>
+      <li class="lv2"><a href="#11">场景11：主从延迟治理（写后读一致性）</a></li>
+      <li class="lv2"><a href="#12-mysql">场景12：分布式锁（基于 MySQL 唯一索引）</a></li>
+      <li class="lv2"><a href="#13innodb">场景13：InnoDB 参数调优</a></li>
+      <li class="lv2"><a href="#14">场景14：慢查询定位与优化闭环</a></li>
+      <li class="lv2"><a href="#15mysql">场景15：MySQL 高可用</a></li>
+      <li class="lv2"><a href="#16hikaricp">场景16：连接池参数调优（HikariCP）</a></li>
+      <li class="lv2"><a href="#17">场景17：数据归档与冷热分离</a></li>
+      <li class="lv2"><a href="#18">场景18：锁等待与死锁监控治理</a></li>
+      <li class="lv2"><a href="#_1">全项目一句话总结</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

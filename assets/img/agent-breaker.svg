@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="1200" height="675" fill="#f8fafc"/>
+<text x="600" y="48" text-anchor="middle" style="font:bold 28px 'Microsoft YaHei';fill:#1f2937">熔断器：下游宕机时，请求不再拿我的线程去陪葬</text>
+<text x="600" y="80" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#6b7280">手写最小版 Breaker · TOOL_TIMEOUT=1000ms · 连续失败≥5 打开 · 冷却 5s · HALF_OPEN 只放 1 个探针</text>
+
+<rect x="90" y="150" width="210" height="86" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+<text x="195" y="188" text-anchor="middle" style="font:bold 24px 'Microsoft YaHei';fill:#14532d">CLOSED</text>
+<text x="195" y="216" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#166534">放行，累加连续失败</text>
+
+<rect x="450" y="150" width="210" height="86" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+<text x="555" y="188" text-anchor="middle" style="font:bold 24px 'Microsoft YaHei';fill:#7f1d1d">OPEN</text>
+<text x="555" y="216" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#991b1b">冷却内一律快速拒绝</text>
+
+<rect x="830" y="150" width="230" height="86" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+<text x="945" y="188" text-anchor="middle" style="font:bold 24px 'Microsoft YaHei';fill:#78350f">HALF_OPEN</text>
+<text x="945" y="216" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#92400e">只放 1 个探针试探</text>
+
+<defs>
+<marker id="ar" markerWidth="11" markerHeight="11" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#374151"/></marker>
+<marker id="ag" markerWidth="11" markerHeight="11" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#16a34a"/></marker>
+<marker id="ae" markerWidth="11" markerHeight="11" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#6b7280"/></marker>
+</defs>
+
+<path d="M300 193 H440" stroke="#374151" stroke-width="2.5" marker-end="url(#ar)"/>
+<text x="370" y="180" text-anchor="middle" style="font:15px 'Microsoft YaHei';fill:#374151">连续失败 ≥5</text>
+<path d="M660 193 H820" stroke="#374151" stroke-width="2.5" marker-end="url(#ar)"/>
+<text x="740" y="180" text-anchor="middle" style="font:15px 'Microsoft YaHei';fill:#374151">冷却 5s 到</text>
+<path d="M945 236 C945 322 195 322 195 244" stroke="#16a34a" stroke-width="2.5" fill="none" marker-end="url(#ag)"/>
+<text x="570" y="316" text-anchor="middle" style="font:15px 'Microsoft YaHei';fill:#16a34a">探针成功 → 计数清零，复位</text>
+<path d="M880 236 C820 262 720 262 668 238" stroke="#6b7280" stroke-width="2.5" stroke-dasharray="7 5" fill="none" marker-end="url(#ae)"/>
+<text x="778" y="256" text-anchor="middle" style="font:14px 'Microsoft YaHei';fill:#6b7280">探针失败 → 再 OPEN</text>
+
+<rect x="90" y="350" width="480" height="200" fill="#ffffff" stroke="#e5e7eb"/>
+<text x="114" y="386" style="font:bold 20px 'Microsoft YaHei';fill:#374151">实测：基址指向死端口 59999，连打</text>
+<g style="font:19px 'Microsoft YaHei';fill:#4b5563">
+<text x="114" y="428">· 熔断打开前真试并失败：<tspan style="font:bold 22px;fill:#dc2626">5</tspan> 次（miss_fail）</text>
+<text x="114" y="468">· 熔断打开后被快速拒绝：<tspan style="font:bold 22px;fill:#dc2626">16</tspan> 次（breaker.rejects）</text>
+<text x="114" y="510" style="font:17px;fill:#6b7280">返回体统一是 { unavailable:true, reason:circuit-open }</text>
+<text x="114" y="538" style="font:17px;fill:#6b7280">→ 秒失败、不占 servlet 线程、模型据此说"查不到"</text>
+</g>
+
+<rect x="610" y="350" width="500" height="200" fill="#f1f5f9" stroke="#e2e8f0"/>
+<text x="634" y="386" style="font:bold 20px 'Microsoft YaHei';fill:#94a3b8">为什么这张图不画时间线</text>
+<g style="font:18px 'Microsoft YaHei';fill:#64748b">
+<text x="634" y="424">5 + 16 = 21，对不上"连打 20 次"。</text>
+<text x="634" y="458">因为这两个是<tspan style="fill:#334155">累计计数器</tspan>，不是逐次序列：</text>
+<text x="634" y="490">5 次真试各耗满 1s 超时，冷却 5s 很可能</text>
+<text x="634" y="518">在连打过程中到点，中间会插入探针请求。</text>
+<text x="634" y="546" style="font:bold 18px;fill:#475569">没留逐次日志，就不编时间线。</text>
+</g>
+
+<text x="600" y="606" text-anchor="middle" style="font:17px 'Microsoft YaHei';fill:#374151">降级和熔断必须成对：只降级不熔断，每次都傻等 1 秒超时；只熔断不降级，模型拿到 null 就开始编。</text>
+<text x="600" y="640" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#9ca3af">生产上该用 resilience4j；手写这 60 行是为了让状态机在自己眼皮底下可解释。</text>
+</svg>

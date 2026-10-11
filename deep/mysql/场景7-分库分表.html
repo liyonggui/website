@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景7：分库分表（应用层水平分表）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="7">场景7：分库分表（应用层水平分表）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，<strong>单表 IO、索引深度、锁竞争</strong>仍是瓶颈。<strong>分库分表</strong>是终极方案：把单表数据<strong>物理拆分</strong>到多个库/表，缩小索引范围、缩短锁持有时间、拆分锁竞争区间。</p>
@@ -349,7 +350,33 @@
 <blockquote>
 <p><strong>分库分表</strong>：单表拆到 2 个独立 MySQL 实例（分库），每库再分 4 表（分表），两级路由（<code>user_id%4</code> 分表、<code>user_id/4%2</code> 分库）。实测 8 万行均匀分布到 8 个物理分片；精确路由只在 1 库 1 表查询（QPS 8624），跨库全扫广播 2 库 8 表（QPS 4222，快 2 倍）。跨库聚合需分别连每个分库再合并。分库分表把 IO/连接/锁竞争拆到多个实例，是终极方案，但跨库事务、聚合、扩容成本高，必须路由键精确、两级键互补。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、分片规则</a></li>
+      <li class="lv2"><a href="#_3">三、实测结果</a></li>
+      <li class="lv3"><a href="#1-sharddistribution">1. 数据分布（/shard/distribution）</a></li>
+      <li class="lv3"><a href="#2-vs-shardroute-vs-scan">2. 精确路由 vs 跨分片扫描（/shard/route-vs-scan）</a></li>
+      <li class="lv3"><a href="#3-shardaggregate">3. 跨分片聚合（/shard/aggregate）</a></li>
+      <li class="lv3"><a href="#4-shardbench">4. 并发吞吐对比（/shard/bench）</a></li>
+      <li class="lv2"><a href="#_4">四、生产避坑准则</a></li>
+      <li class="lv2"><a href="#_5">五、面试简述</a></li>
+      <li class="lv2"><a href="#61">6.1 背景</a></li>
+      <li class="lv2"><a href="#62">6.2 两级路由规则</a></li>
+      <li class="lv2"><a href="#63-2-4-8-8">6.3 实测结果（2 分库 × 4 分表 = 8 物理分片，共 8 万行）</a></li>
+      <li class="lv3"><a href="#1-dbsharddistribution">1. 数据分布（/dbshard/distribution）</a></li>
+      <li class="lv3"><a href="#2-vs-dbshardroute-vs-scan">2. 精确路由 vs 跨库扫描（/dbshard/route-vs-scan）</a></li>
+      <li class="lv3"><a href="#3-dbshardaggregate">3. 跨库聚合（/dbshard/aggregate）</a></li>
+      <li class="lv3"><a href="#4-dbshardbench">4. 并发吞吐对比（/dbshard/bench）</a></li>
+      <li class="lv2"><a href="#64">6.4 分库分表生产要点</a></li>
+      <li class="lv2"><a href="#65">6.5 面试简述（分库分表补强）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

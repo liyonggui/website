@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>前提: 3 主 3 从集群 + 压测应用 8082 已启动</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h2 id="815-pipeline-rtt">场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化</h2>
 <h3 id="8151">8.15.1 背景与问题</h3>
 <p>场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT &lt; 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、10~50ms（跨 Region）。</p>
@@ -2648,7 +2649,83 @@ RAW:    Pipeline 中 batchSize 个独立 INCRBY（零脚本，基线对比）
 <span class="c1">// ❌ 高风险：MERGED EVAL（batchSize &gt; 100 时 sideP99 恶化）</span>
 <span class="n">futures</span><span class="p">.</span><span class="na">add</span><span class="p">(</span><span class="n">async</span><span class="p">.</span><span class="na">eval</span><span class="p">(</span><span class="n">mergedLua</span><span class="p">,</span><span class="w"> </span><span class="n">allKeys</span><span class="p">,</span><span class="w"> </span><span class="n">allArgs</span><span class="p">));</span><span class="w">  </span><span class="c1">// 全局阻塞，sideP99 55ms+</span>
 </code></pre></div>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#815-pipeline-rtt">场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化</a></li>
+      <li class="lv3"><a href="#8151">8.15.1 背景与问题</a></li>
+      <li class="lv3"><a href="#8152">8.15.2 原理公式</a></li>
+      <li class="lv3"><a href="#8153">8.15.3 压测架构</a></li>
+      <li class="lv3"><a href="#8154">8.15.4 测试方法</a></li>
+      <li class="lv3"><a href="#8155-rest">8.15.5 REST 端点</a></li>
+      <li class="lv3"><a href="#8156">8.15.6 实测数据</a></li>
+      <li class="lv3"><a href="#8157">8.15.7 关键发现</a></li>
+      <li class="lv3"><a href="#8158-docker">8.15.8 Docker 配置变更</a></li>
+      <li class="lv3"><a href="#8159-rttbenchservice">8.15.9 RttBenchService 实现要点</a></li>
+      <li class="lv3"><a href="#816-pipeline">8.16 Pipeline 混合读写 → 读饥饿演示</a></li>
+      <li class="lv2"><a href="#817-pipeline-wait-wait">场景 8.17: Pipeline + 同步 WAIT 副本确认 — WAIT 对吞吐的退化量化</a></li>
+      <li class="lv3"><a href="#8171">8.17.1 背景与问题</a></li>
+      <li class="lv3"><a href="#8172">8.17.2 压测架构</a></li>
+      <li class="lv3"><a href="#8173-rest">8.17.3 REST 端点</a></li>
+      <li class="lv3"><a href="#8174">8.17.4 实测数据</a></li>
+      <li class="lv3"><a href="#8175">8.17.5 关键发现</a></li>
+      <li class="lv3"><a href="#8176">8.17.6 结论</a></li>
+      <li class="lv3"><a href="#8177">8.17.7 实现要点</a></li>
+      <li class="lv3"><a href="#8178">8.17.8 测试方法</a></li>
+      <li class="lv2"><a href="#818-pipeline-waitfire-and-forget-wait">场景 8.18: Pipeline + 异步 WAIT（Fire-and-Forget）— 根除 WAIT 吞吐退化</a></li>
+      <li class="lv3"><a href="#8181">8.18.1 背景与问题</a></li>
+      <li class="lv3"><a href="#8182">8.18.2 原理</a></li>
+      <li class="lv3"><a href="#8183-rest">8.18.3 REST 端点</a></li>
+      <li class="lv3"><a href="#8184">8.18.4 配置参数</a></li>
+      <li class="lv3"><a href="#8185">8.18.5 实测数据</a></li>
+      <li class="lv3"><a href="#8186">8.18.6 核心结论</a></li>
+      <li class="lv3"><a href="#8187">8.18.7 生产级推广建议</a></li>
+      <li class="lv3"><a href="#81871-wait">8.18.7.1 异步 WAIT 的风险与要求</a></li>
+      <li class="lv3"><a href="#8188">8.18.8 实现要点</a></li>
+      <li class="lv3"><a href="#8189">8.18.9 测试方法</a></li>
+      <li class="lv3"><a href="#81811">8.18.11 检测清单 / 观测指标（生产化建议）</a></li>
+      <li class="lv3"><a href="#81810-wait-vs-wait">8.18.10 同步 WAIT vs 异步 WAIT 架构决策树</a></li>
+      <li class="lv3"><a href="#81812-faq">8.18.12 精简修正版要点（FAQ / 关键结论）</a></li>
+      <li class="lv2"><a href="#819-pipeline">8.19 Pipeline 断连重连 + 幂等性</a></li>
+      <li class="lv3"><a href="#8191">8.19.1 背景</a></li>
+      <li class="lv3"><a href="#8192">8.19.2 测试设计</a></li>
+      <li class="lv3"><a href="#8193-incr">8.19.3 测试结果 — 裸 INCR（无去重）</a></li>
+      <li class="lv3"><a href="#8194">8.19.4 分析</a></li>
+      <li class="lv3"><a href="#8195">8.19.5 生产建议</a></li>
+      <li class="lv3"><a href="#8196">8.19.6 验证指标对照</a></li>
+      <li class="lv3"><a href="#8197">8.19.7 幂等修复验证 — 三种方案同环境公平对比</a></li>
+      <li class="lv2"><a href="#820-lua-eval-vs-pipeline-">场景 8.20: Lua EVAL vs Pipeline — 原子读-改-写的吞吐与延迟对比</a></li>
+      <li class="lv3"><a href="#8201">8.20.1 背景与问题</a></li>
+      <li class="lv3"><a href="#8202">8.20.2 原理</a></li>
+      <li class="lv3"><a href="#8203-rest">8.20.3 REST 端点</a></li>
+      <li class="lv3"><a href="#8204">8.20.4 测试参数</a></li>
+      <li class="lv3"><a href="#8205">8.20.5 实测数据</a></li>
+      <li class="lv3"><a href="#8206">8.20.6 决策树更新</a></li>
+      <li class="lv3"><a href="#8207">8.20.7 关键教训</a></li>
+      <li class="lv3"><a href="#8208-pipeline-lua">8.20.8 Pipeline 优于 Lua 的场景分析</a></li>
+      <li class="lv2"><a href="#a">附录 A: 工程化建议小结</a></li>
+      <li class="lv2"><a href="#b">附录 B: 监控与告警模板</a></li>
+      <li class="lv3"><a href="#b1">附录 B.1: 进程崩溃重启恢复流程（示例）</a></li>
+      <li class="lv2"><a href="#c">附录 C: 实验测量误差与可复现性</a></li>
+      <li class="lv2"><a href="#d">附录 D: 环境细节补充</a></li>
+      <li class="lv2"><a href="#e">附录 E: 网络模拟精确性说明</a></li>
+      <li class="lv2"><a href="#f-drain">附录 F: Drain 实现注意事项</a></li>
+      <li class="lv2"><a href="#g">附录 G: 并发/连接数术语说明</a></li>
+      <li class="lv2"><a href="#821-pipeline-eval">场景 8.21: Pipeline 内循环调用 EVAL 嵌套执行（已实测 ✅）</a></li>
+      <li class="lv3"><a href="#8211">8.21.1 背景与问题</a></li>
+      <li class="lv3"><a href="#8212-eval-eval">8.21.2 理论分析：为什么嵌套 EVAL 比单 EVAL 危害大</a></li>
+      <li class="lv3"><a href="#8213">8.21.3 理论影响预估</a></li>
+      <li class="lv3"><a href="#8214">8.21.4 规避方案</a></li>
+      <li class="lv3"><a href="#8215-nested-vs-merged-vs-raw3-3-sweep">8.21.5 实测：NESTED vs MERGED vs RAW（3 × 3 Sweep）</a></li>
+      <li class="lv3"><a href="#8216">8.21.6 关键发现</a></li>
+      <li class="lv3"><a href="#8217">8.21.7 实测结论</a></li>
+      <li class="lv3"><a href="#8218">8.21.8 更新后的规避方案</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

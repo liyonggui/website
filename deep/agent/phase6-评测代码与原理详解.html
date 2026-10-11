@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="phase6-ci">phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</h1>
 <blockquote>
 <p>配套：<code>AI-Agent新手教学.md</code> 第 8 课、<code>phase5-MCP代码与原理详解.md</code>（trajectory 数据来源）。代码在 <code>D:\ai-agent-project\phase6-eval</code>。
@@ -195,7 +196,24 @@
 <li>无 Langfuse 式数据集版本化（gold 集还在代码里写死）；</li>
 <li>门禁阈值一刀切 90%，实际应<strong>分维度设</strong>（keyword 可 100，judge 80 起步）。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#0">0. 文件总览</a></li>
+      <li class="lv2"><a href="#1">1. 评测集：带&quot;标准答案&quot;的场景</a></li>
+      <li class="lv2"><a href="#2">2. 三路判分（核心设计）</a></li>
+      <li class="lv2"><a href="#3">3. 裁判的写法（校准前后两版）</a></li>
+      <li class="lv2"><a href="#4-runs-temp0">4. runs 中位数 + 离散度（temp=0 也压不掉的噪声）</a></li>
+      <li class="lv2"><a href="#5">5. 评测→指标→门禁（闭环）</a></li>
+      <li class="lv2"><a href="#6-dbmcp-serverclienteval">6. 实测战果（全栈：DB→后端→mcp-server→client→eval）</a></li>
+      <li class="lv2"><a href="#7">7. 坑清单</a></li>
+      <li class="lv2"><a href="#8">8. 诚实边界</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

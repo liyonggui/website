@@ -49,7 +49,8 @@
     <a class="back" href="../blog.html">← 返回博客索引</a>
     <h1>01-知乎回答-源码阅读方法版</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <p>我的做法是三步：<strong>先立一个可证伪的假设 → 去源码里找到定义和调用链 → 写代码把它跑出来验证</strong>。只看不跑，读完记住的还是别人的结论；带着问题读，一个 <code>object.c</code> 能顶十篇解读文章。</p>
 <p>《Redis 设计与实现》那本书我也读过，但读完做的是另一件事：<strong>把书里那些"embstr 一次 malloc 所以更快"的结论，逐个写压测验证一遍</strong>。大部分成立，有一个反直觉的发现，是书里和所有源码解读文章都不会告诉你的。下面用这个真实案例讲方法。</p>
 <h2 id="redis">第一步：把"我想学 Redis 源码"换成一个能被证伪的假设</h2>
@@ -227,7 +228,20 @@
 <p><strong>一点诚实的补充</strong>：上面的数据是单轮采样，max 是本次观测到的单次极值，绝对值当量级参考；也没记录内存分配器（jemalloc / libc）和 lazyfree 配置，它们会影响 malloc 相关路径的绝对耗时。<strong>看相对差距，别拿这些数字和 redis-benchmark 对比。</strong></p>
 <p>同一套方法我还测了 Hash、Set、ZSet 的编码对比，结论和八股文同样有出入（比如 field 逼近 128 时 hashtable 反而比 listpack 快 21%）。</p>
 <p><strong>八股可以被背，结论只能被跑出来。</strong> 源码读完记得跑一遍——这是读源码和背源码唯一的区别。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#redis">第一步：把&quot;我想学 Redis 源码&quot;换成一个能被证伪的假设</a></li>
+      <li class="lv2"><a href="#_1">第二步：只找三样东西——定义、入口、调用链</a></li>
+      <li class="lv2"><a href="#_2">第三步：跑起来验证——这一步大多数人会跳过，但收益最大</a></li>
+      <li class="lv2"><a href="#_3">从这个案例里能提炼的四条方法</a></li>
+      <li class="lv2"><a href="#_4">一份按难度排开的阅读路径</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

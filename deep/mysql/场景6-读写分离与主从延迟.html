@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景6：读写分离与主从延迟</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="6">场景6：读写分离与主从延迟</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>在 MySQL 高并发场景下，<strong>读多写少</strong>是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用<strong>读写分离</strong>：<strong>写走主库、读走从库</strong>，把读压力分摊到只读副本上。</p>
@@ -189,7 +190,24 @@ Auto_Position: 1             # GTID 自动定位
 <blockquote>
 <p><strong>读写分离与主从延迟</strong>：搭建 1 主 1 从，主库开 binlog+GTID，从库 <code>mysqldump</code> 拉全量后 <code>MASTER_AUTO_POSITION=1</code> 建立复制。实测写主库后从库约 1~6ms 可见，<code>Replica_IO_Running/SQL_Running</code> 均 Yes；读主库 100% 强一致，读从库为最终一致（延迟窗口内可能读旧值）。读写分离把读压力分流到从库（并发 50 下从库读 QPS 超 1 万），但引入主从延迟——强一致场景读主库，可容忍最终一致场景读从库，并监控 <code>Seconds_Behind_Source</code>。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、主从复制拓扑搭建</a></li>
+      <li class="lv2"><a href="#_3">三、实测结果</a></li>
+      <li class="lv3"><a href="#1-replicationstatus">1. 主从复制状态（/replication/status）</a></li>
+      <li class="lv3"><a href="#2-replicationdelay">2. 主从延迟量化（/replication/delay）</a></li>
+      <li class="lv3"><a href="#3-vs-replicationconsistency">3. 强一致 vs 最终一致（/replication/consistency）</a></li>
+      <li class="lv3"><a href="#4-replicationbench">4. 读写分离读吞吐对比（/replication/bench）</a></li>
+      <li class="lv2"><a href="#_4">四、生产避坑准则</a></li>
+      <li class="lv2"><a href="#_5">五、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

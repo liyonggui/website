@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="1200" height="675" fill="#f8fafc"/>
+<text x="600" y="50" text-anchor="middle" style="font:bold 28px 'Microsoft YaHei';fill:#1f2937">交错矩阵 9 轮（每轮全新进程 + 闭环对账）</text>
+<g stroke="#e5e7eb"><path d="M100 480 H1140 M100 420 H1140 M100 360 H1140 M100 300 H1140 M100 240 H1140 M100 180 H1140"/></g>
+<g style="font:15px 'Microsoft YaHei';fill:#9ca3af" text-anchor="end"><text x="92" y="485">0</text><text x="92" y="425">2,000</text><text x="92" y="365">4,000</text><text x="92" y="305">6,000</text><text x="92" y="245">8,000</text><text x="92" y="185">10,000</text></g>
+<text x="40" y="330" transform="rotate(-90 40 330)" text-anchor="middle" style="font:bold 15px 'Microsoft YaHei';fill:#6b7280">QPS</text>
+<rect x="194" y="252" width="44" height="228" rx="5" fill="#94a3b8" opacity="0.55"/>
+<text x="216" y="244" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">7,589</text>
+<rect x="248" y="253" width="44" height="227" rx="5" fill="#94a3b8" opacity="0.75"/>
+<text x="270" y="245" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">7,574</text>
+<rect x="302" y="274" width="44" height="206" rx="5" fill="#94a3b8" opacity="0.9500000000000001"/>
+<text x="324" y="266" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">6,880</text>
+<line x1="186" y1="253" x2="346" y2="253" stroke="#0f172a" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="354" y="258" style="font:bold 15px 'Microsoft YaHei';fill:#0f172a">中位 7,574</text>
+<text x="270" y="515" text-anchor="middle" style="font:bold 17px 'Microsoft YaHei';fill:#1f2937">A：ES 同步 + 3 异步</text>
+<text x="270" y="537" text-anchor="middle" style="font:13px 'Microsoft YaHei';fill:#6b7280">轮1 / 轮2 / 轮3</text>
+<rect x="544" y="257" width="44" height="223" rx="5" fill="#f59e0b" opacity="0.55"/>
+<text x="566" y="249" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">7,421</text>
+<rect x="598" y="259" width="44" height="221" rx="5" fill="#f59e0b" opacity="0.75"/>
+<text x="620" y="251" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">7,378</text>
+<rect x="652" y="258" width="44" height="222" rx="5" fill="#f59e0b" opacity="0.9500000000000001"/>
+<text x="674" y="250" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">7,387</text>
+<line x1="536" y1="258" x2="696" y2="258" stroke="#0f172a" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="704" y="263" style="font:bold 15px 'Microsoft YaHei';fill:#0f172a">中位 7,387</text>
+<text x="620" y="515" text-anchor="middle" style="font:bold 17px 'Microsoft YaHei';fill:#1f2937">B：4 路全异步</text>
+<text x="620" y="537" text-anchor="middle" style="font:13px 'Microsoft YaHei';fill:#6b7280">轮1 / 轮2 / 轮3</text>
+<rect x="894" y="190" width="44" height="290" rx="5" fill="#10b981" opacity="0.55"/>
+<text x="916" y="182" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">9,680</text>
+<rect x="948" y="175" width="44" height="305" rx="5" fill="#10b981" opacity="0.75"/>
+<text x="970" y="167" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">10,171</text>
+<rect x="1002" y="167" width="44" height="313" rx="5" fill="#10b981" opacity="0.9500000000000001"/>
+<text x="1024" y="159" text-anchor="middle" style="font:bold 14px 'Microsoft YaHei';fill:#374151">10,430</text>
+<line x1="886" y1="175" x2="1046" y2="175" stroke="#0f172a" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="1054" y="180" style="font:bold 15px 'Microsoft YaHei';fill:#0f172a">中位 10,171</text>
+<text x="970" y="515" text-anchor="middle" style="font:bold 17px 'Microsoft YaHei';fill:#1f2937">C：MySQL 同步 + 3 异步</text>
+<text x="970" y="537" text-anchor="middle" style="font:13px 'Microsoft YaHei';fill:#6b7280">轮1 / 轮2 / 轮3</text>
+<rect x="60" y="565" width="1080" height="72" rx="12" fill="#0f172a"/>
+<text x="600" y="596" text-anchor="middle" style="font:bold 20px 'Microsoft YaHei';fill:#f9fafb">C 比 B 快 +37.7%，比 A 快 +34.3% —— 模式内波动仅 ±5%</text>
+<text x="600" y="624" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#94a3b8">4C/8T 单机 · 250 并发×60s · 3 轮预热后正式 3 轮取中位数 · 9/9 四库对账精确一致</text>
+</svg>

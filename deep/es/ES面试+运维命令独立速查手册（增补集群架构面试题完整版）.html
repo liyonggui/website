@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES面试\+运维命令独立速查手册（增补集群架构面试题完整版）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="es">ES面试+运维命令独立速查手册（增补集群架构面试题完整版）</h1>
 <h2 id="_1">文档说明</h2>
 <p>本文档拆分自完整版ES手册，分为三大模块：<strong>集群架构高频面试题（新增）+ 核心业务面试题 + 全量运维命令 + 批量运维脚本</strong>，所有答案为面试满分标准答案，命令可直接复制上线使用，适合面试突击、日常运维随身查阅。</p>
@@ -653,7 +654,70 @@ chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
 <blockquote>
 <p>（注：部分内容可能由 AI 生成）</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">文档说明</a></li>
+      <li class="lv2"><a href="#1-es">1. ES集群有哪些节点角色？各自作用是什么？生产如何规划节点？</a></li>
+      <li class="lv3"><a href="#_2">标准答案</a></li>
+      <li class="lv3"><a href="#_3">生产最佳节点规划</a></li>
+      <li class="lv2"><a href="#2">2. 什么是集群脑裂？如何产生？生产怎么解决？</a></li>
+      <li class="lv3"><a href="#_4">标准答案</a></li>
+      <li class="lv2"><a href="#3-es">3. ES集群通信机制是什么？客户端请求完整执行流程？</a></li>
+      <li class="lv3"><a href="#_6">集群内部通信</a></li>
+      <li class="lv3"><a href="#_7">客户端写入一条数据完整流程（面试高频）</a></li>
+      <li class="lv2"><a href="#4-es">4. ES集群高可用如何保证？主副本分片设计原理？</a></li>
+      <li class="lv3"><a href="#_8">标准答案</a></li>
+      <li class="lv3"><a href="#_9">面试追问：副本数可以大于节点数吗？</a></li>
+      <li class="lv2"><a href="#5">5. 集群变红、变黄分别代表什么？常见原因与修复方案？</a></li>
+      <li class="lv3"><a href="#_10">快速排查命令</a></li>
+      <li class="lv2"><a href="#6-es">6. 跨机房部署ES集群可行吗？有什么痛点？生产建议？</a></li>
+      <li class="lv3"><a href="#_11">标准答案</a></li>
+      <li class="lv2"><a href="#7-es">7. ES集群扩容怎么做？横向扩容节点后分片会自动均衡吗？</a></li>
+      <li class="lv3"><a href="#_14">标准答案</a></li>
+      <li class="lv2"><a href="#8-es7es6">8. ES7相较于ES6，集群架构核心改动有哪些？</a></li>
+      <li class="lv2"><a href="#1">1、分片路由相关</a></li>
+      <li class="lv3"><a href="#11-es">1.1 ES 文档路由分片原理？</a></li>
+      <li class="lv3"><a href="#12">1.2 什么是分片倾斜？两种倾斜怎么解决？</a></li>
+      <li class="lv3"><a href="#13">1.3 单分片合理容量规划原则？</a></li>
+      <li class="lv2"><a href="#2_1">2、分片分配与磁盘水位</a></li>
+      <li class="lv3"><a href="#21-es">2.1 ES 分片均衡打分逻辑？</a></li>
+      <li class="lv3"><a href="#22">2.2 磁盘三级水位作用？</a></li>
+      <li class="lv2"><a href="#3ilm">3、ILM 冷热分层（重中之重）</a></li>
+      <li class="lv3"><a href="#31-ilm">3.1 ILM 流转特点？</a></li>
+      <li class="lv3"><a href="#32">3.2 温/冷层级能不能回退热层？通用操作是什么？</a></li>
+      <li class="lv3"><a href="#33-ilm-delete">3.3 ILM Delete 删除索引后还能恢复吗？快照需要手动配置吗？</a></li>
+      <li class="lv3"><a href="#34-ilm">3.4 ILM 删除防丢两种方案？</a></li>
+      <li class="lv2"><a href="#4reindex">4、Reindex 重构相关</a></li>
+      <li class="lv3"><a href="#41-reindex">4.1 哪些场景必须用 Reindex，不能原地修改？</a></li>
+      <li class="lv3"><a href="#42-reindex">4.2 零停机 Reindex 完整流程？</a></li>
+      <li class="lv2"><a href="#5-rollover">5、别名 \&amp;amp; Rollover 滚动索引</a></li>
+      <li class="lv3"><a href="#51">5.1 索引别名设计好处？</a></li>
+      <li class="lv3"><a href="#52-rollover">5.2 Rollover 原理与适用场景？</a></li>
+      <li class="lv2"><a href="#6">6、跨中间件通用分片思想（面试加分）</a></li>
+      <li class="lv2"><a href="#73">7、3分钟面试口述总结（完整版，含集群架构）</a></li>
+      <li class="lv2"><a href="#1_1">1、集群健康 \&amp;amp; 分片排查（新增集群专属排查命令）</a></li>
+      <li class="lv2"><a href="#2_2">2、分片均衡 \&amp;amp; 搬迁限流配置</a></li>
+      <li class="lv2"><a href="#3ilm_1">3、ILM 生命周期运维命令</a></li>
+      <li class="lv2"><a href="#4ilm">4、ILM 冷热层级向上回退全套命令</a></li>
+      <li class="lv3"><a href="#warm-hot">Warm → Hot</a></li>
+      <li class="lv3"><a href="#cold-warm">Cold → Warm</a></li>
+      <li class="lv3"><a href="#cold-hot">Cold → Hot 跨层回退</a></li>
+      <li class="lv3"><a href="#_17">回流配套解锁命令</a></li>
+      <li class="lv2"><a href="#5_1">5、索引别名管理</a></li>
+      <li class="lv2"><a href="#6rollover">6、Rollover 滚动索引运维</a></li>
+      <li class="lv2"><a href="#7reindex">7、Reindex 数据迁移常用</a></li>
+      <li class="lv2"><a href="#8-ilm">8、快照备份 \&amp;amp; 恢复（防ILM误删）</a></li>
+      <li class="lv2"><a href="#9slm">9、SLM 自动定时快照策略</a></li>
+      <li class="lv2"><a href="#10ilm">10、ILM删除阶段前置快照配置片段</a></li>
+      <li class="lv2"><a href="#1-warm-hotwarm_to_hotsh">脚本1：批量所有 Warm 索引回迁 Hot（warm_to_hot.sh）</a></li>
+      <li class="lv3"><a href="#_18">使用方式</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

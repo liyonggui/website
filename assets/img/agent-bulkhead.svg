@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="1200" height="675" fill="#f8fafc"/>
+<text x="600" y="48" text-anchor="middle" style="font:bold 28px 'Microsoft YaHei';fill:#1f2937">LLM 舱壁：Semaphore(3) 挡住了 90% 的请求</text>
+<text x="600" y="80" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#6b7280">k6 开环 6 req/s × 12s = 72 个请求打到 /chat，单次模型往返 mean 4.7s</text>
+
+<rect x="100" y="150" width="72" height="90" fill="#3b82f6"/>
+<rect x="172" y="150" width="648" height="90" fill="#f59e0b"/>
+<text x="136" y="205" text-anchor="middle" style="font:bold 22px 'Microsoft YaHei';fill:#ffffff">7</text>
+<text x="496" y="192" text-anchor="middle" style="font:bold 26px 'Microsoft YaHei';fill:#ffffff">65 个 → tryAcquire 失败 → 秒回 503</text>
+<text x="496" y="224" text-anchor="middle" style="font:18px 'Microsoft YaHei';fill:#fff7ed">占请求总数 90.3%，平均耗时几毫秒</text>
+
+<g style="font:18px 'Microsoft YaHei';fill:#374151">
+<rect x="100" y="290" width="26" height="26" fill="#3b82f6"/><text x="136" y="311">真进模型（约 7 个）</text>
+<rect x="420" y="290" width="26" height="26" fill="#f59e0b"/><text x="456" y="311">被舱壁拒绝（65 个，未花一分钱 token）</text>
+</g>
+
+<text x="100" y="380" style="font:bold 21px 'Microsoft YaHei';fill:#374151">这 7 个不是运气，是能算出来的：</text>
+<g style="font:19px 'Microsoft YaHei';fill:#4b5563">
+<text x="120" y="420">· 并发额度 3 个，每次往返 ≈ 4.7s</text>
+<text x="120" y="455">· 稳态吞吐 ≈ 3 ÷ 4.7 ≈ 0.64 req/s</text>
+<text x="120" y="490">· 12s 窗口 ≈ 7.6 个  →  实测 7 个 ✓</text>
+</g>
+
+<rect x="640" y="360" width="460" height="180" fill="#eff6ff" stroke="#bfdbfe"/>
+<text x="870" y="398" text-anchor="middle" style="font:bold 20px 'Microsoft YaHei';fill:#1d4ed8">为什么不排队？</text>
+<g style="font:17px 'Microsoft YaHei';fill:#1e3a5a">
+<text x="668" y="434">排队 4 秒和拒绝，对用户是一样的；</text>
+<text x="668" y="466">但拒绝能立刻给明确信号，</text>
+<text x="668" y="498">且不占 servlet 线程、不烧 token 额度。</text>
+</g>
+
+<text x="100" y="590" style="font:bold 19px 'Microsoft YaHei';fill:#b45309">坑：k6 把 503 计进 http_req_failed，所以那条阈值一定红。</text>
+<text x="100" y="622" style="font:18px 'Microsoft YaHei';fill:#92400e">这里的 503 是准入控制在动作，不是故障——看 guardrail_rejected，别去"修"一个正常的东西。</text>
+</svg>

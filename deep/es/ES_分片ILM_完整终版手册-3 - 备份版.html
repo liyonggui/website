@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="elasticsearch-ilmreindexrolloverilm">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</h1>
 <p>（全文无省略、无占位符，可直接复制保存为 <code>.md</code> 文件，生产+面试完整使用）</p>
 <h2 id="_1">目录</h2>
@@ -1255,7 +1256,111 @@ ES无默认自动快照，快照仓库、SLM定时备份、ILM删除前置备份
 <p>字段改名改类型、调整主分片数量、重构路由打散热点均无法原地修改，统一采用<strong>新建索引+Reindex脚本迁移+业务双写同步增量+原子别名切换</strong>零停机改造方案；业务上线初期就规划固定访问别名，底层索引迭代重构全程不用修改业务代码，切换、回滚简单便捷。面向日志、流水无限时序写入场景，可采用Rollover滚动索引自动拆分索引，配合ILM完成完整生命周期治理。
 ILM、分片均衡属于集群常驻自动配置体系，Reindex结构重构、ILM反向回流属于一次性人工运维变更流程，无法全自动配置执行。</p>
 <p>该分片设计思想通用于MySQL分库分表、Redis集群槽位、Kafka分区设计；成熟中间件自带均衡自愈与生命周期能力，运维成本更低，中小企业优先使用原生方案，不盲目自研分布式分片路由架构。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#_3">层级结构</a></li>
+      <li class="lv2"><a href="#_4">两条核心铁律</a></li>
+      <li class="lv2"><a href="#3order-9118">示例：3节点，order索引 9主1副本（总分片18）</a></li>
+      <li class="lv2"><a href="#1">1、路由计算公式（底层固定逻辑）</a></li>
+      <li class="lv3"><a href="#_5">硬性约束</a></li>
+      <li class="lv2"><a href="#2murmurhash3">2、MurmurHash3 两个版本分工</a></li>
+      <li class="lv3"><a href="#_6">哈希碰撞说明</a></li>
+      <li class="lv2"><a href="#3routing">3、Routing 字符串长度规范</a></li>
+      <li class="lv2"><a href="#4mysql">4、路由打散与MySQL兼容性</a></li>
+      <li class="lv2"><a href="#1_1">类型1：路由数据倾斜（业务层面，分片均衡算法无法解决）</a></li>
+      <li class="lv3"><a href="#_8">成因</a></li>
+      <li class="lv3"><a href="#_9">典型场景</a></li>
+      <li class="lv3"><a href="#_10">根治方案：路由二次后缀打散</a></li>
+      <li class="lv3"><a href="#java">Java 工具类</a></li>
+      <li class="lv3"><a href="#_11">扩容兜底方案</a></li>
+      <li class="lv2"><a href="#2es">类型2：节点分片分配倾斜（集群层面，ES均衡算法自动调节）</a></li>
+      <li class="lv2"><a href="#1_2">1、分配整体流程</a></li>
+      <li class="lv3"><a href="#_13">前置过滤规则（优先级最高，优先执行）</a></li>
+      <li class="lv2"><a href="#2">2、加权打分均衡算法</a></li>
+      <li class="lv2"><a href="#3">3、磁盘三级水位（分配强门槛）</a></li>
+      <li class="lv2"><a href="#4io">4、分片搬迁并发配置（生产常用，防IO雪崩）</a></li>
+      <li class="lv2"><a href="#5">5、主副分片补充规则</a></li>
+      <li class="lv2"><a href="#1_3">1、单分片合理容量（核心规划依据）</a></li>
+      <li class="lv2"><a href="#2_1">2、主分片数量计算公式</a></li>
+      <li class="lv2"><a href="#3_1">3、副本配置说明</a></li>
+      <li class="lv2"><a href="#4">4、节点磁盘使用率红线（冷热区分）</a></li>
+      <li class="lv2"><a href="#5_1">5、单节点分片总数上限</a></li>
+      <li class="lv2"><a href="#6">6、单个索引总体积上限</a></li>
+      <li class="lv2"><a href="#61">6.1 底层核心原理</a></li>
+      <li class="lv2"><a href="#62-ilm-vs">6.2 ILM轮询 vs 自定义定时任务 对比</a></li>
+      <li class="lv2"><a href="#63-ilm">6.3 ILM 四阶段参数速查表（含义+默认+修改场景+推荐值）</a></li>
+      <li class="lv3"><a href="#ilm_1">全局ILM配置</a></li>
+      <li class="lv3"><a href="#hot">Hot 热阶段</a></li>
+      <li class="lv3"><a href="#warm">Warm 温阶段</a></li>
+      <li class="lv3"><a href="#cold">Cold 冷阶段</a></li>
+      <li class="lv3"><a href="#delete">Delete 删除阶段</a></li>
+      <li class="lv2"><a href="#64-ilm">6.4 可直接上线ILM策略+索引模板</a></li>
+      <li class="lv3"><a href="#1ilm">1）创建ILM策略</a></li>
+      <li class="lv3"><a href="#2ilm">2）通用索引模板绑定ILM</a></li>
+      <li class="lv2"><a href="#65-ilm">6.5 ILM生产八大注意事项</a></li>
+      <li class="lv2"><a href="#66-ilm">6.6 ILM故障排查对照表</a></li>
+      <li class="lv2"><a href="#67-ilm">6.7 ILM常用运维命令</a></li>
+      <li class="lv2"><a href="#68-ilm">6.8 ILM策略修改快速判断口诀</a></li>
+      <li class="lv2"><a href="#_15">前置核心结论</a></li>
+      <li class="lv2"><a href="#71">7.1 场景一：全量修改字段名称、字段类型</a></li>
+      <li class="lv3"><a href="#_16">不可原地修改清单</a></li>
+      <li class="lv3"><a href="#_17">完整零停机改造步骤</a></li>
+      <li class="lv3"><a href="#_18">风险避坑要点</a></li>
+      <li class="lv2"><a href="#72">7.2 场景二：重新分片、修改路由规则、全局打散热点</a></li>
+      <li class="lv3"><a href="#_19">底层原理</a></li>
+      <li class="lv3"><a href="#_20">完整落地步骤</a></li>
+      <li class="lv3"><a href="#_21">常见误区澄清</a></li>
+      <li class="lv2"><a href="#_23">核心认知</a></li>
+      <li class="lv2"><a href="#81-ilm">8.1 索引初始化完整模板（索引+别名+ILM三合一，生产直接复用）</a></li>
+      <li class="lv3"><a href="#ilmorder_hot_warm_cold_policy">前置：ILM策略已创建（order_hot_warm_cold_policy，前文已有，不再重复）</a></li>
+      <li class="lv3"><a href="#_24">新建索引同时绑定业务别名</a></li>
+      <li class="lv2"><a href="#82">8.2 业务强制使用规范</a></li>
+      <li class="lv2"><a href="#83">8.3 重构专用原子切换别名语句</a></li>
+      <li class="lv2"><a href="#84">8.4 配套校验命令</a></li>
+      <li class="lv2"><a href="#85">8.5 别名设计总结</a></li>
+      <li class="lv2"><a href="#91-rollover">9.1 Rollover 核心原理回顾</a></li>
+      <li class="lv2"><a href="#92-ilm-order_hot_warm_cold_policy">9.2 前置依赖：复用已有ILM策略 order_hot_warm_cold_policy</a></li>
+      <li class="lv2"><a href="#93-1">9.3 步骤1：创建滚动索引专属模板（统一管控后续自动新建索引配置）</a></li>
+      <li class="lv2"><a href="#94-2">9.4 步骤2：初始化首个滚动索引 + 配置可写别名</a></li>
+      <li class="lv2"><a href="#95">9.5 业务使用规范</a></li>
+      <li class="lv2"><a href="#96-rollover">9.6 手动触发 Rollover 测试（验证机制有效性）</a></li>
+      <li class="lv2"><a href="#97">9.7 常用运维排查命令</a></li>
+      <li class="lv2"><a href="#98-mapping">9.8 后续架构重构方案（改分片/改路由/改Mapping）</a></li>
+      <li class="lv2"><a href="#99-rollover">9.9 Rollover 关键避坑要点</a></li>
+      <li class="lv2"><a href="#910">9.10 极简面试小结</a></li>
+      <li class="lv2"><a href="#101">10.1 核心前置认知（面试必背）</a></li>
+      <li class="lv3"><a href="#_25">通用底层逻辑（所有层级回退操作完全通用）</a></li>
+      <li class="lv2"><a href="#102">10.2 单索引手动回退分步操作</a></li>
+      <li class="lv3"><a href="#1_4">步骤1：查询索引当前冷热层级</a></li>
+      <li class="lv3"><a href="#1warm-hot">场景1：Warm → Hot 温层回退热层</a></li>
+      <li class="lv3"><a href="#2cold-warm">场景2：Cold → Warm 冷层回退温层</a></li>
+      <li class="lv3"><a href="#3cold-hot">场景3：Cold → Hot 冷层跨层直接回退热层</a></li>
+      <li class="lv3"><a href="#4_1">步骤4：回迁完成恢复自动生命周期</a></li>
+      <li class="lv3"><a href="#5_2">步骤5：配套兼容处理（索引存在对应操作才需要执行）</a></li>
+      <li class="lv2"><a href="#103-delete">10.3 致命边界：Delete删除阶段无法回退（新增快照全套补充说明）</a></li>
+      <li class="lv3"><a href="#es">重点答疑：ES快照是否需要手动配置？（面试高频追问）</a></li>
+      <li class="lv3"><a href="#ilm_3">生产两种ILM删除防丢数据兜底方案（完整可直接复制）</a></li>
+      <li class="lv3"><a href="#_26">快照恢复索引极简运维命令（误删恢复直接复制执行）</a></li>
+      <li class="lv3"><a href="#_27">一句话面试背诵总结</a></li>
+      <li class="lv2"><a href="#104-shellwarmhot">10.4 生产一键批量Shell脚本：所有Warm索引批量回迁Hot</a></li>
+      <li class="lv3"><a href="#_28">脚本使用步骤</a></li>
+      <li class="lv3"><a href="#_29">脚本通用改造说明</a></li>
+      <li class="lv2"><a href="#105">10.5 回流方案选型对比</a></li>
+      <li class="lv2"><a href="#106">10.6 面试极简背诵话术</a></li>
+      <li class="lv3"><a href="#1_5">现象1：节点分片数量分布不均衡</a></li>
+      <li class="lv3"><a href="#2-unassigned">现象2：集群变黄/变红，分片 unassigned 未分配</a></li>
+      <li class="lv3"><a href="#3_2">现象3：分片搬迁速度极慢</a></li>
+      <li class="lv3"><a href="#4_2">现象4：分片数量均衡，但单个分片数据量极大、热点倾斜</a></li>
+      <li class="lv3"><a href="#5io">现象5：分片搬迁导致高峰期IO雪崩</a></li>
+      <li class="lv3"><a href="#6_1">现象6：冷热分片跨层级乱跑、自动跳层</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B7：统计信息过期与执行计划优化</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b7">补测B7：统计信息过期与执行计划优化</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>优化器依赖<strong>统计信息</strong>选索引。数据量突变/统计信息过期时，优化器可能<strong>选错索引</strong>（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是<strong>高度倾斜数据</strong>（一个值占绝大部分），InnoDB 基数采样严重失真。</p>
@@ -123,7 +124,21 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/plan/status"
 <blockquote>
 <p><strong>统计信息与执行计划</strong>：优化器靠统计信息选索引，数据倾斜/过期会走错索引。实测热分类30万+冷1千，EXPLAIN rows 估算 15万 vs 实际 30万（偏差 50%），普通 ANALYZE 采样基数仍失真；<strong>直方图</strong> <code>[[0,0.9967],[1,1.0]]</code> 精确揭示 category=0 占 99.67%。优化：ANALYZE 刷新、直方图统计倾斜、EXPLAIN 巡检、FORCE INDEX。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、原理</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#30-1">四、实测结果（热分类30万 + 冷1千）</a></li>
+      <li class="lv2"><a href="#_4">五、优化方案</a></li>
+      <li class="lv2"><a href="#_5">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

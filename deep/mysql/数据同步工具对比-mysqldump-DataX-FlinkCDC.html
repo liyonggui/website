@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>数据同步工具对比：mysqldump / DataX / Flink CDC</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="mysqldump-datax-flink-cdc">数据同步工具对比：mysqldump / DataX / Flink CDC</h1>
 <h2 id="_1">一、总览</h2>
 <table>
@@ -201,7 +202,23 @@
 <blockquote>
 <p>三种数据同步/迁移工具：<strong>mysqldump</strong> 是 MySQL 自带的全量逻辑备份，离线、单机，用于日常备份与全量迁移；<strong>DataX</strong> 是阿里异构批量同步框架，离线、并发分片、吞吐高，用于数仓 ETL 和异构库迁移；<strong>Flink CDC</strong> 是基于 binlog 的实时增量同步，秒级延迟、精确一次，用于实时数仓和实时同步。选型：备份用 mysqldump，离线搬数用 DataX，实时同步用 Flink CDC。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、总览</a></li>
+      <li class="lv2"><a href="#mysqldump">二、mysqldump —— 备份 / 全量迁移（最基础）</a></li>
+      <li class="lv2"><a href="#datax">三、DataX —— 异构批量同步（离线批式，阿里巴巴）</a></li>
+      <li class="lv2"><a href="#flink-cdc-flink">四、Flink CDC —— 实时增量同步（流式，Flink 社区）</a></li>
+      <li class="lv2"><a href="#_2">五、三者核心对比</a></li>
+      <li class="lv2"><a href="#_3">六、生产选型建议</a></li>
+      <li class="lv2"><a href="#_4">七、一句话记忆</a></li>
+      <li class="lv2"><a href="#_5">八、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

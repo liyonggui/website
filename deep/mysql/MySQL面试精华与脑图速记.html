@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>MySQL 面试精华 & 脑图速记</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="mysql">MySQL 面试精华 &amp; 脑图速记</h1>
 <blockquote>
 <p>基于《MySQL四层架构与监控汇总》提取的<strong>面试精华版</strong>。用于快速记忆核心考点。
@@ -377,7 +378,48 @@ Flink CDC = 实时 binlog 增量同步（实时抄数据，秒级延迟）
 <blockquote>
 <p><strong>四层全可监控</strong>；<strong>binlog 归 Server、redo/undo 归 InnoDB</strong>；<strong>2PC 保 redo/binlog 一致</strong>；<strong>BP 按页缓存</strong>；<strong>commit 刷 redo 不刷脏页</strong>；<strong>僵尸连接靠 wait_timeout 兜底</strong>；<strong>累计指标用 delta</strong>；<strong>单机读上限 2.7万QPS 拐点并发32</strong>；<strong>写比读慢</strong>；<strong>批量管道提升写入 400x</strong>；<strong>备份用 mysqldump、离线搬数用 DataX、实时同步用 Flink CDC</strong>。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">脑图（快速记忆框架）</a></li>
+      <li class="lv2"><a href="#1">① 四层架构 &amp;amp; 各层监控</a></li>
+      <li class="lv3"><a href="#_2">脑图</a></li>
+      <li class="lv3"><a href="#_3">精华速记</a></li>
+      <li class="lv3"><a href="#_4">各层监控核心指标</a></li>
+      <li class="lv3"><a href="#_5">瓶颈口诀</a></li>
+      <li class="lv2"><a href="#2">② 连接层指标辨析（高频易混淆）</a></li>
+      <li class="lv2"><a href="#3-sql">③ SQL 执行顺序</a></li>
+      <li class="lv3"><a href="#_6">脑图</a></li>
+      <li class="lv3"><a href="#_7">精华速记</a></li>
+      <li class="lv2"><a href="#4-2pc">④ 两阶段提交（2PC，关键考点）</a></li>
+      <li class="lv3"><a href="#_8">脑图</a></li>
+      <li class="lv3"><a href="#_9">精华速记</a></li>
+      <li class="lv2"><a href="#5-bufferpool">⑤ BufferPool &amp;amp; 脏页（核心）</a></li>
+      <li class="lv3"><a href="#_10">脑图</a></li>
+      <li class="lv3"><a href="#_11">精华速记</a></li>
+      <li class="lv3"><a href="#bufferpool">BufferPool &amp;amp; 无索引字段</a></li>
+      <li class="lv2"><a href="#6">⑥ 长连接 / 僵尸半开连接（实务）</a></li>
+      <li class="lv3"><a href="#_12">脑图</a></li>
+      <li class="lv3"><a href="#_13">精华速记</a></li>
+      <li class="lv3"><a href="#qa">高频面试 Q&amp;amp;A</a></li>
+      <li class="lv2"><a href="#7">⑦ 监控 / 排查速查</a></li>
+      <li class="lv3"><a href="#_14">脑图</a></li>
+      <li class="lv3"><a href="#_15">精华速记</a></li>
+      <li class="lv2"><a href="#8-mysql-sysbench">⑧ 单体 MySQL 硬件上限 &amp;amp; 写入提速（Sysbench 压测）</a></li>
+      <li class="lv3"><a href="#_16">脑图</a></li>
+      <li class="lv3"><a href="#_17">精华速记</a></li>
+      <li class="lv3"><a href="#qa_1">高频面试 Q&amp;amp;A</a></li>
+      <li class="lv2"><a href="#9-mysqldump-datax-flink-cdc">⑨ 数据同步工具对比：mysqldump / DataX / Flink CDC</a></li>
+      <li class="lv3"><a href="#_18">脑图</a></li>
+      <li class="lv3"><a href="#_19">精华速记</a></li>
+      <li class="lv3"><a href="#qa_2">高频面试 Q&amp;amp;A</a></li>
+      <li class="lv2"><a href="#_20">面试一句话总结</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

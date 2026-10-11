@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>MySQL 四层架构、执行顺序、监控与 BufferPool 汇总</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="mysql-bufferpool">MySQL 四层架构、执行顺序、监控与 BufferPool 汇总</h1>
 <blockquote>
 <p>系统汇总 MySQL 核心原理：四层架构与各层监控、连接层参数辨析、SQL 执行顺序（正向/反向）、两阶段提交、BufferPool 与脏页、BufferPool 与无索引字段、长连接与僵尸半开连接治理。
@@ -1515,7 +1516,81 @@ net.ipv4.tcp_keepalive_probes = 3     # 重试3次无应答关闭socket
 <span class="k">SHOW</span><span class="w"> </span><span class="n">VARIABLES</span><span class="w"> </span><span class="k">LIKE</span><span class="w"> </span><span class="s1">'innodb_flush_log_at_trx_commit'</span><span class="p">;</span>
 <span class="k">SHOW</span><span class="w"> </span><span class="n">VARIABLES</span><span class="w"> </span><span class="k">LIKE</span><span class="w"> </span><span class="s1">'sync_binlog'</span><span class="p">;</span>
 </code></pre></div>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#_2">一、四层架构与各层监控</a></li>
+      <li class="lv3"><a href="#11">1.1 连接层监控</a></li>
+      <li class="lv3"><a href="#12-sql">1.2 SQL 服务层监控（服务层）</a></li>
+      <li class="lv3"><a href="#13-innodb">1.3 InnoDB 存储引擎层监控（最重要）</a></li>
+      <li class="lv3"><a href="#14">1.4 文件系统层监控</a></li>
+      <li class="lv3"><a href="#15">1.5 整套监控实现方案</a></li>
+      <li class="lv3"><a href="#151-delta">1.5.1 监控实践原则（delta/窗口）</a></li>
+      <li class="lv3"><a href="#152">1.5.2 常用告警建议</a></li>
+      <li class="lv3"><a href="#16">1.6 四层常见等待事件（快速定位哪层瓶颈）</a></li>
+      <li class="lv3"><a href="#17">1.7 快速判断瓶颈口诀</a></li>
+      <li class="lv3"><a href="#18">1.8 补充小问题</a></li>
+      <li class="lv2"><a href="#_3">二、连接层参数辨析（连接/会话/线程/事务）</a></li>
+      <li class="lv3"><a href="#21-threads_connected">2.1 Threads_connected</a></li>
+      <li class="lv3"><a href="#22-threads_created">2.2 Threads_created</a></li>
+      <li class="lv3"><a href="#23-aborted_connects">2.3 Aborted_connects</a></li>
+      <li class="lv3"><a href="#24-aborted_clients">2.4 Aborted_clients</a></li>
+      <li class="lv3"><a href="#25-thread_cache_hits">2.5 Thread_cache_hits</a></li>
+      <li class="lv3"><a href="#26">2.6 生产排查小技巧</a></li>
+      <li class="lv2"><a href="#sql">三、SQL 执行顺序（正向执行与反向回传）</a></li>
+      <li class="lv3"><a href="#31-sql">3.1 正向执行（客户端发起 SQL）</a></li>
+      <li class="lv3"><a href="#32">3.2 返回结果：反向回传</a></li>
+      <li class="lv3"><a href="#33-sql-update">3.3 写 SQL 完整流程（update）</a></li>
+      <li class="lv3"><a href="#34">3.4 重要关键点（面试高频）</a></li>
+      <li class="lv2"><a href="#2-pc">四、两阶段提交（2-PC）</a></li>
+      <li class="lv3"><a href="#41-phase1-prepare-innodb">4.1 Phase1 Prepare（准备阶段）👉 InnoDB 存储引擎层</a></li>
+      <li class="lv3"><a href="#42-phase2-commit-sql-binlog-innodb">4.2 Phase2 Commit（提交阶段）👉 SQL 服务层先写 binlog，再通知 InnoDB 提交</a></li>
+      <li class="lv3"><a href="#43">4.3 四层完整路径标注</a></li>
+      <li class="lv3"><a href="#44">4.4 崩溃恢复逻辑（关键面试点）</a></li>
+      <li class="lv3"><a href="#45">4.5 参数对应四层</a></li>
+      <li class="lv3"><a href="#46">4.6 高频易错点</a></li>
+      <li class="lv3"><a href="#47-update">4.7 串联整套四层+两阶段完整流程（update 语句）</a></li>
+      <li class="lv2"><a href="#bufferpool">五、BufferPool 与脏页完整梳理</a></li>
+      <li class="lv3"><a href="#51-buffer-pool">5.1 Buffer Pool 里面存什么</a></li>
+      <li class="lv3"><a href="#52-bufferpool">5.2 BufferPool 能存多少数据</a></li>
+      <li class="lv3"><a href="#53-bufferpool">5.3 BufferPool 什么时候清理/淘汰页</a></li>
+      <li class="lv3"><a href="#54">5.4 脏页是什么</a></li>
+      <li class="lv3"><a href="#55">5.5 脏页完整生命周期：产生 → 存在 → 刷盘清理</a></li>
+      <li class="lv3"><a href="#56">5.6 关键区分（面试高频）</a></li>
+      <li class="lv3"><a href="#57">5.7 相关监控指标</a></li>
+      <li class="lv3"><a href="#58">5.8 极简背诵总结</a></li>
+      <li class="lv2"><a href="#bufferpool_1">六、BufferPool 与无索引字段</a></li>
+      <li class="lv3"><a href="#61">6.1 核心概念</a></li>
+      <li class="lv3"><a href="#62-bufferpool">6.2 那什么页不会进 BufferPool？</a></li>
+      <li class="lv3"><a href="#63-bufferpool">6.3 二级索引页进 BufferPool 吗？</a></li>
+      <li class="lv3"><a href="#64">6.4 通俗总结</a></li>
+      <li class="lv3"><a href="#65">6.5 举例场景对比</a></li>
+      <li class="lv3"><a href="#66">6.6 延伸面试点：覆盖索引为什么快</a></li>
+      <li class="lv3"><a href="#67">6.7 小结与要点速查</a></li>
+      <li class="lv2"><a href="#_4">七、长连接与僵尸半开连接治理</a></li>
+      <li class="lv3"><a href="#71-vs">7.1 基础概念：长连接 vs 短连接</a></li>
+      <li class="lv3"><a href="#72">7.2 核心参数说明</a></li>
+      <li class="lv3"><a href="#73">7.3 参数约束与推荐配置详解</a></li>
+      <li class="lv3"><a href="#74-sleep">7.4 僵尸（半开 Sleep）连接产生原理</a></li>
+      <li class="lv3"><a href="#75-java">7.5 Java 服务宕机场景分析</a></li>
+      <li class="lv3"><a href="#76">7.6 三层保活机制分工</a></li>
+      <li class="lv3"><a href="#77">7.7 僵尸连接全部清理手段对比</a></li>
+      <li class="lv3"><a href="#78-nacos">7.8 Nacos 健康检查边界</a></li>
+      <li class="lv3"><a href="#79">7.9 生产完整落地方案（降低半开僵尸连接影响）</a></li>
+      <li class="lv3"><a href="#710">7.10 高频面试问答</a></li>
+      <li class="lv3"><a href="#711-sql">7.11 实用清单（监控 / 排查 SQL）</a></li>
+      <li class="lv3"><a href="#712-hikari">7.12 Hikari 推荐生产参数（示例，需按实际业务校准）</a></li>
+      <li class="lv3"><a href="#713">7.13 场景建议（决策树）</a></li>
+      <li class="lv2"><a href="#sql_1">附录：快速诊断 SQL 与版本检查速查</a></li>
+      <li class="lv3"><a href="#sql_2">常用快速诊断 SQL</a></li>
+      <li class="lv3"><a href="#_5">版本/发行区别提示</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

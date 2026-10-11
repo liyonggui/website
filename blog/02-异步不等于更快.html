@@ -49,7 +49,8 @@
     <a class="back" href="../blog.html">← 返回博客索引</a>
     <h1>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="mysql-qps-38">高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</h1>
 <blockquote>
 <p>「高并发实测」系列第 2 篇。</p>
@@ -384,7 +385,24 @@
 <p>如果你也在用共享线程池 + <code>CallerRunsPolicy</code>，去看一眼你的队列水位和拒绝计数。<strong>很可能你线上跑的也不是异步。</strong></p>
 <hr />
 <p>八股可以被背，结论只能被跑出来。这是「高并发实测」系列第二篇，上一篇：《别再死背 44 字节了：Redis String 三种编码压测》。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">〇、一分钟带走版</a></li>
+      <li class="lv2"><a href="#_2">一、场景：一条典型的&quot;削峰 + 多写&quot;链路</a></li>
+      <li class="lv2"><a href="#_3">二、对照实验：一个变量，三轮中位数</a></li>
+      <li class="lv2"><a href="#callerrunspolicy">三、凶手：CallerRunsPolicy 把&quot;异步&quot;偷偷变回同步</a></li>
+      <li class="lv2"><a href="#_4">四、差点被骗：这组数字重跑了三遍才对</a></li>
+      <li class="lv2"><a href="#_5">五、闭环对账：快慢之外，先看丢没丢</a></li>
+      <li class="lv2"><a href="#_6">六、那到底什么时候该异步？</a></li>
+      <li class="lv2"><a href="#_7">七、如果继续优化，我会做这五件事</a></li>
+      <li class="lv2"><a href="#_8">八、写在最后</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景9：InnoDB 并发控制（MVCC 多版本并发控制）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="9innodb-mvcc">场景9：InnoDB 并发控制（MVCC 多版本并发控制）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>InnoDB 的<strong>高并发读写的基石是 MVCC（多版本并发控制）</strong>。它让<strong>快照读（普通 SELECT）不加锁</strong>即可实现一致性和可重复读，从而<strong>读写互不阻塞</strong>，大幅提升并发度。MVCC 的核心是：<strong>undo 版本链</strong>（保存历史版本）+ <strong>ReadView</strong>（可见性规则）。</p>
@@ -184,7 +185,25 @@
 <blockquote>
 <p><strong>InnoDB 并发控制（MVCC）</strong>：通过 undo 版本链 + ReadView 可见性规则，让快照读（普通 SELECT）不加锁即可实现一致性与可重复读。实测：RR 下 A 快照读后 B 提交更新，A 再次快照读仍读旧版本（版本链保留旧版本）；快照读读旧值、FOR UPDATE 当前读读新值；RR 复用第一个 ReadView（可重复读）、RC 每次新建（不可重复读）；A 快照读期间 B 的 UPDATE 不被阻塞（8ms，读写不互斥）；B 未提交时 A 读不到其修改（避免脏读）。MVCC 是高并发读写的基石，读写互不阻塞。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#mvcc">二、MVCC 核心机制</a></li>
+      <li class="lv2"><a href="#_2">三、实测结果</a></li>
+      <li class="lv3"><a href="#1-mvccversion-chain">1. 多版本读取（版本链，/mvcc/version-chain）</a></li>
+      <li class="lv3"><a href="#2-vs-mvccsnapshot-current">2. 一致性读 vs 当前读（/mvcc/snapshot-current）</a></li>
+      <li class="lv3"><a href="#3-rr-vs-rc-mvcc-mvccrr-vs-rc">3. RR vs RC 的 MVCC 差异（/mvcc/rr-vs-rc）</a></li>
+      <li class="lv3"><a href="#4-mvccread-write-no-block">4. 读写不互斥（/mvcc/read-write-no-block）</a></li>
+      <li class="lv3"><a href="#5-mvccvisibility">5. 可见性规则（/mvcc/visibility）</a></li>
+      <li class="lv2"><a href="#_3">四、生产避坑准则</a></li>
+      <li class="lv2"><a href="#_4">五、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -8,6 +8,7 @@
 """
 import os
 import re
+import html
 import markdown
 from pygments.formatters import HtmlFormatter
 
@@ -66,9 +67,12 @@ TEMPLATE = """<!DOCTYPE html>
     <a class="back" href="__BACK_HREF__">← __BACK_LABEL__</a>
     <h1>__TITLE__</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 __BODY__
-  </article>
+    </article>
+    <aside class="toc-side">__TOC__</aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>
@@ -118,7 +122,7 @@ def depth_prefix(subdir):
     return "../" * (1 + subdir.count("/"))
 
 
-def build_html(prefix, title, body, active, back_href, back_label):
+def build_html(prefix, title, body, active, back_href, back_label, toc=""):
     a = {"home": "", "proj": "", "blog": "", "deep": ""}
     if active in a:
         a[active] = ' class="active"'
@@ -126,6 +130,7 @@ def build_html(prefix, title, body, active, back_href, back_label):
             .replace("__PREFIX__", prefix)
             .replace("__TITLE__", title)
             .replace("__BODY__", body)
+            .replace("__TOC__", toc)
             .replace("__BACK_HREF__", back_href)
             .replace("__BACK_LABEL__", back_label)
             .replace("__A_HOME__", a["home"])
@@ -141,6 +146,42 @@ def get_title(md_text, fallback):
     return fallback
 
 
+def _toc_items(tokens):
+    """从 toc_tokens 全递归抽取 h2/h3 条目（文档序）-> [(level, id, name)]"""
+    items = []
+
+    def walk(toks):
+        for tk in toks:
+            if tk["level"] in (2, 3):
+                items.append((tk["level"], tk["id"], tk["name"]))
+            walk(tk.get("children", []))
+
+    walk(tokens)
+    return items
+
+
+def build_toc(md):
+    """生成 TOC HTML；标题太少（h2 < 2）则返回空串，不显示目录。"""
+    items = _toc_items(md.toc_tokens)
+    h2 = sum(1 for lv, _, _ in items if lv == 2)
+    if h2 < 2:
+        return ""
+    lis = []
+    for lv, hid, name in items:
+        cls = "lv2" if lv == 2 else "lv3"
+        lis.append(
+            f'      <li class="{cls}"><a href="#{hid}">{html.escape(name)}</a></li>'
+        )
+    return (
+        '<details class="toc" open>\n'
+        '  <summary>目录</summary>\n'
+        '  <nav>\n'
+        '    <ul>\n' + "\n".join(lis) + '\n    </ul>\n'
+        '  </nav>\n'
+        '</details>'
+    )
+
+
 def md_to_html(text):
     md = markdown.Markdown(
         extensions=["fenced_code", "tables", "toc", "footnotes", "codehilite"],
@@ -148,7 +189,8 @@ def md_to_html(text):
             "codehilite": {"guess_lang": False, "css_class": "codehilite"}
         },
     )
-    return md.convert(text)
+    body = md.convert(text)
+    return body, build_toc(md)
 
 
 def ensure_pygments_css():
@@ -173,12 +215,12 @@ def process_dir(rel_dir, active, back_label):
         with open(src, "r", encoding="utf-8") as f:
             text = f.read()
         title = get_title(text, fn[:-3])
-        body = md_to_html(text)
+        body, toc = md_to_html(text)
         out_name = fn[:-3] + ".html"
         out_path = os.path.join(abs_dir, out_name)
-        html = build_html(prefix, title, body, active, back_href, back_label)
+        html_doc = build_html(prefix, title, body, active, back_href, back_label, toc)
         with open(out_path, "w", encoding="utf-8") as f:
-            f.write(html)
+            f.write(html_doc)
         count += 1
     return count
 

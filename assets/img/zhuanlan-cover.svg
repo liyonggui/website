@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="55%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#132339"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="675" fill="url(#bg)"/>
+
+  <!-- 背景网格 -->
+  <g stroke="#1e293b" stroke-width="1">
+    <path d="M0 120 H1200 M0 240 H1200 M0 360 H1200 M0 480 H1200 M0 600 H1200"/>
+    <path d="M150 0 V675 M300 0 V675 M450 0 V675 M600 0 V675 M750 0 V675 M900 0 V675 M1050 0 V675"/>
+  </g>
+
+  <!-- 装饰柱状图（暗示压测） -->
+  <g opacity="0.55">
+    <rect x="820" y="380" width="46" height="150" rx="6" fill="#22d3ee"/>
+    <rect x="880" y="330" width="46" height="200" rx="6" fill="#22d3ee" opacity="0.85"/>
+    <rect x="940" y="270" width="46" height="260" rx="6" fill="#f59e0b" opacity="0.9"/>
+    <rect x="1000" y="350" width="46" height="180" rx="6" fill="#22d3ee" opacity="0.7"/>
+    <rect x="1060" y="240" width="46" height="290" rx="6" fill="#f59e0b"/>
+  </g>
+  <text x="963" y="560" text-anchor="middle" style="font: 15px 'Microsoft YaHei'; fill:#475569">ops / s</text>
+
+  <!-- 顶部小标签 -->
+  <rect x="90" y="150" width="200" height="42" rx="21" fill="none" stroke="#22d3ee" stroke-width="2"/>
+  <text x="190" y="178" text-anchor="middle" style="font: 17px 'Microsoft YaHei'; fill:#67e8f9; letter-spacing:2px">技术实测系列</text>
+
+  <!-- 主标题 -->
+  <text x="88" y="300" style="font: bold 92px 'Microsoft YaHei'; fill:#f8fafc">高并发实测</text>
+  <rect x="92" y="330" width="470" height="7" rx="3" fill="url(#bar)"/>
+
+  <!-- 副标题 -->
+  <text x="90" y="398" style="font: 34px 'Microsoft YaHei'; fill:#cbd5e1">不背八股，只跑数据</text>
+
+  <!-- 关键词 -->
+  <g style="font: 20px 'Microsoft YaHei'; fill:#94a3b8">
+    <text x="90" y="462">Redis · MySQL · Elasticsearch · Kafka</text>
+  </g>
+
+  <!-- 底部说明 -->
+  <rect x="90" y="500" width="560" height="56" rx="12" fill="#111c2e" stroke="#1e293b"/>
+  <text x="112" y="536" style="font: 20px 'Microsoft YaHei'; fill:#67e8f9">可复现实验设计　·　一手压测数据　·　生产选型建议</text>
+
+  <text x="90" y="612" style="font: 17px 'Microsoft YaHei'; fill:#475569">小番茄程序猿</text>
+</svg>

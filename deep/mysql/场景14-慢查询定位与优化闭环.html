@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景14：慢查询定位与优化闭环</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="14">场景14：慢查询定位与优化闭环</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要<strong>完整闭环</strong>：<strong>定位 → 分析 → 优化 → 验证</strong>，而不是拍脑袋改。</p>
@@ -168,7 +169,25 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/slow-query/s
 <blockquote>
 <p><strong>慢查询治理闭环</strong>：定位（慢日志 / performance_schema.events_statements_summary_by_digest 聚合 TOP 慢语句）→ 分析（EXPLAIN 看 type 是否 ALL、rows 扫描行数、Extra 是否有 filesort/temporary）→ 优化（加索引、避免 SELECT <em>、覆盖索引、改写 SQL）→ 验证（压测对比）。实测全表扫描型慢查询优化后 QPS 从 46 提到 10695（约 232 倍），定位信号是 </em><em>avgMs 大 + rows_examined 巨大</em>*。EXPLAIN 的 type=ALL + rows 巨大是该优化最强信号。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、闭环四步</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、实测结果</a></li>
+      <li class="lv3"><a href="#1-explain">1. EXPLAIN 定位（优化前）</a></li>
+      <li class="lv3"><a href="#2-idx_slow_order_noorder_no">2. 优化：加索引 idx_slow_order_no(order_no)</a></li>
+      <li class="lv3"><a href="#3-50">3. 优化前后吞吐对比（并发 50）</a></li>
+      <li class="lv3"><a href="#4-diagnose">4. 定位（diagnose）</a></li>
+      <li class="lv2"><a href="#_5">五、优化准则</a></li>
+      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <p>结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split 约束、备份/可搜索快照等），并把改正与补充后的完整文档一起给出。下面先列出“问题 &amp; 建议修改点”，再给出修订后的完整文档（可直接复制到 Markdown/知识库）。</p>
 <p>主要问题与我做的改动（要点）</p>
 <ol>
@@ -485,7 +486,46 @@ A: 既不宜过多（元数据、Heap 问题），也不宜过少（单分片过
 <li>若需要，我可以把“修订后文档”拆成可直接执行的 runbook（例如：路由打散上生产、ILM policy 上线步骤、reindex 零停机脚本、监控与告警 playbook）。</li>
 </ul>
 <p>如果你要我继续把示例按你们的 ES 版本调整，请回复你们的 Elasticsearch 主版本号（例如：7.10 / 7.17 / 8.6）。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv3"><a href="#2-murmurhash3">2) MurmurHash3 两个版本的使用场景（补充）</a></li>
+      <li class="lv3"><a href="#3-routing">3) Routing 长度规范（建议）</a></li>
+      <li class="lv3"><a href="#4-mysql">4) 路由二次打散（与 MySQL 的兼容性说明）</a></li>
+      <li class="lv2"><a href="#_1">三、两类分片倾斜成因 + 路由二次打散解决方案</a></li>
+      <li class="lv3"><a href="#1">类型1：路由数据倾斜（业务层面）</a></li>
+      <li class="lv3"><a href="#2">类型2：节点分片分配倾斜（集群层面）</a></li>
+      <li class="lv2"><a href="#_2">四、分片节点分配算法完整解析（补充与细化）</a></li>
+      <li class="lv3"><a href="#1_1">1) 分配流程</a></li>
+      <li class="lv3"><a href="#2_1">2) 磁盘水位（默认值可配置）</a></li>
+      <li class="lv3"><a href="#3">3) 分片迁移并发配置（示例）</a></li>
+      <li class="lv3"><a href="#4">4) 额外补充</a></li>
+      <li class="lv2"><a href="#_3">五、容量规划与分片数建议（实践版）</a></li>
+      <li class="lv3"><a href="#1_2">1) 单分片容量建议（依据场景）</a></li>
+      <li class="lv3"><a href="#2_2">2) 主分片数估算</a></li>
+      <li class="lv3"><a href="#3_1">3) 副本策略</a></li>
+      <li class="lv3"><a href="#4_1">4) 单节点分片上限</a></li>
+      <li class="lv3"><a href="#5">5) 单索引总体上限（参考）</a></li>
+      <li class="lv2"><a href="#ilmindex-lifecycle-management">六、ILM（Index Lifecycle Management）冷/温/热分层（完整手册）</a></li>
+      <li class="lv3"><a href="#61">6.1 核心原则（必须理解）</a></li>
+      <li class="lv3"><a href="#62-ilm-cron">6.2 ILM 优于自研 Cron 的理由（补充）</a></li>
+      <li class="lv3"><a href="#63-ilm">6.3 ILM 参数速查与推荐（精简）</a></li>
+      <li class="lv3"><a href="#64-ilm-rollover">6.4 ILM 策略示例（更通用的 rollover 写法）</a></li>
+      <li class="lv3"><a href="#65-ilm">6.5 索引模板绑定 ILM（示例）</a></li>
+      <li class="lv3"><a href="#66-ilm">6.6 ILM 实操注意事项（八条）— 保留并补充</a></li>
+      <li class="lv3"><a href="#67-ilm">6.7 ILM 常见故障排查（快速对照）</a></li>
+      <li class="lv2"><a href="#reindex">七、Reindex &amp;amp; 迁移全场景方案（补充细化）</a></li>
+      <li class="lv3"><a href="#_4">核心流程（零停机改造模版）</a></li>
+      <li class="lv3"><a href="#_5">不可原地修改清单</a></li>
+      <li class="lv2"><a href="#_6">八、备份 / 快照 / 冷归档（补充）</a></li>
+      <li class="lv2"><a href="#_7">九、监控与告警（新增建议）</a></li>
+      <li class="lv2"><a href="#faq">十、常见问答（FAQ 快速提示）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

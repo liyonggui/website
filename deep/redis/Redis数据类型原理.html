@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis 数据类型原理</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="redis">Redis 数据类型原理</h1>
 <blockquote>
 <p>从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。</p>
@@ -3828,7 +3829,109 @@ redis-cli<span class="w"> </span>--bigkeys
 <ul>
 <li>若 member 值很长（如数 KB），评估把 <strong>member id（短字符串或数字）</strong> 放在 ZSet 中，并把<strong>完整数据</strong>放到另外 key（如 HASH 或 string 压缩 blob）——这样 ZSet 仅保存短 id + score，能极大减少 listpack/skiplist 的内存。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv3"><a href="#_1">精简正确版总结（先读这里）</a></li>
+      <li class="lv2"><a href="#redis_1">一、Redis 内存开销全景</a></li>
+      <li class="lv3"><a href="#11">1.1 一条数据存进去到底占多少</a></li>
+      <li class="lv3"><a href="#12">1.2 三种核心内存结构</a></li>
+      <li class="lv3"><a href="#13">1.3 元数据开销占比</a></li>
+      <li class="lv2"><a href="#_2">二、内部编码机制</a></li>
+      <li class="lv3"><a href="#21-string">2.1 String — 三种内部编码</a></li>
+      <li class="lv3"><a href="#22-hash-listpack-vs-hashtable">2.2 Hash — listpack vs hashtable</a></li>
+      <li class="lv3"><a href="#23-zset-listpack-vs-skiplist">2.3 ZSet — listpack vs skiplist</a></li>
+      <li class="lv3"><a href="#24-set-intset-listpack-hashtable">2.4 Set — intset / listpack / hashtable</a></li>
+      <li class="lv3"><a href="#25-list-quicklistlinked-listpack">2.5 List — quicklist（linked listpack）</a></li>
+      <li class="lv3"><a href="#26">2.6 内部编码汇总</a></li>
+      <li class="lv2"><a href="#hash">三、Hash 结构优化的深度分析</a></li>
+      <li class="lv3"><a href="#31-hash-string">3.1 为什么要用 Hash 代替逐条 String？</a></li>
+      <li class="lv3"><a href="#32-listpack-hash">3.2 为什么 listpack 不能无限制容纳大 Hash？</a></li>
+      <li class="lv3"><a href="#33-hash">3.3 生产环境 Hash 调优策略</a></li>
+      <li class="lv2"><a href="#hash-field-hashtable">四、Hash field 数量控制：避免退化为 hashtable 的策略</a></li>
+      <li class="lv3"><a href="#41">4.1 问题量化：退化前后的差距到底多大</a></li>
+      <li class="lv3"><a href="#42">4.2 策略全景</a></li>
+      <li class="lv3"><a href="#a-hash-max-listpack-entries">策略 A：调大 hash-max-listpack-entries（最简单但有限）</a></li>
+      <li class="lv3"><a href="#b-key">策略 B：垂直分片——按 key 哈希分桶（最通用，推荐）</a></li>
+      <li class="lv3"><a href="#c">策略 C：时间分区（适合时序缓存）</a></li>
+      <li class="lv3"><a href="#d">策略 D：冷热拆分（适合用户画像、商品属性）</a></li>
+      <li class="lv3"><a href="#e">策略 E：应用层计数器 + 自动分桶（对业务透明）</a></li>
+      <li class="lv3"><a href="#f">策略 F：主动检测 + 强制重建（兜底策略）</a></li>
+      <li class="lv3"><a href="#43">4.3 策略选型决策树</a></li>
+      <li class="lv3"><a href="#44">4.4 组合策略（生产推荐）</a></li>
+      <li class="lv3"><a href="#45">4.5 常见反模式</a></li>
+      <li class="lv3"><a href="#46">4.6 极简总结（六策略速查）</a></li>
+      <li class="lv3"><a href="#47-redis-cluster">4.7 Redis Cluster 环境下的分片注意事项</a></li>
+      <li class="lv2"><a href="#zset-member-skiplist">五、ZSet member 数量控制：避免退化为 skiplist 的策略</a></li>
+      <li class="lv3"><a href="#51">5.1 问题量化：退化前后的差距到底多大</a></li>
+      <li class="lv3"><a href="#52">5.2 策略全景</a></li>
+      <li class="lv3"><a href="#a-zset-max-listpack-entries">策略 A：调大 zset-max-listpack-entries（最简单但有限）</a></li>
+      <li class="lv3"><a href="#b-member">策略 B：垂直分片——按 member 哈希分桶（最通用，推荐）</a></li>
+      <li class="lv3"><a href="#c_1">策略 C：时间分区（适合时序排行榜——如每小时/每天热门）</a></li>
+      <li class="lv3"><a href="#dtop-n">策略 D：Top-N + 归档（适合固定大小的排行榜）</a></li>
+      <li class="lv3"><a href="#e_1">策略 E：应用层计数器 + 自动分桶（对业务透明）</a></li>
+      <li class="lv3"><a href="#f_1">策略 F：主动检测 + 强制重建（兜底策略）</a></li>
+      <li class="lv3"><a href="#53">5.3 策略选型决策树</a></li>
+      <li class="lv3"><a href="#54-zset">5.4 ZSet 分片后的操作兼容性矩阵</a></li>
+      <li class="lv3"><a href="#55">5.5 组合策略（生产推荐）</a></li>
+      <li class="lv3"><a href="#56">5.6 常见反模式</a></li>
+      <li class="lv3"><a href="#57">5.7 极简总结（六策略速查）</a></li>
+      <li class="lv2"><a href="#_3">六、什么时候需要&quot;客户端压缩为二进制再存&quot;</a></li>
+      <li class="lv3"><a href="#61">6.1 明确应该做的场景</a></li>
+      <li class="lv3"><a href="#62">6.2 明确不该做的场景</a></li>
+      <li class="lv3"><a href="#63">6.3 压缩算法选型</a></li>
+      <li class="lv3"><a href="#64-java">6.4 Java 实现示例</a></li>
+      <li class="lv3"><a href="#65">6.5 压缩代价</a></li>
+      <li class="lv3"><a href="#66-magic-version-algo">6.6 压缩后必须附加元信息（magic + version + algo）</a></li>
+      <li class="lv2"><a href="#hyperloglog-bloomfilter-count-min-sketch">七、概率数据结构：HyperLogLog / BloomFilter / Count-Min Sketch</a></li>
+      <li class="lv3"><a href="#71-redis">7.1 哪些是 Redis 自带的</a></li>
+      <li class="lv3"><a href="#72-hyperloglog-12kb">7.2 HyperLogLog：去重统计，内存固定 12KB</a></li>
+      <li class="lv3"><a href="#73-bloomfilter">7.3 BloomFilter：判断&quot;是否可能存在&quot;</a></li>
+      <li class="lv3"><a href="#74-count-min-sketch">7.4 Count-Min Sketch：近似频率统计</a></li>
+      <li class="lv3"><a href="#75-redisbloom">7.5 不想装 RedisBloom 模块的替代方案</a></li>
+      <li class="lv3"><a href="#76">7.6 三种概率结构的决策速查表</a></li>
+      <li class="lv3"><a href="#77">7.7 内存对比总览</a></li>
+      <li class="lv3"><a href="#78-top-k-top-n">7.8 Top-K：近似 Top-N 排行</a></li>
+      <li class="lv3"><a href="#79-cuckoo-filter">7.9 Cuckoo Filter：支持删除的布隆过滤器</a></li>
+      <li class="lv3"><a href="#710-t-digest">7.10 T-Digest：近似百分位统计</a></li>
+      <li class="lv3"><a href="#711">7.11 概率结构速查总览</a></li>
+      <li class="lv3"><a href="#711_1">7.11 概率结构补充：校验与生产实践</a></li>
+      <li class="lv2"><a href="#bitmaps-geospatial-streams">八、场景化专用结构（内置 Bitmaps / Geospatial / Streams）</a></li>
+      <li class="lv3"><a href="#81-bitmaps">8.1 Bitmaps：位图操作</a></li>
+      <li class="lv3"><a href="#82-geospatial">8.2 Geospatial：地理位置</a></li>
+      <li class="lv3"><a href="#83-streams">8.3 Streams：消息队列 / 事件流</a></li>
+      <li class="lv2"><a href="#_40">九、完整决策树</a></li>
+      <li class="lv2"><a href="#rdbaof">十、RDB/AOF 持久化对内存的影响</a></li>
+      <li class="lv3"><a href="#101-rdb-fork-cow">10.1 RDB 快照：fork + COW 内存放大</a></li>
+      <li class="lv3"><a href="#102-aof-rewrite-cow">10.2 AOF rewrite：同样的 COW 机制</a></li>
+      <li class="lv3"><a href="#103">10.3 容量规划建议</a></li>
+      <li class="lv3"><a href="#105-aof-rewrite">10.5 AOF rewrite 与持久化调度实践</a></li>
+      <li class="lv3"><a href="#104-lazyfree">10.4 lazyfree 机制</a></li>
+      <li class="lv2"><a href="#1">十一、场景验证：场景 1 压测的教训</a></li>
+      <li class="lv2"><a href="#_41">十二、监控与检查清单</a></li>
+      <li class="lv3"><a href="#121">12.1 关键命令</a></li>
+      <li class="lv3"><a href="#122">12.2 告警阈值建议</a></li>
+      <li class="lv3"><a href="#123">12.3 内部编码参数速查</a></li>
+      <li class="lv2"><a href="#_42">十三、极简总结</a></li>
+      <li class="lv3"><a href="#_43">核心认知</a></li>
+      <li class="lv3"><a href="#_44">选型速查</a></li>
+      <li class="lv3"><a href="#_45">运营注意</a></li>
+      <li class="lv3"><a href="#checklist">生产落地 Checklist</a></li>
+      <li class="lv2"><a href="#_46">附录：验证 / 排查 / 测量命令与生产测试建议</a></li>
+      <li class="lv3"><a href="#a">A. 推荐验证与排查命令</a></li>
+      <li class="lv3"><a href="#b">B. 推荐工具</a></li>
+      <li class="lv3"><a href="#c_2">C. 生产测试建议</a></li>
+      <li class="lv2"><a href="#zset_1">附录二：ZSet 常用验证命令与重建/分片实务</a></li>
+      <li class="lv3"><a href="#a_1">A. 常用验证/排查命令</a></li>
+      <li class="lv3"><a href="#b-f">B. 重建实务要点（策略 F）</a></li>
+      <li class="lv3"><a href="#c-key-cluster">C. 分片 key 命名与 Cluster 注意</a></li>
+      <li class="lv3"><a href="#d_1">D. 压缩 / 按需存储的交叉建议</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

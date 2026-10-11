@@ -49,7 +49,8 @@
     <a class="back" href="../blog.html">← 返回博客索引</a>
     <h1>别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="44-12-redis-string">别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距</h1>
 <blockquote>
 <p>环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对值受客户端影响，<strong>请关注相对差距</strong>，全部数据来自我自己的压测工程，文末附复现方式。</p>
@@ -351,7 +352,23 @@
 <hr />
 <p>技术这一行不缺声音，缺的是把一个问题压到见底的耐心。与其多讲一句结论，不如多跑一轮实验——<strong>八股可以被背，结论只能被跑出来</strong>。接下来我只想做一件事：把那些被背下来的东西，一个一个亲手验证到底。</p>
 <p>如果你也相信跑出来的数据比说出来的道理更可靠，欢迎同行。所有结论都欢迎来抬杠，带上你的数据。路远，我们慢慢挖。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">〇、一分钟带走版</a></li>
+      <li class="lv2"><a href="#_2">一、从一个&quot;玄学抖动&quot;说起</a></li>
+      <li class="lv2"><a href="#_3">二、实验怎么做的</a></li>
+      <li class="lv2"><a href="#embstr">三、第一组数据：基础对比，embstr 确实能打</a></li>
+      <li class="lv2"><a href="#value-raw">四、第二组：value 变大，raw 吞吐线性下跌</a></li>
+      <li class="lv2"><a href="#append-max-73">五、最有价值的发现：平均值骗了你，APPEND 的 max 差了 7.3 倍</a></li>
+      <li class="lv2"><a href="#_4">六、生产建议：一张速查表 + 四条原则</a></li>
+      <li class="lv2"><a href="#_5">七、写在最后</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

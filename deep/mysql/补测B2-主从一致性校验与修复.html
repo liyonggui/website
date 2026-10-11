@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b2pt-table-checksum-pt-table-sync">补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>主从复制可能<strong>静默丢数据/漂移</strong>：某条 SQL 在从库执行失败被跳过、人为改库、DDL 不同步，都会导致<strong>主从数据不一致而不自知</strong>。复制线程 Running 只代表"复制在跑"，<strong>不代表数据一致</strong>。需定期用 checksum 校验主从一致性，发现漂移立即修复。</p>
@@ -137,7 +138,22 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/consistency/
 <blockquote>
 <p><strong>主从一致性校验与修复</strong>：复制线程 Running ≠ 数据一致，复制可能静默漂移（SQL 在从库失败被跳过、人为改库）。用 <code>pt-table-checksum</code>/<code>CHECKSUM TABLE</code> 定期校验主从一致，发现漂移用 <code>pt-table-sync</code> 用主库数据对齐从库。实测制造从库漂移后 checksum 检测出不一致（主5000/从3000），修复后恢复一致。从库必须 read_only=ON 防人为漂移。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、核心思路</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、实测结果（校验 → 制造漂移 → 修复闭环）</a></li>
+      <li class="lv2"><a href="#_5">五、工程要点</a></li>
+      <li class="lv2"><a href="#datasource">六、踩坑记录（多 DataSource 注入）</a></li>
+      <li class="lv2"><a href="#_6">七、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

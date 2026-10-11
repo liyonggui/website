@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES 运维常用命令速查手册（独立文档，可直接复制使用）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="es">ES 运维常用命令速查手册（独立文档，可直接复制使用）</h1>
 <h2 id="_1">目录</h2>
 <ol>
@@ -467,7 +468,75 @@ chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
 <li>回流逻辑统一：修改 <code>data_tier</code> + 暂停 ILM，所有层级回退操作模式通用；</li>
 <li>保存为 <code>ES_运维命令速查手册.md</code>，日常运维、问题排查、版本重构可快速查阅使用。</li>
 </ol>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#1">1. 分片路由与倾斜排查命令</a></li>
+      <li class="lv3"><a href="#_2">查看文档归属分片</a></li>
+      <li class="lv3"><a href="#_3">查看索引分片分布</a></li>
+      <li class="lv3"><a href="#_4">查看索引自定义路由开启状态</a></li>
+      <li class="lv3"><a href="#_5">统计各分片文档数量（判断倾斜）</a></li>
+      <li class="lv2"><a href="#2">2. 集群分片均衡 &amp;amp; 磁盘水位配置</a></li>
+      <li class="lv3"><a href="#_6">设置分片搬迁并发与限速（生产常用）</a></li>
+      <li class="lv3"><a href="#io">临时关闭集群自动均衡（高峰期防IO抖动）</a></li>
+      <li class="lv3"><a href="#_7">恢复自动均衡</a></li>
+      <li class="lv3"><a href="#_8">查看磁盘水位阈值配置</a></li>
+      <li class="lv2"><a href="#3-ilm">3. ILM 生命周期常规运维命令</a></li>
+      <li class="lv3"><a href="#ilm">查看索引 ILM 流转详情、卡住原因</a></li>
+      <li class="lv3"><a href="#ilm_1">暂停单个索引 ILM</a></li>
+      <li class="lv3"><a href="#ilm_2">开启单个索引 ILM</a></li>
+      <li class="lv3"><a href="#ilm_3">全局启停所有 ILM</a></li>
+      <li class="lv3"><a href="#ilm_4">查看全局 ILM 巡检间隔</a></li>
+      <li class="lv3"><a href="#ilm_5">修改 ILM 全局巡检间隔</a></li>
+      <li class="lv3"><a href="#ilm_6">查询所有绑定 ILM 的索引</a></li>
+      <li class="lv2"><a href="#4-ilm">4. ILM 冷热层级向上回退全套通用命令</a></li>
+      <li class="lv3"><a href="#1warm-hot">场景1：Warm → Hot 温层回退热层</a></li>
+      <li class="lv3"><a href="#2cold-warm">场景2：Cold → Warm 冷层回退温层</a></li>
+      <li class="lv3"><a href="#3cold-hot">场景3：Cold → Hot 冷层跨层直接回退热层</a></li>
+      <li class="lv3"><a href="#_9">回流完成后恢复自动生命周期</a></li>
+      <li class="lv3"><a href="#_10">边界说明</a></li>
+      <li class="lv2"><a href="#5-reindex">5. Reindex 数据迁移重构常用命令</a></li>
+      <li class="lv3"><a href="#_11">基础全量迁移</a></li>
+      <li class="lv3"><a href="#painless">带 Painless 脚本：字段改名、类型转换迁移</a></li>
+      <li class="lv3"><a href="#reindex">路由重打散 Reindex（解决热点倾斜）</a></li>
+      <li class="lv3"><a href="#reindex_1">异步执行 Reindex（超大索引）</a></li>
+      <li class="lv3"><a href="#_12">查看异步任务进度</a></li>
+      <li class="lv3"><a href="#_13">时间范围增量追赶数据</a></li>
+      <li class="lv3"><a href="#_14">新旧索引数量校验</a></li>
+      <li class="lv2"><a href="#6">6. 索引别名管理命令</a></li>
+      <li class="lv3"><a href="#_15">创建索引同时绑定别名（初始化最佳实践）</a></li>
+      <li class="lv3"><a href="#_16">事后给已有索引添加别名</a></li>
+      <li class="lv3"><a href="#_17">原子切换别名（重构无感切流/回滚核心）</a></li>
+      <li class="lv3"><a href="#_18">查询别名绑定关系</a></li>
+      <li class="lv3"><a href="#_19">删除别名</a></li>
+      <li class="lv2"><a href="#7-rollover">7. Rollover 滚动索引运维命令</a></li>
+      <li class="lv3"><a href="#_20">手动触发滚动测试</a></li>
+      <li class="lv3"><a href="#_21">查看滚动索引别名写入标识</a></li>
+      <li class="lv3"><a href="#_22">初始化首个滚动可写索引</a></li>
+      <li class="lv3"><a href="#_23">查看滚动索引模板</a></li>
+      <li class="lv2"><a href="#8">8. 索引读写锁、冻结、只读解除配套命令</a></li>
+      <li class="lv3"><a href="#warm">解除索引只读锁（Warm回流后常用）</a></li>
+      <li class="lv3"><a href="#_24">手动设置索引只读</a></li>
+      <li class="lv3"><a href="#cold">关闭索引冻结（Cold回流后常用）</a></li>
+      <li class="lv3"><a href="#_25">手动冻结索引</a></li>
+      <li class="lv3"><a href="#_26">查看索引冷热层级标签</a></li>
+      <li class="lv2"><a href="#9">9. 分片异常排障核心命令</a></li>
+      <li class="lv3"><a href="#_27">查看未分配分片详细原因</a></li>
+      <li class="lv3"><a href="#_28">查看集群健康状态</a></li>
+      <li class="lv3"><a href="#_29">查看节点磁盘使用率</a></li>
+      <li class="lv3"><a href="#_30">查看未分配分片列表</a></li>
+      <li class="lv3"><a href="#_31">手动修改副本数量</a></li>
+      <li class="lv2"><a href="#10-shell">10. 批量回流 Shell 脚本（通用可修改）</a></li>
+      <li class="lv3"><a href="#1-warm-hotwarm_to_hotsh">脚本1：批量所有 Warm 索引回迁 Hot（warm_to_hot.sh）</a></li>
+      <li class="lv3"><a href="#cold_1">适配 Cold 批量回流只需修改一行过滤条件</a></li>
+      <li class="lv3"><a href="#_32">脚本使用方式</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B5：连接耗尽治理（max_connections 打满）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b5max_connections">补测B5：连接耗尽治理（max_connections 打满）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>连接耗尽雪崩防护。当并发请求超过 MySQL <code>max_connections</code>，新连接报 <strong><code>Too many connections</code></strong>，请求大量失败，系统雪崩。需治理：连接池大小与 max_connections 匹配、耗尽时杀空闲连接 + 快速失败。</p>
@@ -129,7 +130,21 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/conn/restore
 <blockquote>
 <p><strong>连接耗尽治理</strong>：并发超过 max_connections 时新连接报 Too many connections 雪崩。实测 max_connections=60 时开 200 连接，59 成功 141 失败，使用率超 100%。治理：连接池 ≤ max_connections 预留余量、耗尽杀空闲连接、快速失败、限流降级、监控 Threads_connected 使用率超 80% 告警。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、耗尽原理</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#max_connections-60">四、实测结果（max_connections 调低到 60）</a></li>
+      <li class="lv2"><a href="#_4">五、治理方案</a></li>
+      <li class="lv2"><a href="#_5">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

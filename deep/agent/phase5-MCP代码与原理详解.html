@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>phase5 MCP 代码与原理详解（server + client · 含失控案例）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="phase5-mcp-server-client">phase5 MCP 代码与原理详解（server + client · 含失控案例）</h1>
 <blockquote>
 <p>配套：<code>AI-Agent新手教学.md</code> 第 6 课、<code>全链路.md</code>。代码在 <code>D:\ai-agent-project\phase5-mcp-server</code> 与 <code>phase5-mcp-client</code>。
@@ -186,7 +187,24 @@ yml：<code>spring.ai.mcp.client.streamable-http.connections.rdx.url</code>（<s
 <li>上限是"软收敛"（返回停止指令），不是框架级硬中断；</li>
 <li>评测集小样本，数字当机制演示不当基准。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#0">0. 为什么是独立服务（不是内嵌后端）</a></li>
+      <li class="lv2"><a href="#1">1. 文件总览</a></li>
+      <li class="lv2"><a href="#2-server-bean">2. Server 端：发布机制只有一个 Bean</a></li>
+      <li class="lv2"><a href="#3-curl">3. 协议四步（curl 实录）</a></li>
+      <li class="lv2"><a href="#4-client-phase3">4. Client 端：与 phase3 只差一行</a></li>
+      <li class="lv2"><a href="#5">5. 失控案例与修复（本文件最值钱的一节）</a></li>
+      <li class="lv2"><a href="#6">6. 测试矩阵（全部实测）</a></li>
+      <li class="lv2"><a href="#7">7. 坑清单</a></li>
+      <li class="lv2"><a href="#8">8. 诚实边界</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES ILM索引生命周期管理 完整版手册（原理\+参数\+生产配置\+故障排查）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="es-ilm">ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）</h1>
 <h2 id="_1">前置说明</h2>
 <p>本文承接前文ES路由、分片分配、冷热分层全套内容，<strong>ILM是ES冷热分层唯一原生实现方案</strong>，全程无业务代码、无定时任务，配置驱动实现索引自动冷热流转；同时厘清所有人都踩过的时间误区、调度误区、流转误区，附带完整可用生产脚本+全覆盖故障排障。</p>
@@ -394,7 +395,28 @@
 <blockquote>
 <p>（注：部分内容可能由 AI 生成）</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">前置说明</a></li>
+      <li class="lv2"><a href="#1">1. 最小流转单位</a></li>
+      <li class="lv2"><a href="#2">2. 时间判断依据（高频面试坑点）</a></li>
+      <li class="lv2"><a href="#3">3. 底层调度方式（是不是定时任务？）</a></li>
+      <li class="lv2"><a href="#4">4. 四阶段单向流转逻辑（不可逆）</a></li>
+      <li class="lv2"><a href="#5">5. 底层流转本质动作</a></li>
+      <li class="lv2"><a href="#_2">通用公共参数</a></li>
+      <li class="lv2"><a href="#1-hot">1. Hot热阶段（写入阶段）核心参数</a></li>
+      <li class="lv2"><a href="#2-warm">2. Warm温阶段（降配优化）核心参数</a></li>
+      <li class="lv2"><a href="#3-cold">3. Cold冷阶段（归档阶段）核心参数</a></li>
+      <li class="lv2"><a href="#4-delete">4. Delete删除阶段</a></li>
+      <li class="lv2"><a href="#1-ilm">1. 创建ILM生命周期策略</a></li>
+      <li class="lv2"><a href="#2-ilm">2. 索引模板绑定ILM+冷热节点</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景11：主从延迟治理（写后读一致性方案）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="11">场景11：主从延迟治理（写后读一致性方案）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>读写分离（场景6）把读压力分流到从库，但引入<strong>主从延迟</strong>：写主库后，从库需要经复制（binlog → relay log → SQL apply）才能同步，延迟窗口内从库读到的是<strong>旧数据</strong>。若业务"写后立即读"（如下单后查订单），会读到旧值，造成数据不一致。</p>
@@ -158,7 +159,23 @@
 <blockquote>
 <p><strong>主从延迟治理（写后读一致性）</strong>：读写分离引入"写主库后读从库读不到刚写数据"的不一致（从库延迟 <code>Seconds_Behind_Source</code>）。实测设置从库延迟 2s：写后立即读从库返回 NULL（不一致）、读主库读到最新（强一致）；延迟双读（先读从库读不到回主库）总一致性命中 100%；并发对比：最终一致读从库 QPS 最高但一致 0%、强一致读主库 100% 一致但全压主库、延迟双读 100% 一致但略有开销。核心：关键写后读走主库或延迟双读，可容忍延迟读从库，监控延迟阈值并及时切换兜底。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、核心机制</a></li>
+      <li class="lv2"><a href="#_3">三、实测结果</a></li>
+      <li class="lv3"><a href="#1-delay-readwrite-then-read">1. 写后读一致性对比（/delay-read/write-then-read）</a></li>
+      <li class="lv3"><a href="#2-read-your-writesdelay-readdelay-double-read">2. 延迟双读（Read-Your-Writes，/delay-read/delay-double-read）</a></li>
+      <li class="lv3"><a href="#3-delay-readbench">3. 三种方案一致性命中率（/delay-read/bench）</a></li>
+      <li class="lv2"><a href="#_4">四、生产避坑准则</a></li>
+      <li class="lv2"><a href="#_5">五、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

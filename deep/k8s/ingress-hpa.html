@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Ingress + HPA 实践清单（sc-user）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="ingress-hpa-sc-user">Ingress + HPA 实践清单（sc-user）</h1>
 <p>两份清单已生成，风格对齐既有 sc-user 资源（命名空间 <code>sc-demo</code>）：</p>
 <table>
@@ -124,7 +125,18 @@ kubectl<span class="w"> </span>get<span class="w"> </span>ingress<span class="w"
 <h2 id="_1">三、清理</h2>
 <div class="codehilite"><pre><span></span><code>kubectl<span class="w"> </span>delete<span class="w"> </span>-f<span class="w"> </span>service-user-hpa.yaml<span class="w"> </span>-f<span class="w"> </span>service-user-ingress.yaml<span class="w"> </span>-n<span class="w"> </span>sc-demo
 </code></pre></div>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#hpa">一、HPA 自动扩缩容</a></li>
+      <li class="lv2"><a href="#ingress">二、Ingress 七层入口</a></li>
+      <li class="lv2"><a href="#_1">三、清理</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

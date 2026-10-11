@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B12：死锁后的应用重试机制</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b12">补测B12：死锁后的应用重试机制</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>死锁（错误码 <strong>1213</strong>）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是<strong>正常现象</strong>，应用需<strong>捕获 1213/1205 + 自动重试</strong>，否则业务失败率高。</p>
@@ -123,7 +124,22 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/retry/status
 <blockquote>
 <p><strong>死锁重试机制</strong>：死锁(1213)是正常现象，应用需捕获+自动重试。实测并发20转账2000：不重试失败1157(42.2%)，重试后失败674(66.3%)。要点：只重试死锁/锁等待、指数退避、限次数、幂等、随机抖动、监控死锁率。踩坑：lambda 内 await 抛 InterruptedException 需 catch Exception。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、重试原理</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#202000">四、实测结果（并发20，总量2000 转账）</a></li>
+      <li class="lv2"><a href="#_4">五、重试框架要点</a></li>
+      <li class="lv2"><a href="#_5">六、踩坑记录（编译错误）</a></li>
+      <li class="lv2"><a href="#_6">七、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="1200" height="675" fill="#f8fafc"/>
+<text x="600" y="46" text-anchor="middle" style="font:bold 27px 'Microsoft YaHei';fill:#1f2937">同一个配置，三次跑：组内 spread 0.05，组间范围 0.11</text>
+<text x="600" y="76" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#6b7280">answer-relevancy · topK=4 不重排 · temperature=0 · LLM-as-judge　（纵轴已按真实数值对齐）</text>
+
+<g stroke="#e5e7eb"><path d="M120 520 H1120 M120 395 H1120 M120 270 H1120"/></g>
+<g style="font:15px 'Microsoft YaHei';fill:#9ca3af" text-anchor="end"><text x="112" y="525">0.70</text><text x="112" y="400">0.80</text><text x="112" y="275">0.90</text></g>
+
+<rect x="170" y="130" width="330" height="390" fill="#eff6ff" stroke="#bfdbfe"/>
+<text x="335" y="164" text-anchor="middle" style="font:bold 20px 'Microsoft YaHei';fill:#1d4ed8">一次 runs=3（组内）</text>
+<circle cx="255" cy="332" r="11" fill="#3b82f6"/>
+<circle cx="335" cy="270" r="11" fill="#3b82f6"/>
+<circle cx="415" cy="308" r="11" fill="#3b82f6"/>
+<text x="255" y="364" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#1e40af">run1 0.85</text>
+<text x="335" y="248" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#1e40af">run2 0.90</text>
+<text x="415" y="340" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#1e40af">run3 0.87</text>
+<path d="M240 270 H430" stroke="#1d4ed8" stroke-width="2.5" stroke-dasharray="7 5"/>
+<path d="M240 332 H430" stroke="#1d4ed8" stroke-width="2.5" stroke-dasharray="7 5"/>
+<path d="M228 270 V332" stroke="#1d4ed8" stroke-width="2"/>
+<text x="335" y="420" text-anchor="middle" style="font:bold 22px 'Microsoft YaHei';fill:#1d4ed8">spread = 0.05</text>
+<text x="335" y="450" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#1e40af">中位数 0.87</text>
+<text x="335" y="486" text-anchor="middle" style="font:bold 17px 'Microsoft YaHei';fill:#b45309">我写下这条纪律：</text>
+<text x="335" y="508" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#b45309">"比 spread 小的差异不算数"</text>
+
+<rect x="640" y="130" width="480" height="390" fill="#fef2f2" stroke="#fecaca"/>
+<text x="880" y="164" text-anchor="middle" style="font:bold 20px 'Microsoft YaHei';fill:#b91c1c">三次不同批次（组间）</text>
+<circle cx="720" cy="445" r="13" fill="#ef4444"/>
+<circle cx="880" cy="332" r="13" fill="#ef4444"/>
+<circle cx="1040" cy="308" r="13" fill="#ef4444"/>
+<path d="M720 445 L880 332 L1040 308" stroke="#b91c1c" stroke-width="2.5" fill="none"/>
+<text x="720" y="480" text-anchor="middle" style="font:bold 19px 'Microsoft YaHei';fill:#b91c1c">0.76</text>
+<text x="880" y="306" text-anchor="middle" style="font:bold 19px 'Microsoft YaHei';fill:#b91c1c">0.85</text>
+<text x="1040" y="282" text-anchor="middle" style="font:bold 19px 'Microsoft YaHei';fill:#b91c1c">0.87</text>
+<text x="720" y="504" text-anchor="middle" style="font:15px 'Microsoft YaHei';fill:#7f1d1d">「已实测结果」节</text>
+<text x="880" y="364" text-anchor="middle" style="font:15px 'Microsoft YaHei';fill:#7f1d1d">A/B 表基线行</text>
+<text x="1040" y="340" text-anchor="middle" style="font:15px 'Microsoft YaHei';fill:#7f1d1d">runs=3 中位</text>
+<text x="880" y="548" text-anchor="middle" style="font:bold 24px 'Microsoft YaHei';fill:#b91c1c">范围 = 0.11 ＝ 组内的 2.2 倍</text>
+
+<text x="600" y="584" text-anchor="middle" style="font:bold 20px 'Microsoft YaHei';fill:#1f2937">我拿左边那把 0.05 的尺子，去判了右边那些跨批次的差。</text>
+<text x="600" y="618" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#6b7280">后果：一条结论更稳了（0.55→0.50 差 0.05，按 0.11 判更是噪声）；另一条必须降级（topK=2 的 0.70，增量 0.15 只有 0.11 的 1.4 倍 → 只能说趋势）</text>
+<text x="600" y="650" text-anchor="middle" style="font:16px 'Microsoft YaHei';fill:#9ca3af">这正是第 2 篇"模式内 ±5% vs 跨批次 ±40%"同一个坑，换了个马甲。</text>
+</svg>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>高并发压测执行清单</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="_1">高并发压测执行清单</h1>
 <p>本文用于 Java + Redis + MySQL + MQ 类系统的压测设计、执行、分析和复盘。目标不是只得到一个最高 QPS，而是建立一条可追溯的证据链：</p>
 <blockquote>
@@ -341,7 +342,44 @@
 <blockquote>
 <p>压测的最终目标不是找到最高吞吐，而是找到在正确性、延迟、稳定性、恢复能力和成本之间可接受的系统边界。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_2">一、压测前准备</a></li>
+      <li class="lv3"><a href="#1">1. 明确实验目标</a></li>
+      <li class="lv3"><a href="#2">2. 写出实验假设</a></li>
+      <li class="lv3"><a href="#3">3. 固定实验条件</a></li>
+      <li class="lv3"><a href="#4">4. 控制变量</a></li>
+      <li class="lv2"><a href="#_3">二、环境和可观测性</a></li>
+      <li class="lv3"><a href="#1_1">1. 应用侧</a></li>
+      <li class="lv3"><a href="#2-jvm">2. JVM 和操作系统</a></li>
+      <li class="lv3"><a href="#3-mysql">3. MySQL</a></li>
+      <li class="lv3"><a href="#4-redis">4. Redis</a></li>
+      <li class="lv3"><a href="#5-mq">5. MQ</a></li>
+      <li class="lv2"><a href="#_4">三、标准执行流程</a></li>
+      <li class="lv3"><a href="#1_2">阶段 1：功能和数据正确性</a></li>
+      <li class="lv3"><a href="#2_1">阶段 2：性能基线</a></li>
+      <li class="lv3"><a href="#3_1">阶段 3：单变量实验</a></li>
+      <li class="lv3"><a href="#4_1">阶段 4：稳定性测试</a></li>
+      <li class="lv3"><a href="#5">阶段 5：极限和过载测试</a></li>
+      <li class="lv3"><a href="#6">阶段 6：故障注入和恢复</a></li>
+      <li class="lv2"><a href="#_5">四、核心实验清单</a></li>
+      <li class="lv3"><a href="#1_3">1. 同步与异步写入</a></li>
+      <li class="lv3"><a href="#2-redis-key-key">2. Redis 单 Key 与分片 Key</a></li>
+      <li class="lv3"><a href="#3_2">3. 线程池</a></li>
+      <li class="lv3"><a href="#4_2">4. 连接池</a></li>
+      <li class="lv3"><a href="#5_1">5. 日志和输出</a></li>
+      <li class="lv3"><a href="#6_1">6. 数据库写入</a></li>
+      <li class="lv3"><a href="#7-mq">7. MQ 积压</a></li>
+      <li class="lv2"><a href="#_6">五、结果判定标准</a></li>
+      <li class="lv2"><a href="#_7">六、实验记录模板</a></li>
+      <li class="lv2"><a href="#_8">七、最终检查</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

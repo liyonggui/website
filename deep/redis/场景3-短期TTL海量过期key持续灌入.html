@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景 3 — 短期 TTL 海量过期 key 持续灌入</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="3-ttl-key">场景 3 — 短期 TTL 海量过期 key 持续灌入</h1>
 <hr />
 <h3 id="tldr">TL;DR</h3>
@@ -1290,7 +1291,59 @@ lazyfree-lazy-expire yes 确保过期 key 删除走后台 BIO 线程 UNLINK。
 <p><strong>UNLINK 对副本的附加负担</strong>：测试时关注副本端内存回收和持久化日志大小与速率，确保副本端不会因大量 UNLINK 传播导致回收延迟或内存峰值。</p>
 <p><strong>Pipeline/批量写入注意</strong>：主线程阻塞会导致客户端写入延迟累积，可能造成网络层退避或连接阻塞。测试时同时观测客户端侧延迟。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv3"><a href="#tldr">TL;DR</a></li>
+      <li class="lv2"><a href="#_1">概述</a></li>
+      <li class="lv2"><a href="#_2">压测架构</a></li>
+      <li class="lv2"><a href="#active-expire-lazyfree">核心概念澄清：active-expire 与 lazyfree 的精确语义</a></li>
+      <li class="lv3"><a href="#active-expire-hz-effort">active-expire 不是线性 &quot;hz × effort&quot;</a></li>
+      <li class="lv3"><a href="#lazyfree-lazy-expire">lazyfree-lazy-expire 只异步化&quot;内存回收&quot;，不消除&quot;扫描&quot;开销</a></li>
+      <li class="lv3"><a href="#hz">hz 提高的副作用</a></li>
+      <li class="lv3"><a href="#ttl">TTL 打散的副作用</a></li>
+      <li class="lv2"><a href="#30-batchsize200concurrency8">测试数据（30 秒，batchSize=200，concurrency=8）</a></li>
+      <li class="lv2"><a href="#_3">风险现象分析</a></li>
+      <li class="lv3"><a href="#1-p99max-p50">1. 延迟抖动 — P99/max 远高于 P50</a></li>
+      <li class="lv3"><a href="#2">2. 过期速率的波动</a></li>
+      <li class="lv3"><a href="#3-key">3. Key 数量剧烈波动</a></li>
+      <li class="lv3"><a href="#4">4. 吞吐不稳定</a></li>
+      <li class="lv2"><a href="#p50-p99">为什么 P50 很低但 P99 很高？</a></li>
+      <li class="lv2"><a href="#_4">解决方案</a></li>
+      <li class="lv2"><a href="#_5">方案详解</a></li>
+      <li class="lv3"><a href="#1-active-expire-effort-hz">1. active-expire-effort 和 hz 的含义</a></li>
+      <li class="lv3"><a href="#2-key">2. key 空间 的含义</a></li>
+      <li class="lv3"><a href="#3-ttl">3. TTL 打散的局限性</a></li>
+      <li class="lv3"><a href="#4-lazyfree-lazy-expire-yes">4. lazyfree-lazy-expire yes 原理</a></li>
+      <li class="lv2"><a href="#hz50-effort2-lazyfreeyes">优化验证：hz=50 + effort=2 + lazyfree=yes</a></li>
+      <li class="lv3"><a href="#_6">优化后数据</a></li>
+      <li class="lv3"><a href="#vs">优化前 vs 优化后 对比</a></li>
+      <li class="lv3"><a href="#_7">关键结论</a></li>
+      <li class="lv2"><a href="#2-ttl-ttl">优化验证 2：纯应用层 TTL 打散（固定 TTL → 随机偏移）</a></li>
+      <li class="lv3"><a href="#_8">打散后数据</a></li>
+      <li class="lv3"><a href="#_9">三轮完整对比</a></li>
+      <li class="lv3"><a href="#_10">关键发现</a></li>
+      <li class="lv2"><a href="#3-ttl-redis-hz50effort2lazyfree">优化验证 3：组合拳 — TTL 打散 + Redis 层全量优化（hz=50,effort=2,lazyfree）</a></li>
+      <li class="lv3"><a href="#_11">组合优化数据</a></li>
+      <li class="lv2"><a href="#4-ttl-lazyfreehz10effort1">优化验证 4：打散 TTL + 仅 lazyfree（hz=10,effort=1）</a></li>
+      <li class="lv3"><a href="#_12">数据</a></li>
+      <li class="lv3"><a href="#_13">五轮完整对比</a></li>
+      <li class="lv2"><a href="#5-ttl-hz50-lazyfree">优化验证 5：多级质数 TTL + hz=50 + lazyfree</a></li>
+      <li class="lv3"><a href="#_14">数据</a></li>
+      <li class="lv3"><a href="#_15">六轮对比</a></li>
+      <li class="lv3"><a href="#_16">分析</a></li>
+      <li class="lv2"><a href="#_17">总结：三种武器的分工框架</a></li>
+      <li class="lv3"><a href="#_18">各司其职</a></li>
+      <li class="lv3"><a href="#_19">为什么这样分工</a></li>
+      <li class="lv3"><a href="#_20">决策树</a></li>
+      <li class="lv3"><a href="#_21">一图总结</a></li>
+      <li class="lv2"><a href="#_22">监控与告警建议</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

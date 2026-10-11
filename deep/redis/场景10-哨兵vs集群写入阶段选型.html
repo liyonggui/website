@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="10-sentinelvs-cluster">场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测</h1>
 <blockquote>
 <p><strong>目标</strong>：为"写入阶段"做架构选型验证。聚焦两组对比：
@@ -2133,7 +2134,77 @@ Cluster (主分片/副分片):
 <li><strong>Lettuce DNS 缓存与 IP 切换</strong>：Lettuce/客户端连接池的 DNS 解析与 cached address 在容器重启/重配置场景下会导致短时间内读写指向旧 IP，建议在容器中禁用长时间 DNS 缓存或显式让客户端定期刷新 sentinel 信息。</li>
 <li><strong>docker network disconnect 隔离测试注意</strong>：用 <code>docker network disconnect</code> 做隔离时注意容器的 <code>/etc/hosts</code> 与 Docker DNS 缓存行为，最好在测试脚本中做 sleep/等待并验证 sentinel 状态再断网。</li>
 </ol>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#101">10.1 背景与问题</a></li>
+      <li class="lv2"><a href="#102">10.2 压测架构</a></li>
+      <li class="lv3"><a href="#1021-profile">10.2.1 哨兵环境（独立 profile）</a></li>
+      <li class="lv3"><a href="#1022-cluster-profile">10.2.2 集群环境（现有 cluster profile）</a></li>
+      <li class="lv2"><a href="#103-rest">10.3 REST 端点</a></li>
+      <li class="lv2"><a href="#104">10.4 稳态写压测</a></li>
+      <li class="lv3"><a href="#1041">10.4.1 方法</a></li>
+      <li class="lv3"><a href="#1042-vs">10.4.2 实测数据（哨兵 vs 集群）</a></li>
+      <li class="lv2"><a href="#105">10.5 故障韧性压测</a></li>
+      <li class="lv3"><a href="#1051">10.5.1 方法</a></li>
+      <li class="lv3"><a href="#1052-failrate-0">10.5.2 根本原因分析与修复（哨兵 failRate → 0）</a></li>
+      <li class="lv3"><a href="#1053-failrate-0">10.5.3 哨兵修复后实测（failRate = 0）</a></li>
+      <li class="lv3"><a href="#1054-0">10.5.4 集群对比（修复后同样为 0）</a></li>
+      <li class="lv3"><a href="#1055">10.5.5 修复对照表</a></li>
+      <li class="lv2"><a href="#106">10.6 关键结论（实测确认）</a></li>
+      <li class="lv2"><a href="#107">10.7 压测脚本</a></li>
+      <li class="lv2"><a href="#108-rpo-v2">10.8 未同步数据丢失量化 (RPO V2)</a></li>
+      <li class="lv3"><a href="#1081">10.8.1 问题背景</a></li>
+      <li class="lv3"><a href="#1082">10.8.2 设计要点</a></li>
+      <li class="lv3"><a href="#1083">10.8.3 核心实现</a></li>
+      <li class="lv3"><a href="#1084-bug">10.8.4 关键 Bug 修复</a></li>
+      <li class="lv3"><a href="#1085">10.8.5 实测结果</a></li>
+      <li class="lv3"><a href="#1086">10.8.6 结论</a></li>
+      <li class="lv2"><a href="#109-rpo-v3-vs-treeset">10.9 RPO V3: 本地文件持久化 vs 内存 TreeSet 对比</a></li>
+      <li class="lv3"><a href="#1091">10.9.1 对比目的</a></li>
+      <li class="lv3"><a href="#1092">10.9.2 方案对比</a></li>
+      <li class="lv3"><a href="#1093">10.9.3 实测对比</a></li>
+      <li class="lv3"><a href="#1094">10.9.4 结论</a></li>
+      <li class="lv2"><a href="#_1">附录：环境配置</a></li>
+      <li class="lv3"><a href="#docker-compose-sentinel-profile">docker-compose sentinel profile</a></li>
+      <li class="lv3"><a href="#sentinelconf">sentinel.conf</a></li>
+      <li class="lv2"><a href="#1010">10.10 数据恢复策略：各层级残余风险与最终兜底</a></li>
+      <li class="lv3"><a href="#10101-rpo0">10.10.1 问题：RPO=0 能证明零丢失吗？</a></li>
+      <li class="lv3"><a href="#10102">10.10.2 各层级保护方案的残余风险</a></li>
+      <li class="lv3"><a href="#10103">10.10.3 最终兜底方案：数据库水位线对账</a></li>
+      <li class="lv3"><a href="#10104">10.10.4 为什么不建议本地快照方案</a></li>
+      <li class="lv3"><a href="#10105">10.10.5 三层防护体系（推荐生产方案）</a></li>
+      <li class="lv2"><a href="#1011-min-replicas-to-write">10.11 脑裂防护：min-replicas-to-write 验证</a></li>
+      <li class="lv3"><a href="#10111-vs-crash">10.11.1 脑裂 vs Crash——两种故障模型</a></li>
+      <li class="lv3"><a href="#10112-docker">10.11.2 脑裂复现（Docker 双网络隔离法）</a></li>
+      <li class="lv3"><a href="#10113-min-replicas-to-write">10.11.3 根治方案：min-replicas-to-write</a></li>
+      <li class="lv3"><a href="#10114">10.11.4 配置建议</a></li>
+      <li class="lv3"><a href="#10115-vs-crash-vs">10.11.5 脑裂 vs Crash vs 防护后对比</a></li>
+      <li class="lv3"><a href="#10116-min-replicas-to-write-replica">10.11.6 min-replicas-to-write 与 replica 数量的关系</a></li>
+      <li class="lv3"><a href="#10117-rolemaster">10.11.7 隔离后旧主仍是 ROLE=master，为什么不形成多主？</a></li>
+      <li class="lv3"><a href="#10118-sentinel-3-master">10.11.8 为什么 Sentinel 不会产生 3 个 master？</a></li>
+      <li class="lv3"><a href="#10119">10.11.9 总结</a></li>
+      <li class="lv3"><a href="#101110-replica">10.11.10 双刃剑：replica 全部宕机时的可用性</a></li>
+      <li class="lv3"><a href="#101111-sentinel-vs-cluster">10.11.11 Sentinel vs Cluster：脑裂差异</a></li>
+      <li class="lv3"><a href="#101112-sentinel">10.11.12 Sentinel 其他关键故障场景补充</a></li>
+      <li class="lv2"><a href="#1012">10.12 后续测试建议</a></li>
+      <li class="lv2"><a href="#1013">10.13 集群四类故障场景对照与解决</a></li>
+      <li class="lv3"><a href="#1">场景 1：某分片主节点宕机</a></li>
+      <li class="lv3"><a href="#2slot">场景 2：分片主+副全部宕机（slot 孤儿）</a></li>
+      <li class="lv3"><a href="#3">场景 3：集群网络分区（分片之间不通）</a></li>
+      <li class="lv3"><a href="#4">场景 4：半数主节点故障，集群下线保护</a></li>
+      <li class="lv3"><a href="#_8">四类故障总结矩阵</a></li>
+      <li class="lv3"><a href="#ha">回归本质：四类故障就是高可用（HA）三要素</a></li>
+      <li class="lv3"><a href="#10135">10.13.5 场景补充：单个副分片宕机</a></li>
+      <li class="lv3"><a href="#10136-cluster-rpo">10.13.6 场景补充：Cluster 模式 RPO 量化</a></li>
+      <li class="lv3"><a href="#sentinel-cluster">Sentinel &amp;amp; Cluster 完整故障矩阵</a></li>
+      <li class="lv3"><a href="#_9">关键实现点（踩坑记录）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

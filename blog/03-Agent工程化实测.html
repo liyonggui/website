@@ -49,7 +49,8 @@
     <a class="back" href="../blog.html">← 返回博客索引</a>
     <h1>Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="agent-p95-836ms-12ms-agent">Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层</h1>
 <blockquote>
 <p>「高并发实测」系列第 3 篇。</p>
@@ -388,7 +389,25 @@ HALF_OPEN 只放一个探针；成功 → CLOSED 复位，失败 → 再 OPEN
 <p>可观测、超时、舱壁、熔断、缓存、开环压测——每一个都是分布式系统课本里的老词。真正新的只有一点：<strong>链路末端那个东西会自己编话，所以"降级"不只是保系统，还得保住"不胡说"。</strong> 其余部分，就是把后端那点老手艺，搬到一个新场景里再练一遍。</p>
 <p>会做 Agent 的人不一定愿意压测，愿意压测的人不一定碰 Agent。我刚好站在中间。</p>
 <p>八股可以被背，结论只能被跑出来。这是「高并发实测」系列第三篇。上一篇：《高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%》。再上一篇：《别再死背 44 字节了：Redis String 三种编码压测》。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">〇、一分钟带走版</a></li>
+      <li class="lv2"><a href="#agent">一、场景：Agent 跑通了，然后呢？</a></li>
+      <li class="lv2"><a href="#_2">二、可观测：先让它可被度量（不然优化都是玄学）</a></li>
+      <li class="lv2"><a href="#_3">三、降级：下游挂了的正确表现，是说&quot;查不到&quot;</a></li>
+      <li class="lv2"><a href="#llm-semaphore">四、LLM 舱壁：一个 Semaphore，挡住九成流量</a></li>
+      <li class="lv2"><a href="#60">五、熔断：手写 60 行，只为把它讲清楚</a></li>
+      <li class="lv2"><a href="#_4">六、压测：先证明&quot;不是我的锅&quot;，再决定优化什么</a></li>
+      <li class="lv2"><a href="#_5">七、如果继续做，我会排这几件事</a></li>
+      <li class="lv2"><a href="#_6">八、局限（照例先说）</a></li>
+      <li class="lv2"><a href="#_7">写在最后</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

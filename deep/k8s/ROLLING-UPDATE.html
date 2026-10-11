@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>service-user 滚动更新练习（K8s 核心概念 · B）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="service-user-k8s-b">service-user 滚动更新练习（K8s 核心概念 · B）</h1>
 <blockquote>
 <p>目标：认识 K8s 的<strong>滚动更新（Rolling Update）</strong>与<strong>回滚</strong>，理解"零停机发布"是怎么发生的。
@@ -257,7 +258,34 @@ kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> <
 <blockquote>
 <p>想连 Service 也固化（当前是命令行建的 ClusterIP:8081，未落盘）：<code>kubectl get svc service-user -n sc-demo -o yaml &gt; service.yaml</code>，同样清理自动字段即可。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、滚动更新是什么</a></li>
+      <li class="lv2"><a href="#_2">二、路径一（推荐 · 零构建 · 立刻能玩）</a></li>
+      <li class="lv3"><a href="#1">1. 触发滚动更新</a></li>
+      <li class="lv3"><a href="#2">2. 实时看流水线状态（会一直挂到完成）</a></li>
+      <li class="lv3"><a href="#3-pod-ctrlc">3. 另开一个窗口看 Pod 新旧交替（Ctrl+C 退出）</a></li>
+      <li class="lv3"><a href="#4">4. 零停机验证（关键）</a></li>
+      <li class="lv3"><a href="#5">5. 看发布历史</a></li>
+      <li class="lv3"><a href="#6">6. 回滚（回到上一版）</a></li>
+      <li class="lv3"><a href="#7">7. 可选：暂停 / 继续（金丝雀发布雏形）</a></li>
+      <li class="lv2"><a href="#_3">三、路径二（真换镜像版本 · 更贴近实战）</a></li>
+      <li class="lv3"><a href="#1-whoami">1. 改源码，让 whoami 带上版本（读环境变量）</a></li>
+      <li class="lv3"><a href="#2-wsl">2. 打包 + 构建镜像（WSL 内）</a></li>
+      <li class="lv3"><a href="#3-k3s-containerddocker">3. 导入 K3s（单节点用 containerd，docker 构建的镜像默认看不到）</a></li>
+      <li class="lv3"><a href="#4_1">4. 更新镜像（触发滚动更新）</a></li>
+      <li class="lv3"><a href="#5_1">5. 验证版本号变化</a></li>
+      <li class="lv3"><a href="#6-010">6. 回滚（回到 0.1.0 镜像）</a></li>
+      <li class="lv2"><a href="#_4">四、关键命令速查</a></li>
+      <li class="lv2"><a href="#wsl2-k3s">五、WSL2 + K3s 网络坑提醒（沿用之前结论）</a></li>
+      <li class="lv2"><a href="#_5">附录：声明式基线（已固化为三件套）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>AI Agent 新手教学（后端工程师·零基础版）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="ai-agent">AI Agent 新手教学（后端工程师·零基础版）</h1>
 <blockquote>
 <p>你是谁：会写后端、懂接口/并发/缓存，但<strong>从没碰过 AI Agent</strong>。
@@ -218,7 +219,32 @@
 - 轨迹：先调 search_schools(name=亚特兰蒂斯) → 29ms 返回空；
 - 回答：如实说"该院校不存在于数据库中"，<strong>未编造任何排名/省份/学院</strong> ✓（防幻觉核心成立）；
 - ⚠️ 细节：它顺带补充了"亚特兰蒂斯是柏拉图传说中的文明"等常识背景——来自模型知识而非工具。教育场景无害，<strong>严格业务场景（金融/医疗）应约束"非工具来源的陈述一律不说"</strong>——常识补充是幻觉的温床，这次对不保证下次对。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#0">第 0 课：一句话建立正确的心智模型（最重要）</a></li>
+      <li class="lv2"><a href="#1-phase1">第 1 课：第一次&quot;调用模型&quot;（phase1 前半）</a></li>
+      <li class="lv2"><a href="#2-function-callingphase1">第 2 课：让模型&quot;动手&quot;——工具调用（Function Calling）（phase1 核心）</a></li>
+      <li class="lv2"><a href="#3-ragphase2">第 3 课：给模型&quot;外挂知识&quot;——RAG（phase2）</a></li>
+      <li class="lv2"><a href="#4-phase3">第 4 课：多轮对话——&quot;记忆&quot;（phase3）</a></li>
+      <li class="lv2"><a href="#5-phase3">第 5 课：接你自己的真实业务（phase3）</a></li>
+      <li class="lv2"><a href="#6-mcpphase5">第 6 课：MCP——把&quot;工具&quot;标准化、解耦（phase5）</a></li>
+      <li class="lv2"><a href="#7-phase4">第 7 课：让它&quot;能扛&quot;——工程化护栏（phase4）</a></li>
+      <li class="lv2"><a href="#8-phase6">第 8 课：怎么知道它&quot;好不好&quot;——评测（phase6，最值钱的一课）</a></li>
+      <li class="lv2"><a href="#_1">环境怎么起（你的实验室）</a></li>
+      <li class="lv2"><a href="#_2">建议学习顺序（新手）</a></li>
+      <li class="lv2"><a href="#glossary">术语小抄（glossary）</a></li>
+      <li class="lv3"><a href="#4">第4课补充实验：用&quot;指代词&quot;肉眼验证记忆（强烈推荐亲手做）</a></li>
+      <li class="lv3"><a href="#7">第7课补充实验：三道护栏的实测方法（已全跑通）</a></li>
+      <li class="lv3"><a href="#56phase5">第5/6课补充实验：复合问题全链路耗时拆解（phase5）</a></li>
+      <li class="lv3"><a href="#6">第6课补充实验：失控与修复的前后对比（必看）</a></li>
+      <li class="lv3"><a href="#56">第5/6课补充实验：不存在的大学（防幻觉测试）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>写入链路降级设计：本地文件兜底 + 限速回放</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="_1">写入链路降级设计：本地文件兜底 + 限速回放</h1>
 <blockquote>
 <p>性质：工程设计方案（内部沉淀，暂不作为文章内容发布）
@@ -291,7 +292,26 @@
 </tr>
 </tbody>
 </table>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_2">一、目标与非目标</a></li>
+      <li class="lv2"><a href="#_3">二、整体流程</a></li>
+      <li class="lv2"><a href="#_4">三、只读降级矩阵（关键：只读需要活着的读源）</a></li>
+      <li class="lv3"><a href="#32-mysql">3.2 MySQL 故障时的三选一（需业务方预先签字）</a></li>
+      <li class="lv2"><a href="#_5">四、切换机制：手动开关 + 自动告警</a></li>
+      <li class="lv2"><a href="#_6">五、落盘文件格式（能重放才算兜底）</a></li>
+      <li class="lv2"><a href="#_7">六、磁盘水位线（不做就是反向故障）</a></li>
+      <li class="lv2"><a href="#_8">七、回放状态机</a></li>
+      <li class="lv2"><a href="#_9">八、验收标准（对账，不是&quot;看起来好了&quot;）</a></li>
+      <li class="lv2"><a href="#_10">九、待决问题（后续演练时回答）</a></li>
+      <li class="lv2"><a href="#_11">十、现有代码基础</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景3：悲观锁 vs 乐观锁</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="3-vs">场景3：悲观锁 vs 乐观锁</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高并发写场景下，保证数据一致性有两种主流方案：
@@ -191,7 +192,26 @@
 <blockquote>
 <p><strong>悲观锁 vs 乐观锁</strong>：悲观锁 <code>FOR UPDATE</code> 先锁后改，靠 InnoDB 行锁保证一致性，高并发下阻塞排队（实测锁等待 = 持锁时长），可触发死锁（InnoDB 自动回滚一个事务，错误码 1213）；乐观锁用 version CAS，无锁等待吞吐高，但高并发冲突率飙升导致大量失败（实测冲突 4934 次、失败 10000）。选型看冲突率：冲突高用悲观锁/原子 UPDATE，冲突低用乐观锁。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、悲观锁与乐观锁实现</a></li>
+      <li class="lv3"><a href="#select-for-update">悲观锁（SELECT ... FOR UPDATE）</a></li>
+      <li class="lv3"><a href="#cas">乐观锁（版本号 CAS）</a></li>
+      <li class="lv2"><a href="#_3">三、锁行为演示</a></li>
+      <li class="lv3"><a href="#1-lockwait">1. 悲观锁锁等待（/lock/wait）</a></li>
+      <li class="lv3"><a href="#2-lockdeadlock">2. 死锁演示（/lock/deadlock）</a></li>
+      <li class="lv2"><a href="#lockcompare">四、并发度性能对比（实测 /lock/compare）</a></li>
+      <li class="lv3"><a href="#_4">关键结论</a></li>
+      <li class="lv2"><a href="#_5">五、选型建议</a></li>
+      <li class="lv2"><a href="#_6">六、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

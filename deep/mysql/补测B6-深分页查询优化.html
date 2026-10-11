@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="b6limit">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高频慢查询源头：<code>LIMIT 1000000,20</code> 深分页。MySQL 需<strong>扫描并丢弃前 100 万行</strong>，offset 越大越慢，是列表页/管理后台最常见的慢查询。</p>
@@ -121,7 +122,22 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/page/status"
 <blockquote>
 <p><strong>深分页优化</strong>：<code>LIMIT 大offset</code> 扫描并丢弃大量行，offset 越大越慢。实测 50 万行：深分页 offset=400000 耗时 149ms，游标分页 <code>WHERE id&gt;last_id</code> 仅 15ms，快约 31 倍。优化：游标分页（keyset 走索引）、延迟关联（先取 id 再回表）、覆盖索引、禁止深翻页。注意：小数据量+缓存会掩盖差异，需用大数据量深 offset 验证。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、深分页原理</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#50">四、实测结果（50万行）</a></li>
+      <li class="lv2"><a href="#_4">五、优化方案</a></li>
+      <li class="lv2"><a href="#bench">六、踩坑记录（bench 缓存失真）</a></li>
+      <li class="lv2"><a href="#_5">七、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

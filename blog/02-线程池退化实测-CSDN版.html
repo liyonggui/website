@@ -49,7 +49,8 @@
     <a class="back" href="../blog.html">← 返回博客索引</a>
     <h1>Java 线程池 CallerRunsPolicy 高负载退化实测：4 个异步任务减到 3 个，QPS 提升 38%（交错矩阵 + 四库对账）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="java-callerrunspolicy-4-3-qps-38">Java 线程池 CallerRunsPolicy 高负载退化实测：4 个异步任务减到 3 个，QPS 提升 38%（交错矩阵 + 四库对账）</h1>
 <p>线程池参数怎么定？异步一定比同步快吗？本文用一条真实链路（HTTP → Disruptor → Kafka → 3 个消费者 → 写 MySQL / Redis / ES / Mongo 四个存储）做交错压测矩阵：三种"同步/异步怎么分配"的写法各跑 3 轮取中位数，并用四库数据一致性对账验证不丢数据。结论是 <strong>CallerRunsPolicy 在高负载 I/O 场景下会把异步任务静默退回调用线程执行，形成"伪装成异步的同步器"</strong>——把最重的 MySQL 改回同步，反而让 QPS 提升 38%。全文含线程池秒级埋点实现、压测踩坑复盘与生产选型建议。</p>
 <blockquote>
@@ -393,7 +394,24 @@
 <li>第 2 篇：本文</li>
 <li>第 3 篇：《一个 Java 后端把 Agent 做成能扛线上：可观测、降级、熔断与开环压测》</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">〇、一分钟带走版</a></li>
+      <li class="lv2"><a href="#_2">一、场景：一条典型的&quot;削峰 + 多写&quot;链路</a></li>
+      <li class="lv2"><a href="#_3">二、对照实验：一个变量，三轮中位数</a></li>
+      <li class="lv2"><a href="#callerrunspolicy">三、凶手：CallerRunsPolicy 把&quot;异步&quot;偷偷变回同步</a></li>
+      <li class="lv2"><a href="#_4">四、差点被骗：这组数字重跑了三遍才对</a></li>
+      <li class="lv2"><a href="#_5">五、闭环对账：快慢之外，先看丢没丢</a></li>
+      <li class="lv2"><a href="#_6">六、那到底什么时候该异步？</a></li>
+      <li class="lv2"><a href="#_7">七、如果继续优化，我会做这五件事</a></li>
+      <li class="lv2"><a href="#_8">八、写在最后</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

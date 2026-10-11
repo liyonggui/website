@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES7.17 写入全流程+**底层存储算法精准拆解**</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="es717">ES7.17 写入全流程+<strong>底层存储算法精准拆解</strong></h1>
 <p>从路由分片 → 日志存储 → 内存索引 → 磁盘段文件 → 词条排序 → 数据压缩，<strong>每一步用什么算法、数据结构、存储格式</strong>全部讲透</p>
 <h2 id="_1">一、分片路由：数据分到哪个节点【分片分配算法】</h2>
@@ -246,7 +247,31 @@
    <strong>词条排序 + 构建FST压缩词典</strong>
    需要我给你整理<strong>一页纸纯算法速记版</strong>，直接背面试吗？</li>
 </ol>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、分片路由：数据分到哪个节点【分片分配算法】</a></li>
+      <li class="lv3"><a href="#1">1. 路由哈希算法</a></li>
+      <li class="lv2"><a href="#translog">二、写入第一步：Translog 事务日志存储【落盘日志算法】</a></li>
+      <li class="lv3"><a href="#1-translog">1. Translog 存储结构</a></li>
+      <li class="lv2"><a href="#_2">三、写入第二步：内存缓冲区存储【内存索引结构+算法】</a></li>
+      <li class="lv3"><a href="#1_1">1. 内存缓冲区结构</a></li>
+      <li class="lv2"><a href="#refresh">四、Refresh 刷新阶段【最核心：倒排索引构建+排序算法】</a></li>
+      <li class="lv3"><a href="#1_2">1. 分词使用算法</a></li>
+      <li class="lv2"><a href="#flush-segment">五、Flush 阶段：内存Segment → 磁盘持久化【磁盘文件存储算法】</a></li>
+      <li class="lv3"><a href="#1-segment">1. 磁盘Segment 六大核心文件+对应存储算法</a></li>
+      <li class="lv2"><a href="#merge">六、后台段合并 Merge 阶段【合并重排+清理算法】</a></li>
+      <li class="lv3"><a href="#1_3">1. 小段筛选算法</a></li>
+      <li class="lv3"><a href="#2">2. 合并内部重排两大算法</a></li>
+      <li class="lv2"><a href="#_3">七、不同字段类型专属存储算法（精准区分）</a></li>
+      <li class="lv2"><a href="#_4">八、写入全程算法执行顺序（一字不差背诵版）</a></li>
+      <li class="lv2"><a href="#_5">九、核心面试精准问答（算法版）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

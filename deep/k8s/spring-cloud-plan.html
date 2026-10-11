@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Spring Cloud → K3s 极简落地：用最小子集认识 K8s</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="spring-cloud-k3s-k8s">Spring Cloud → K3s 极简落地：用最小子集认识 K8s</h1>
 <blockquote>
 <p><strong>目标定位</strong>：本方案的目的<strong>不是验证微服务全功能</strong>（分布式事务 / 消息队列 / 定时任务 / 链路追踪都不在目标内），而是<strong>借助 spring-cloud 这个现成项目，在已搭好的 K3s 上认识 K8s 核心概念</strong>。因此尽量精简：只保留最少服务和最少依赖，把注意力放在 K8s 本身。
@@ -330,7 +331,31 @@ curl<span class="w"> </span>-s<span class="w"> </span>localhost:18081/user/whoam
 <blockquote>
 <p>一句话：<strong>上 K8s 的只有一个 Spring Boot 服务（独立新项目 <code>sc-user</code>）+（可选）一个 Redis；外部只有一个 MySQL 容器。原项目一行没改，专注把 K8s 的核心对象和操作摸熟。</strong></p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#1-k8s">1. 还能省什么（从&quot;完整方案&quot;砍到&quot;极简 K8s 学习方案&quot;）</a></li>
+      <li class="lv2"><a href="#2">2. 最小依赖与端口</a></li>
+      <li class="lv2"><a href="#3-2026-10-07">3. 环境前置（2026-10-07 实测）</a></li>
+      <li class="lv2"><a href="#4-sc-user">4. 落地载体：独立最小项目 sc-user（原项目零改动）</a></li>
+      <li class="lv3"><a href="#41">4.1 为什么不改在原项目上（三条当场核到的事实）</a></li>
+      <li class="lv3"><a href="#42">4.2 新项目内容</a></li>
+      <li class="lv3"><a href="#43">4.3 构建与外部依赖（本轮实跑过的命令）</a></li>
+      <li class="lv2"><a href="#5-k8s">5. K8s 落地（核心，已实跑）</a></li>
+      <li class="lv3"><a href="#51-manifestssc-user-sc-demo">5.1 清单（manifests/sc-user/，命名空间 sc-demo）</a></li>
+      <li class="lv3"><a href="#52-pod-mysql-localhost">5.2 Pod 里的 MySQL 地址不能写 localhost</a></li>
+      <li class="lv3"><a href="#53">5.3 单节点镜像获取的坑（必看）</a></li>
+      <li class="lv3"><a href="#54-kubectl-sudo-k3s-kubectl">5.4 kubectl 实操清单（本机入口 sudo k3s kubectl）</a></li>
+      <li class="lv3"><a href="#55-maxunavailable-0">5.5 实测：maxUnavailable: 0 不等于零请求失败</a></li>
+      <li class="lv2"><a href="#6-redis-k8s-statefulset-pvc">6. 进阶：把 Redis 也放上 K8s（学 StatefulSet + PVC，未做）</a></li>
+      <li class="lv2"><a href="#7">7. 本机常见坑（精简）</a></li>
+      <li class="lv2"><a href="#8">8. 进度与下一步</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

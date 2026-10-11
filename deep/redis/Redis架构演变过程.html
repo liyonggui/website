@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis架构演变过程</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <p>下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以及新的瓶颈是什么。每一阶段包含：1) 业务痛点，2) 架构图逻辑文字描述，3) 可承载量级（含 QPS/数据量 上限）和 4) 该架构无法解决的新瓶颈（引出下一阶段）。最后给出高阶总结与从小厂到大厂的落地路线图，并附选型对照表。全篇逻辑连贯、层层递进，便于新手理解。</p>
 <hr />
 <h2 id="single-node"><strong>阶段一：单机单节点阶段（Single Node）</strong></h2>
@@ -415,7 +416,27 @@
 <li>数据迁移工具（在线迁移、双写与验证）及回滚方案。</li>
 </ul>
 <hr />
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#single-node">阶段一：单机单节点阶段（Single Node）</a></li>
+      <li class="lv2"><a href="#master-slave">阶段二：单机多实例 / 主从（Master-Slave）阶段</a></li>
+      <li class="lv2"><a href="#sentinel-proxy-ha">阶段三：哨兵架构（Sentinel / Proxy + HA）阶段</a></li>
+      <li class="lv2"><a href="#sharding-cluster">阶段四：集群分片架构（Sharding / Cluster）阶段</a></li>
+      <li class="lv2"><a href="#multi-cluster-geo-distributed-multi-layered-cache">阶段五：超大规模企业级架构（Multi-cluster / Geo-Distributed / Multi-layered Cache）</a></li>
+      <li class="lv2"><a href="#_1">高阶总结（必补充）</a></li>
+      <li class="lv3"><a href="#1">1) 每一代架构核心解决的痛点差异对比（重点）</a></li>
+      <li class="lv3"><a href="#2">2) 生产环境选型标准：什么规模用什么架构（建议阈值）</a></li>
+      <li class="lv3"><a href="#3-keykey">3) 各大架构的致命坑、一致性问题、超时、热key、大key、雪崩风险（详尽列出）</a></li>
+      <li class="lv3"><a href="#4">4) 从小厂到大厂：完整落地路线图（按阶段可执行步骤）</a></li>
+      <li class="lv2"><a href="#_2">架构选型总结对照表（从小厂到大厂一目了然）</a></li>
+      <li class="lv2"><a href="#_3">实施细节补充（工程实践建议、避免致命坑）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

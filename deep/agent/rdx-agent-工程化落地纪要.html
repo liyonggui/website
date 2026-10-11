@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>rdx-agent 工程化落地纪要</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="rdx-agent">rdx-agent 工程化落地纪要</h1>
 <blockquote>
 <p>项目根：<code>D:\ai-agent-project\rdx-agent</code>（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090）
@@ -240,7 +241,28 @@ bash<span class="w"> </span>setup-higress-ai-gateway.sh<span class="w">         
 </ul>
 <hr />
 <p><em>配套细节文档：<code>rdx-agent/README.md</code>（逐 API 精读 + 各节实测）、<code>Agent中间件优化选型.md</code>（选型与优先级）、<code>RAG代码与原理详解.md</code>、<code>phase6-评测代码与原理详解.md</code>、<code>observability/README.md</code>。求职主文档（技术栈总结/学习日志/速记卡）在 <code>D:\high-concurrency-projects\求职\</code>。</em></p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#0">0. 一句话总览</a></li>
+      <li class="lv2"><a href="#1-redis-stack">1. Redis Stack 全量迁移（向量库 / 语义缓存 / 会话记忆）</a></li>
+      <li class="lv2"><a href="#2-bm25-rrf-rerank">2. 检索三段式：向量 + BM25 → RRF → Rerank</a></li>
+      <li class="lv2"><a href="#3-facet-namespace">3. 语义缓存的两道防线（facet + namespace）</a></li>
+      <li class="lv2"><a href="#4-resilience4j">4. resilience4j 换手写舱壁/熔断</a></li>
+      <li class="lv2"><a href="#5-langfuse-datasets">5. Langfuse Datasets 评测闭环</a></li>
+      <li class="lv2"><a href="#6-higress-ai">6. Higress AI 网关（统一入口）</a></li>
+      <li class="lv2"><a href="#7-compose">7. 统一基础设施（compose）</a></li>
+      <li class="lv2"><a href="#8-code-review">8. Code-review 六条加固</a></li>
+      <li class="lv2"><a href="#9">9. 诚实教训（这套流程最值钱的部分）</a></li>
+      <li class="lv2"><a href="#10">10. 已知边界 / 未做</a></li>
+      <li class="lv2"><a href="#11">11. 复现命令</a></li>
+      <li class="lv2"><a href="#12-build-verification-hygiene">12. 构建与交付加固（build verification / hygiene）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

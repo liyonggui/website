@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>MySQL 连接层参数详细辨析</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="mysql">MySQL 连接层参数详细辨析</h1>
 <blockquote>
 <p>基于 MySQL 5.7/8.0，线程缓存 <code>thread_cache_size</code> 参数，<strong>区分：连接、会话、线程、事务</strong>。
@@ -241,7 +242,26 @@ MySQL 的<strong>线程缓存池（Thread Cache），缓存的是服务线程（
 <blockquote>
 <p>补充：企业版 MySQL Thread Pool 线程池，逻辑完全不一样，上面是默认 one-thread-per-connection 模型。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#1-threads_connected">1. Threads_connected</a></li>
+      <li class="lv2"><a href="#2-threads_created">2. Threads_created</a></li>
+      <li class="lv3"><a href="#1">问题1：临时连接执行完断开，算不算？</a></li>
+      <li class="lv3"><a href="#2">问题2：长连接是固定数值吗？</a></li>
+      <li class="lv2"><a href="#3-aborted_connects">3. Aborted_connects</a></li>
+      <li class="lv2"><a href="#4-aborted_clients">4. Aborted_clients</a></li>
+      <li class="lv3"><a href="#aborted">区分两个 Aborted</a></li>
+      <li class="lv2"><a href="#5-thread_cache_hits">5. Thread_cache_hits</a></li>
+      <li class="lv3"><a href="#_1">计算公式：线程缓存命中率</a></li>
+      <li class="lv2"><a href="#_2">汇总速查表</a></li>
+      <li class="lv2"><a href="#_3">生产排查小技巧</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

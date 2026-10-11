@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>一、ES分片倾斜线上应急处理步骤（可直接照着操作）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="es">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</h1>
 <h2 id="_1">前置原则</h2>
 <p>先定位、再评估影响、先应急降压、再根治修复，禁止高峰期大力度迁移分片、大批量 reindex。</p>
@@ -240,7 +241,23 @@ MurmurHash3 是第三代最终版本，废弃 MurmurHash1/2。</p>
 <p>## 9. 面试一句话精简总结</p>
 <p>MurmurHash3分为32位、128位两个版本；ES分片路由采用MurmurHash3_x86_32，核心作用打散数据防止分片倾斜，哈希碰撞无害；cardinality去重等对碰撞敏感场景使用MurmurHash3_x64_128扩大哈希空间降低碰撞概率。
    需要我整理成<strong>一页纸面试背诵极简版（MurmurHash3+分片倾斜整套）</strong>吗？</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">前置原则</a></li>
+      <li class="lv3"><a href="#1">步骤1：快速确认是否发生分片倾斜</a></li>
+      <li class="lv3"><a href="#2">步骤2：定位倾斜根因</a></li>
+      <li class="lv2"><a href="#1_1">1. 基础概述</a></li>
+      <li class="lv2"><a href="#2-murmurhash3">2. MurmurHash3 两大正式版本（核心区分）</a></li>
+      <li class="lv3"><a href="#_2">关键结论</a></li>
+      <li class="lv2"><a href="#3-murmurhash3_x86_32es">3. MurmurHash3_x86_32（ES分片路由核心）</a></li>
+      <li class="lv3"><a href="#_3">运算流程</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

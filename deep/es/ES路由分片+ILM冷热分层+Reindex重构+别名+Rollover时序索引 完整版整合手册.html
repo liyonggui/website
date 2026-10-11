@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES路由分片\+ILM冷热分层\+Reindex重构\+别名\+Rollover时序索引 完整版整合手册</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="esilmreindexrollover">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</h1>
 <h2 id="_1">目录</h2>
 <ol>
@@ -675,7 +676,63 @@ NodeC
 <blockquote>
 <p>（注：部分内容可能由 AI 生成）</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#_3">层级结构</a></li>
+      <li class="lv2"><a href="#_4">两条核心铁律</a></li>
+      <li class="lv2"><a href="#3order-9118">示例：3节点，order索引 9主1副本（总分片18）</a></li>
+      <li class="lv2"><a href="#1">1、路由计算公式（底层固定）</a></li>
+      <li class="lv3"><a href="#_5">硬性约束</a></li>
+      <li class="lv2"><a href="#2murmurhash3">2、MurmurHash3 两个版本分工</a></li>
+      <li class="lv3"><a href="#_6">哈希碰撞说明</a></li>
+      <li class="lv2"><a href="#3routing">3、Routing 字符串长度规范</a></li>
+      <li class="lv2"><a href="#4mysql">4、路由打散与MySQL兼容性</a></li>
+      <li class="lv2"><a href="#1_1">类型1：路由数据倾斜（业务层面，分片均衡算法无法解决）</a></li>
+      <li class="lv3"><a href="#_8">成因</a></li>
+      <li class="lv3"><a href="#_9">典型场景</a></li>
+      <li class="lv3"><a href="#_10">根治方案：路由二次后缀打散</a></li>
+      <li class="lv3"><a href="#java">Java 工具类</a></li>
+      <li class="lv3"><a href="#_11">扩容兜底方案</a></li>
+      <li class="lv2"><a href="#2es">类型2：节点分片分配倾斜（集群层面，ES均衡算法自动调节）</a></li>
+      <li class="lv2"><a href="#1_2">1、分配整体流程</a></li>
+      <li class="lv3"><a href="#_13">前置过滤规则（优先级最高）</a></li>
+      <li class="lv2"><a href="#2">2、加权打分均衡算法</a></li>
+      <li class="lv2"><a href="#3">3、磁盘三级水位（分配强门槛）</a></li>
+      <li class="lv2"><a href="#4">4、分片搬迁并发配置（运维常用）</a></li>
+      <li class="lv2"><a href="#5">5、主副分片补充规则</a></li>
+      <li class="lv2"><a href="#1_3">1、单分片合理容量（核心规划依据）</a></li>
+      <li class="lv2"><a href="#2_1">2、主分片数量计算公式</a></li>
+      <li class="lv2"><a href="#3_1">3、副本配置说明</a></li>
+      <li class="lv2"><a href="#4_1">4、节点磁盘使用率红线（冷热区分）</a></li>
+      <li class="lv2"><a href="#5_1">5、单节点分片总数上限</a></li>
+      <li class="lv2"><a href="#6">6、单个索引总体积上限</a></li>
+      <li class="lv2"><a href="#61">6.1 底层核心原理</a></li>
+      <li class="lv2"><a href="#62-ilm-vs">6.2 ILM轮询 vs 自定义定时任务 对比</a></li>
+      <li class="lv2"><a href="#63-ilm">6.3 ILM 四阶段参数速查表（含义+默认+修改场景+推荐值）</a></li>
+      <li class="lv3"><a href="#ilm_1">全局ILM配置</a></li>
+      <li class="lv3"><a href="#hot">Hot 热阶段</a></li>
+      <li class="lv3"><a href="#warmcolddelete">Warm/Cold/Delete阶段表格省略（和前文一致）</a></li>
+      <li class="lv2"><a href="#64-ilm">6.4 ILM故障排查、运维命令、策略模板（全文保留原有内容，此处省略，和上文完全一致）</a></li>
+      <li class="lv2"><a href="#101">10.1 核心前置认知（面试必背）</a></li>
+      <li class="lv2"><a href="#102">10.2 单索引手动回滚步骤（生产精准操作，分步执行）</a></li>
+      <li class="lv3"><a href="#1_4">步骤1：查询索引当前冷热层级</a></li>
+      <li class="lv3"><a href="#2_2">步骤2：强制修改索引归属热节点，自动触发分片搬迁</a></li>
+      <li class="lv3"><a href="#3_2">步骤3：查看分片回迁进度</a></li>
+      <li class="lv3"><a href="#4ilm">步骤4：关键防护：防止ILM巡检再次回迁温层</a></li>
+      <li class="lv3"><a href="#5_2">步骤5：额外兼容处理（温索引常见变更）</a></li>
+      <li class="lv2"><a href="#103">10.3 生产一键批量脚本：所有温层索引自动回迁热节点（开箱即用）</a></li>
+      <li class="lv3"><a href="#warm_to_hotsh-shell">warm_to_hot.sh 完整shell脚本</a></li>
+      <li class="lv3"><a href="#_16">脚本使用步骤</a></li>
+      <li class="lv2"><a href="#104">10.4 两种回流方案选型对比</a></li>
+      <li class="lv2"><a href="#105">10.5 面试极简话术（直接背诵）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

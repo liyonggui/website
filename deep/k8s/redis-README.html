@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>单实例 Redis on K3s（学习用）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="redis-on-k3s">单实例 Redis on K3s（学习用）</h1>
 <p>把 Redis 放上 K8s，比 <code>sc-user</code> 只多一个概念：<strong>数据要持久化、身份要稳定</strong>。
 对应到资源就是三件套：<code>StatefulSet</code> + <code>volumeClaimTemplates(PVC)</code> + <code>Service</code>。</p>
@@ -130,7 +131,20 @@ kubectl<span class="w"> </span>delete<span class="w"> </span>pod<span class="w">
 <li>想进阶「1主1从」：把 <code>replicas</code> 改 2，再给从库加 <code>redis-server --replicaof redis-0.redis ...</code>（涉及 Headless Service，到时候再说）。</li>
 <li>想进阶「哨兵」：1主1从3哨兵，配置和发现逻辑更重，放最后再碰。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">文件清单</a></li>
+      <li class="lv2"><a href="#wsl">部署（WSL 里执行）</a></li>
+      <li class="lv2"><a href="#_2">验证</a></li>
+      <li class="lv2"><a href="#sc-user">与 sc-user 的关键差异（本课重点）</a></li>
+      <li class="lv2"><a href="#_3">下一步（可选）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="12-mysql">场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</h1>
 <h2 id="_1">一、核心原理</h2>
 <p>在分布式/多实例场景下，单机 <code>synchronized</code>/<code>ReentrantLock</code> 无法跨进程互斥，需要<strong>分布式锁</strong>。MySQL 分布式锁的核心：</p>
@@ -161,7 +162,26 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/dist-lock/st
 </ol>
 <h2 id="_6">六、结论</h2>
 <p>MySQL 分布式锁借助<strong>唯一索引冲突</strong>实现跨节点互斥，实现简单、可靠，配合 <strong>owner 校验 + 过期时间 + 续期</strong> 可覆盖宕机、误释放等工程问题。适合对一致性要求高、并发量中等的场景；对极致吞吐可用 Redis 分布式锁。核心取舍：<strong>用串行化的吞吐代价换取跨实例的数据一致性</strong>。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、核心原理</a></li>
+      <li class="lv2"><a href="#_2">二、实现方式对比</a></li>
+      <li class="lv2"><a href="#_3">三、演示接口</a></li>
+      <li class="lv2"><a href="#_4">四、关键现象</a></li>
+      <li class="lv3"><a href="#1">1. 唯一索引互斥</a></li>
+      <li class="lv3"><a href="#2-owner">2. owner 防误删</a></li>
+      <li class="lv3"><a href="#3">3. 过期抢占</a></li>
+      <li class="lv3"><a href="#4">4. 临界区并发</a></li>
+      <li class="lv3"><a href="#5">5. 吞吐权衡</a></li>
+      <li class="lv2"><a href="#_5">五、工程注意点</a></li>
+      <li class="lv2"><a href="#_6">六、结论</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Redis 高并发压测全场景总结（场景 1-11）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="redis-1-11">Redis 高并发压测全场景总结（场景 1-11）</h1>
 <blockquote>
 <p>本文件汇总 <code>docs/</code> 下 11 个压测场景的核心结论与简略压测过程，用于快速回顾与面试准备。完整细节见各场景原始文档。</p>
@@ -1069,7 +1070,33 @@
 2. <strong>真正要防的是大结构的"全量读取"</strong>（HGETALL/SMEMBERS/SRANDMEMBER/大 value 拼接）——这是数量级差距，改用分页（SSCAN/HSCAN）或分片。
 3. <strong>紧凑编码（listpack/intset/embstr）在临界点会因 O(N) 扫描反噬</strong>，但大 hashtable/skiplist 的 O(1)/O(logN) 更稳——所以"刻意保小"不是银弹。
 4. 分片同时规避：跨槽 CROSSSLOT（场景 7）、大 key 全量读阻塞（场景 5）、编码退化（本场景）。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#1lettuce-pipeline">场景 1：Lettuce Pipeline 压测问题排查与优化</a></li>
+      <li class="lv2"><a href="#2-hash">场景 2：大结构 Hash 批量写入</a></li>
+      <li class="lv2"><a href="#3-ttl-key">场景 3：短期 TTL 海量过期 key 持续灌入</a></li>
+      <li class="lv2"><a href="#4-writer-pipeline">场景 4：分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位</a></li>
+      <li class="lv2"><a href="#5-hgetall-vs-hscan">场景 5：读写争抢 — HGETALL vs HSCAN 全维度验证</a></li>
+      <li class="lv2"><a href="#6-pipeline-maxclients">场景 6：高并发多连接 Pipeline — maxclients 边界探测</a></li>
+      <li class="lv2"><a href="#7cluster-pipeline">场景 7：Cluster 跨槽 Pipeline 错误轰炸</a></li>
+      <li class="lv2"><a href="#8-1-key-pipeline-incr">场景 8-1：热点 Key Pipeline INCR 自增</a></li>
+      <li class="lv2"><a href="#8-2pipeline-rtt-wait">场景 8-2：Pipeline RTT 敏感度与 WAIT</a></li>
+      <li class="lv2"><a href="#9">场景 9：集合运算（并/交/差）高并发压测</a></li>
+      <li class="lv2"><a href="#10-vs">场景 10：哨兵 vs 集群 — 写入阶段选型</a></li>
+      <li class="lv2"><a href="#_1">横向总览（一图看懂）</a></li>
+      <li class="lv2"><a href="#11redis">场景 11：Redis 内部编码性能对比压测</a></li>
+      <li class="lv3"><a href="#111-stringint-embstr-raw">11.1 String（int / embstr / raw）</a></li>
+      <li class="lv3"><a href="#112-hashlistpack-hashtable">11.2 Hash（listpack / hashtable）</a></li>
+      <li class="lv3"><a href="#113-zsetlistpack-skiplist">11.3 ZSet（listpack / skiplist）</a></li>
+      <li class="lv3"><a href="#114-setintset-listpack-hashtable">11.4 Set（intset / listpack / hashtable）</a></li>
+      <li class="lv3"><a href="#115">11.5 四类型横向对比（共性总结）</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

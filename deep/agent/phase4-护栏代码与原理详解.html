@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="phase4">phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</h1>
 <blockquote>
 <p>配套：<code>AI-Agent新手教学.md</code> 第 7 课。代码在 <code>D:\ai-agent-project\phase4-agent-ops</code>。
@@ -184,7 +185,25 @@
 </ul>
 <h2 id="9">9. 诚实边界</h2>
 <p>记忆仍是进程内；舱壁无排队；熔断无探针超时；成本是占位价；缓存无防击穿(single-flight)/主动刷新；k6 阈值"红"是诚实信号不是 bug。</p>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#0-8">0. 文件总览（8 个文件各管一件事）</a></li>
+      <li class="lv2"><a href="#1-agentconfig">1. AgentConfig：双超时 + 降级话术</a></li>
+      <li class="lv2"><a href="#2-agentservice">2. AgentService：舱壁四设计点</a></li>
+      <li class="lv2"><a href="#3-toolgateway">3. ToolGateway：五步顺序（所有工具的咽喉）</a></li>
+      <li class="lv2"><a href="#4-breaker30">4. Breaker：30 行状态机</a></li>
+      <li class="lv2"><a href="#5-agentmetrics">5. AgentMetrics：三类指标 + 一个坑</a></li>
+      <li class="lv2"><a href="#6-opscontroller">6. OpsController 四端点</a></li>
+      <li class="lv2"><a href="#7">7. 三条链路（对照实测）</a></li>
+      <li class="lv2"><a href="#8-k6-k6-readme">8. 压测数字（k6 开环，见 k6/ 目录与 README）</a></li>
+      <li class="lv2"><a href="#9">9. 诚实边界</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景1：连接池与超卖问题（四种扣减策略对比）</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h1 id="1">场景1：连接池与超卖问题（四种扣减策略对比）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高并发秒杀/抢购场景下，多个请求同时扣减同一商品的库存。若不加任何并发控制，会导致<strong>超卖</strong>（库存减为负数）；而错误的加锁策略又会带来性能损耗或死锁。</p>
@@ -230,7 +231,26 @@
 <blockquote>
 <p><strong>超卖问题</strong>：高并发下先查后减会超卖。用 <code>UPDATE ... WHERE stock &gt;= n</code> 条件更新，借助 InnoDB 行锁保证原子性，单条 SQL 杜绝超卖且性能最优；对比悲观锁（FOR UPDATE，并发受限）和乐观锁（版本号+重试，适合读多写少）。</p>
 </blockquote>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#_1">一、问题背景</a></li>
+      <li class="lv2"><a href="#_2">二、四种策略</a></li>
+      <li class="lv3"><a href="#1-oversell">1. oversell —— 先查后减（无锁，问题演示）</a></li>
+      <li class="lv3"><a href="#2-atomic-sql">2. atomic —— 原子条件更新（推荐，SQL 层保证）</a></li>
+      <li class="lv3"><a href="#3-pessimistic-select-for-update">3. pessimistic —— 悲观锁（SELECT ... FOR UPDATE）</a></li>
+      <li class="lv3"><a href="#4-optimistic">4. optimistic —— 乐观锁（版本号）</a></li>
+      <li class="lv2"><a href="#_3">三、压测结果（实测）</a></li>
+      <li class="lv3"><a href="#_4">关键结论</a></li>
+      <li class="lv3"><a href="#_5">补充：多行分布式压测（消除单行热点干扰）</a></li>
+      <li class="lv2"><a href="#_6">四、生产建议</a></li>
+      <li class="lv2"><a href="#_7">五、面试简述</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>

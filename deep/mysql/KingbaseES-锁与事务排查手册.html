@@ -49,7 +49,8 @@
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>KingbaseES-锁与事务排查手册</h1>
   </div>
-  <article class="prose">
+  <div class="article-layout">
+    <article class="prose">
 <h2 id="kingbasees-postgresql">KingbaseES / PostgreSQL 锁与长事务排查手册</h2>
 <blockquote>
 <p>适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 <code>zhcl</code>，运维账号 <code>dgcl_ylf</code>，客户端 KStudio，经 aTrust 零信任 VPN 连接。
@@ -795,7 +796,36 @@
 <li><strong>purge lag / History List Length 持续升高</strong> = 有长事务拖住 undo 回收，先 <code>innodb_trx</code> 揪出长事务 <code>KILL</code>，再谈调参。</li>
 <li>主从架构下长事务/大 DDL 会<strong>放大复制延迟</strong>，DDL 优先用 <code>pt-online-schema-change</code> / <code>gh-ost</code> 在线改表。</li>
 </ul>
-  </article>
+    </article>
+    <aside class="toc-side"><details class="toc" open>
+  <summary>目录</summary>
+  <nav>
+    <ul>
+      <li class="lv2"><a href="#kingbasees-postgresql">KingbaseES / PostgreSQL 锁与长事务排查手册</a></li>
+      <li class="lv3"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#1-2">1. 案例回顾：一个挂了 2 天的卡死事务</a></li>
+      <li class="lv2"><a href="#2-mvcc">2. 事务、快照与 MVCC —— 为什么「长事务」是万恶之源</a></li>
+      <li class="lv2"><a href="#3">3. 锁体系</a></li>
+      <li class="lv3"><a href="#31">3.1 八级表锁与冲突矩阵</a></li>
+      <li class="lv3"><a href="#32-pg_lockslocktype">3.2 其它锁类型（pg_locks.locktype 维度）</a></li>
+      <li class="lv3"><a href="#33">3.3 死锁与等待超时</a></li>
+      <li class="lv2"><a href="#4-sql">4. 排查工具箱（可直接粘贴的 SQL）</a></li>
+      <li class="lv2"><a href="#5">5. 处置手册（从温和到强制，含生产红线）</a></li>
+      <li class="lv2"><a href="#6">6. 预防：三个超时参数的推荐配置</a></li>
+      <li class="lv3"><a href="#_2">参数详解（逐个说明含义）</a></li>
+      <li class="lv2"><a href="#7">7. 实际开发常用设置与最佳实践</a></li>
+      <li class="lv2"><a href="#8">8. 注意事项 / 常见坑</a></li>
+      <li class="lv2"><a href="#9-checklist">9. 本次案例待办 Checklist</a></li>
+      <li class="lv2"><a href="#10-mysqlinnodb">10. 附录：MySQL（InnoDB）对照速查</a></li>
+      <li class="lv3"><a href="#101">10.1 概念对照总表</a></li>
+      <li class="lv3"><a href="#102-mysql-mdl">10.2 「改不了表」在 MySQL 里多半是 MDL</a></li>
+      <li class="lv3"><a href="#103-mysql">10.3 排查工具箱（MySQL 语法）</a></li>
+      <li class="lv3"><a href="#104-mysql">10.4 处置与超时参数（MySQL）</a></li>
+      <li class="lv3"><a href="#105-mysql">10.5 MySQL 特有的坑</a></li>
+    </ul>
+  </nav>
+</details></aside>
+  </div>
   <section class="giscus-wrap">
     <div class="wrap">
       <h2>交流区</h2>
