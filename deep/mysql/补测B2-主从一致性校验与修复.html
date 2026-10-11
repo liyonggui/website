@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="b2pt-table-checksum-pt-table-sync">补测B2：主从数据一致性校验与修复（pt-table-checksum / pt-table-sync）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>主从复制可能<strong>静默丢数据/漂移</strong>：某条 SQL 在从库执行失败被跳过、人为改库、DDL 不同步，都会导致<strong>主从数据不一致而不自知</strong>。复制线程 Running 只代表"复制在跑"，<strong>不代表数据一致</strong>。需定期用 checksum 校验主从一致性，发现漂移立即修复。</p>
 <h2 id="_2">二、核心思路</h2>

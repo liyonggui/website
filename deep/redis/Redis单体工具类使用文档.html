@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="redis">Redis 单体工具类使用文档</h1>
 <p>面向<strong>单节点单机 Redis</strong>（无主从、无哨兵、无集群）的全量操作封装。所有方法统一返回
 <code>RedisResult&lt;T&gt;</code>，业务层通过 <code>isSuccess()</code> 判断结果，<code>getData()</code> 取数据。</p>
 <blockquote>

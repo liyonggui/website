@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>大 Hash + 热点 Key 叠加 → 无法拯救 · 小番茄程序猿</title>
-<meta name="description" content="大 Hash + 热点 Key 叠加 → 无法拯救 —— 小番茄程序猿的技术文章。"/>
+<title>场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证 · 小番茄程序猿</title>
+<meta name="description" content="场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证 —— 小番茄程序猿的技术文章。"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="大 Hash + 热点 Key 叠加 → 无法拯救 · 小番茄程序猿" />
-<meta property="og:description" content="大 Hash + 热点 Key 叠加 → 无法拯救 —— 小番茄程序猿的技术文章。" />
+<meta property="og:title" content="场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证 · 小番茄程序猿" />
+<meta property="og:description" content="场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证 —— 小番茄程序猿的技术文章。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -47,11 +47,10 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>大 Hash + 热点 Key 叠加 → 无法拯救</h1>
+    <h1>场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证</h1>
   </div>
   <div class="article-layout">
     <article class="prose">
-<h2 id="5-hgetall-vs-hscan">场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证</h2>
 <h3 id="tldr">TL;DR</h3>
 <p><strong>问题要点：</strong>
 - HGETALL 在大 Hash（field 数数千以上）时做 O(N) 操作，导致 Redis 单线程长时间阻塞，写请求在此期间全部排队并出现 P99 激增或超时。

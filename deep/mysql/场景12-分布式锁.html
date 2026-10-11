@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="12-mysql">场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</h1>
 <h2 id="_1">一、核心原理</h2>
 <p>在分布式/多实例场景下，单机 <code>synchronized</code>/<code>ReentrantLock</code> 无法跨进程互斥，需要<strong>分布式锁</strong>。MySQL 分布式锁的核心：</p>
 <ul>

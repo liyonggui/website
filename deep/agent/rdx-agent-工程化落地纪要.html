@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="rdx-agent">rdx-agent 工程化落地纪要</h1>
 <blockquote>
 <p>项目根：<code>D:\ai-agent-project\rdx-agent</code>（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090）
 定位：阶段 1~6（工具调用 / RAG / 真实业务接口+记忆 / 护栏 / MCP / 评测）合流的<strong>产品层</strong>——一个 ChatClient 统调本地 <code>rag_search</code> 工具 + MCP 动态发现的业务工具 + 记忆 + 治理。

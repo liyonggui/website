@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="elasticsearch">Elasticsearch 分片节点分配算法 超详细详解</h1>
 <p>覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、面试要点，结合你前面冷热分层、分片倾斜知识点打通。</p>
 <h2 id="_1">一、前置基础概念</h2>
 <h3 id="1">1. 什么是分片分配</h3>
@@ -70,7 +69,7 @@
 <p>### 3. 整体决策链路</p>
 <p>获取集群分片状态 → 校验所有分配约束 → 计算所有候选节点打分 → 择优分配/搬迁</p>
 <hr />
-<h1 id="es-es78">二、ES 分片分配四大核心算法（ES7/8 通用）</h1>
+<h2 id="es-es78">二、ES 分片分配四大核心算法（ES7/8 通用）</h2>
 <p>配置入口（动态可改）</p>
 <div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
 <span class="err">{</span>
@@ -134,7 +133,7 @@
 <p>### 典型问题</p>
 <p>机架数量少、节点分布不均，会导致分片无法充分均衡，出现局部倾斜。</p>
 <hr />
-<h1 id="_5">三、分片分配完整决策步骤（源码执行顺序）</h1>
+<h2 id="_5">三、分片分配完整决策步骤（源码执行顺序）</h2>
 <ol>
 <li><strong>过滤阶段（筛选可用节点）</strong></li>
 <li>节点离线、故障、冻结 → 剔除</li>
@@ -158,7 +157,7 @@
 <p>threshold=1.0：节点分片偏差比例超过100%才触发搬迁；
    调小更容易平衡，但搬迁变多IO压力变大；调大平衡惰性更强。</p>
 <hr />
-<h1 id="_6">四、主分片 &amp; 副本分片分配差异化规则</h1>
+<h2 id="_6">四、主分片 &amp; 副本分片分配差异化规则</h2>
 <h2 id="1_1">1. 主分片选举规则</h2>
 <ol>
 <li>集群状态正常时，沿用原有主分片位置</li>
@@ -179,7 +178,7 @@
    cluster.routing.allocation.cluster_concurrent_rebalance: 2</code></p>
 <p>高峰期调小防IO打满，低峰期调大加速均衡。</p>
 <hr />
-<h1 id="vs">五、两种倾斜区分：路由倾斜 vs 节点分配倾斜（极易混淆，面试高频）</h1>
+<h2 id="vs">五、两种倾斜区分：路由倾斜 vs 节点分配倾斜（极易混淆，面试高频）</h2>
 <h2 id="1routing">类型1：<strong>业务Routing分片倾斜（分片内部数据不均）</strong></h2>
 <p>成因：自定义routing热点key（省份、日期、商家），哈希固定一个分片，单分片数据体积巨大
 分配算法<strong>解决不了这类倾斜</strong>，属于上层路由设计问题
@@ -194,7 +193,7 @@
 <strong>不管分片内部数据多少</strong>，管不了routing带来的数据容量倾斜。</p>
 </blockquote>
 <hr />
-<h1 id="_7">六、冷热分层下的分片分配特殊逻辑（匹配你前面方案）</h1>
+<h2 id="_7">六、冷热分层下的分片分配特殊逻辑（匹配你前面方案）</h2>
 <ol>
 <li>新建滚动索引默认分配到 <code>data_hot</code> 节点</li>
 <li>ILM流转到warm阶段：分配约束强制 <code>data_tier=warm</code>，分配算法只在温节点池打分选择</li>
@@ -203,7 +202,7 @@
 <li>热点倾斜只需要在hot层做路由打散，warm/cold层倾斜无业务影响</li>
 </ol>
 <hr />
-<h1 id="_8">七、常见分配异常排查命令</h1>
+<h2 id="_8">七、常见分配异常排查命令</h2>
 <div class="codehilite"><pre><span></span><code><span class="err"># 查看分片为什么无法分配、搬迁原因（最核心排查指令）</span>
 <span class="err">GET _cluster/allocation/explain</span>
 <span class="err"># 查看集群均衡设置</span>
@@ -222,7 +221,7 @@
 <li><code>tier requirement mismatch</code>：冷热层级不匹配无法分配</li>
 </ol>
 <hr />
-<h1 id="_10">八、面试极简背诵版总结</h1>
+<h2 id="_10">八、面试极简背诵版总结</h2>
 <ol>
 <li>ES分片分配由AllocationService管控，分<strong>过滤筛选→打分择优→分配搬迁</strong>三步；</li>
 <li>两大核心打分算法：IndexBalance（单索引分片均衡）、ShardBalance（全局总分片均衡），带固定权重；磁盘水位、机架感知、节点角色是前置准入过滤条件；</li>
@@ -230,7 +229,7 @@
 <li>副本强制不和主分片同节点，冷热分层依靠节点角色过滤实现分片池隔离；</li>
 <li>集群不均衡超过阈值自动rebalance，可通过并发参数控制搬迁速度，避免IO冲击业务。</li>
 </ol>
-<h1 id="elasticsearch_1">Elasticsearch 分片分配异常排查&amp;排障步骤手册</h1>
+<h2 id="elasticsearch">Elasticsearch 分片分配异常排查&amp;排障步骤手册</h2>
 <p>适用场景：分片数量分布不均、分片无法分配、分片搬迁卡住、集群不均衡、冷热分层分片异常、分片unassigned、磁盘倾斜等，线上可直接按现象对照排查处理</p>
 <h2 id="3">前置通用排查入口（所有问题先执行这3条）</h2>
 <h3 id="1_2">1、查看集群整体分片状态</h3>
@@ -253,7 +252,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="_11">一、现象分类+原因定位+分步解决方案</h1>
+<h2 id="_11">一、现象分类+原因定位+分步解决方案</h2>
 <h2 id="1_3">现象1：节点总分片数量差距极大（分片摆放不均衡，分配算法收敛慢）</h2>
 <h3 id="_12">典型表现</h3>
 <p>3节点、9主1副总分片18，理论每节点6片；
@@ -410,7 +409,7 @@ PUT _cluster/settings
 GET 索引/_settings?filter_path=*.data_tier</code>
 25. 修正索引强制分配节点层级</p>
 <p>```http</p>
-<h1 id="hot">强制限定只在hot节点</h1>
+<h2 id="hot">强制限定只在hot节点</h2>
 <p>PUT 索引/_settings
 {
 "index.routing.allocation.require.data_tier":"hot"
@@ -444,7 +443,7 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
 </li>
 </ol>
 <hr />
-<h1 id="_25">二、应急开关（业务高峰期防雪崩常用）</h1>
+<h2 id="_25">二、应急开关（业务高峰期防雪崩常用）</h2>
 <h2 id="1io">1、临时关闭集群分片重平衡（高峰期防止IO打崩）</h2>
 <div class="codehilite"><pre><span></span><code><span class="err">PUT _cluster/settings</span>
 <span class="err">{</span>
@@ -481,7 +480,7 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
   }
   }</code></p>
 <hr />
-<h1 id="_26">三、事后预防规范（避免反复出现分配异常）</h1>
+<h2 id="_26">三、事后预防规范（避免反复出现分配异常）</h2>
 <ol>
 <li>新建索引提前规划主分片数量，前期预留余量，避免后期扩容重构</li>
 <li>节点硬件同构，磁盘容量、机型统一，减少磁盘水位带来分配偏差</li>
@@ -502,20 +501,29 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
     <ul>
       <li class="lv2"><a href="#_1">一、前置基础概念</a></li>
       <li class="lv3"><a href="#1">1. 什么是分片分配</a></li>
+      <li class="lv2"><a href="#es-es78">二、ES 分片分配四大核心算法（ES7/8 通用）</a></li>
       <li class="lv2"><a href="#1-index-balance-055">1. Index Balance 索引均衡算法（权重默认 0.55）</a></li>
       <li class="lv3"><a href="#_2">作用</a></li>
       <li class="lv3"><a href="#_3">适用场景</a></li>
       <li class="lv2"><a href="#2-shard-balance-045">2. Shard Balance 全局分片均衡算法（权重默认 0.45）</a></li>
       <li class="lv3"><a href="#_4">作用</a></li>
       <li class="lv2"><a href="#3-disk-threshold-balance">3. Disk Threshold Balance 磁盘容量均衡算法（隐性强优先级）</a></li>
+      <li class="lv2"><a href="#_5">三、分片分配完整决策步骤（源码执行顺序）</a></li>
+      <li class="lv2"><a href="#_6">四、主分片 &amp;amp; 副本分片分配差异化规则</a></li>
       <li class="lv2"><a href="#1_1">1. 主分片选举规则</a></li>
+      <li class="lv2"><a href="#vs">五、两种倾斜区分：路由倾斜 vs 节点分配倾斜（极易混淆，面试高频）</a></li>
       <li class="lv2"><a href="#1routing">类型1：业务Routing分片倾斜（分片内部数据不均）</a></li>
       <li class="lv2"><a href="#2">类型2：节点分配不均衡（分片个数摆放不均）</a></li>
+      <li class="lv2"><a href="#_7">六、冷热分层下的分片分配特殊逻辑（匹配你前面方案）</a></li>
+      <li class="lv2"><a href="#_8">七、常见分配异常排查命令</a></li>
       <li class="lv2"><a href="#_9">典型异常举例</a></li>
+      <li class="lv2"><a href="#_10">八、面试极简背诵版总结</a></li>
+      <li class="lv2"><a href="#elasticsearch">Elasticsearch 分片分配异常排查&amp;amp;排障步骤手册</a></li>
       <li class="lv2"><a href="#3">前置通用排查入口（所有问题先执行这3条）</a></li>
       <li class="lv3"><a href="#1_2">1、查看集群整体分片状态</a></li>
       <li class="lv3"><a href="#2_1">2、分片无法分配/未分配原因最核心命令</a></li>
       <li class="lv3"><a href="#3_1">3、查看集群均衡、磁盘水位默认配置</a></li>
+      <li class="lv2"><a href="#_11">一、现象分类+原因定位+分步解决方案</a></li>
       <li class="lv2"><a href="#1_3">现象1：节点总分片数量差距极大（分片摆放不均衡，分配算法收敛慢）</a></li>
       <li class="lv3"><a href="#_12">典型表现</a></li>
       <li class="lv3"><a href="#_13">根因</a></li>
@@ -529,13 +537,16 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
       <li class="lv2"><a href="#5hot">现象5：冷热分层分片乱跑，热分片跑到冷节点、温分片进hot节点</a></li>
       <li class="lv3"><a href="#_19">根因</a></li>
       <li class="lv3"><a href="#_20">排障步骤</a></li>
+      <li class="lv2"><a href="#hot">强制限定只在hot节点</a></li>
       <li class="lv2"><a href="#6gb">现象6：分片内部数据容量倾斜（分片个数均衡，但单个分片几十GB，其他很小）</a></li>
       <li class="lv3"><a href="#_21">根因</a></li>
       <li class="lv3"><a href="#_22">解决方案</a></li>
       <li class="lv2"><a href="#7">现象7：开启机架感知后分片极度不均衡、部分分片无法分配</a></li>
       <li class="lv3"><a href="#_23">根因</a></li>
       <li class="lv3"><a href="#_24">排查</a></li>
+      <li class="lv2"><a href="#_25">二、应急开关（业务高峰期防雪崩常用）</a></li>
       <li class="lv2"><a href="#1io">1、临时关闭集群分片重平衡（高峰期防止IO打崩）</a></li>
+      <li class="lv2"><a href="#_26">三、事后预防规范（避免反复出现分配异常）</a></li>
     </ul>
   </nav>
 </details></aside>

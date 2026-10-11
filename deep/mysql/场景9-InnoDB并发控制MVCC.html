@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="9innodb-mvcc">场景9：InnoDB 并发控制（MVCC 多版本并发控制）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>InnoDB 的<strong>高并发读写的基石是 MVCC（多版本并发控制）</strong>。它让<strong>快照读（普通 SELECT）不加锁</strong>即可实现一致性和可重复读，从而<strong>读写互不阻塞</strong>，大幅提升并发度。MVCC 的核心是：<strong>undo 版本链</strong>（保存历史版本）+ <strong>ReadView</strong>（可见性规则）。</p>
 <p>本场景聚焦 MVCC <strong>内部机制</strong>（区别于场景2的隔离级别现象），用表 <code>t_mvcc</code> 演示多版本读取、快照/当前读、RR vs RC、读写不互斥、可见性规则。</p>

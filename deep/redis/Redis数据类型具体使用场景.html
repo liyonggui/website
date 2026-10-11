@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="redis">Redis 数据类型具体使用场景</h1>
 <blockquote>
 <p>基于《Redis数据类型原理》整理。Redis 有 5 种基础数据类型（String / Hash / List / Set / ZSet）+ 3 种内置专用结构（Bitmaps / Geospatial / Streams），选择哪种类型取决于<strong>业务的数据形态与访问模式</strong>。本文给出每种类型的<strong>具体使用场景 + 命令示例 + 选型要点</strong>，并标注内存/性能注意事项。</p>
 <p>⚠️ <strong>版本与兼容性提示</strong>：文中涉及的配置项（如 <code>hash-max-listpack-entries</code> vs 老版本 <code>hash-max-ziplist-*</code>）、命令（如 <code>GEOSEARCH</code> vs 旧版 <code>GEORADIUS</code>）与压缩阈值在不同 Redis 版本、OSS 与 enterprise 之间可能存在差异，<strong>请以当前 Redis 版本文档与 <code>CONFIG GET</code> 为准</strong>。</p>
@@ -525,7 +524,7 @@ XTRIM<span class="w"> </span>orders<span class="w"> </span>MAXLEN<span class="w"
 </tr>
 </tbody>
 </table>
-<h3 id="redis_1">通用选型原则（来自《Redis数据类型原理》）</h3>
+<h3 id="redis">通用选型原则（来自《Redis数据类型原理》）</h3>
 <ol>
 <li><strong>优先用内部编码自动压缩</strong>：小对象（String 短值、Hash 小 field、ZSet 小 member、Set 小整数）Redis 自动走紧凑编码（embstr/listpack/intset），不要盲目转二进制压缩；</li>
 <li><strong>"结构级优化" &gt; 单 value 压缩</strong>：把多个属性放进一个 Hash listpack 或纯整数用 intset，内存收益远大于对单条 value 压缩；</li>
@@ -622,7 +621,7 @@ CLIENT<span class="w"> </span>LIST<span class="w">                    </span><sp
       <li class="lv3"><a href="#62-geospatial">6.2 Geospatial —— 地理位置</a></li>
       <li class="lv3"><a href="#63-streams">6.3 Streams —— 消息队列 / 事件流</a></li>
       <li class="lv2"><a href="#_12">七、选型决策速查表</a></li>
-      <li class="lv3"><a href="#redis_1">通用选型原则（来自《Redis数据类型原理》）</a></li>
+      <li class="lv3"><a href="#redis">通用选型原则（来自《Redis数据类型原理》）</a></li>
       <li class="lv2"><a href="#_13">八、实操 / 监控 / 调优要点</a></li>
       <li class="lv3"><a href="#81">8.1 常见复杂度提示（哪些命令在大数据量要慎用）</a></li>
       <li class="lv3"><a href="#82">8.2 监控命令与诊断工具</a></li>

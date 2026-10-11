@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="mysql-qps-38">高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</h1>
 <blockquote>
 <p>「高并发实测」系列第 2 篇。</p>
 <p>环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boot 2.5 + JDK 8，线程池 core=12 / max=24 / queue=1000（CallerRunsPolicy）。k6 每档 250 并发持续 60s，<strong>每个版本先跑 3 轮 10s 预热，正式跑 3 轮取中位数，每轮结束做四库对账</strong>。<strong>结论有强前提——CPU 是瓶颈</strong>，资源富裕时别照搬。</p>

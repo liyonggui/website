@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="agent">Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）</h1>
 <blockquote>
 <p>原则：<strong>带着病历找药</strong>。每个中间件都必须对应一个"已实测出的问题"，并说清"治好了没"——不是堆组件。
 当前栈：Spring AI 1.1.8 + 百炼 MaaS + <strong>RAG 向量库 + 语义缓存均已迁 Redis Stack</strong>（同一 <code>redis-stack-server:6380</code>：<code>rdx-rag-index</code> / <code>rdx-cache-index</code>，RediSearch HNSW/COSINE）+ 手写护栏（Caffeine/Breaker/舱壁）+ Langfuse + phase6 评测门禁。</p>

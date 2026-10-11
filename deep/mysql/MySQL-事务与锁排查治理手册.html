@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>my.cnf [mysqld] · 小番茄程序猿</title>
-<meta name="description" content="my.cnf [mysqld] —— 小番茄程序猿的技术文章。"/>
+<title>MySQL（InnoDB）事务与锁排查治理手册 · 小番茄程序猿</title>
+<meta name="description" content="MySQL（InnoDB）事务与锁排查治理手册 —— 小番茄程序猿的技术文章。"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="my.cnf [mysqld] · 小番茄程序猿" />
-<meta property="og:description" content="my.cnf [mysqld] —— 小番茄程序猿的技术文章。" />
+<meta property="og:title" content="MySQL（InnoDB）事务与锁排查治理手册 · 小番茄程序猿" />
+<meta property="og:description" content="MySQL（InnoDB）事务与锁排查治理手册 —— 小番茄程序猿的技术文章。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -47,11 +47,10 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>my.cnf [mysqld]</h1>
+    <h1>MySQL（InnoDB）事务与锁排查治理手册</h1>
   </div>
   <div class="article-layout">
     <article class="prose">
-<h2 id="mysqlinnodb">MySQL（InnoDB）事务与锁排查治理手册</h2>
 <blockquote>
 <p>适用环境：生产 <strong>MySQL 8.4.10</strong>（经实测为<strong>裁剪/云版本</strong>——标准 8.4 应有的 <code>idle_transaction_timeout</code> 在本实例报 <code>1193 Unknown system variable</code>，故<strong>所有参数务必先探针确认存在，再 <code>SET PERSIST</code></strong>）。
 本手册覆盖：生产可执行配置基线、事务与锁原理、排查工具箱（可直接粘贴的 SQL）、治理与处置、预防最佳实践。
@@ -703,7 +702,6 @@
   <summary>目录</summary>
   <nav>
     <ul>
-      <li class="lv2"><a href="#mysqlinnodb">MySQL（InnoDB）事务与锁排查治理手册</a></li>
       <li class="lv3"><a href="#_1">目录</a></li>
       <li class="lv2"><a href="#1">1. 使用说明与环境判定</a></li>
       <li class="lv2"><a href="#2-sql">2. 生产常用配置基线（可执行 SQL）</a></li>

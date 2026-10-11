@@ -51,11 +51,10 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="es">ES面试+运维命令独立速查手册（增补集群架构面试题完整版）</h1>
 <h2 id="_1">文档说明</h2>
 <p>本文档拆分自完整版ES手册，分为三大模块：<strong>集群架构高频面试题（新增）+ 核心业务面试题 + 全量运维命令 + 批量运维脚本</strong>，所有答案为面试满分标准答案，命令可直接复制上线使用，适合面试突击、日常运维随身查阅。</p>
 <hr />
-<h1 id="es_1">第一部分：ES集群架构高频面试题（新增，大厂必问）</h1>
+<h2 id="es">第一部分：ES集群架构高频面试题（新增，大厂必问）</h2>
 <h2 id="1-es">1. ES集群有哪些节点角色？各自作用是什么？生产如何规划节点？</h2>
 <h3 id="_2">标准答案</h3>
 <p>ES7.0之后默认<strong>仅分为主节点、数据节点</strong>，同时支持专用冷热节点、协调节点、 ingest预处理节点，六大角色分工明确，生产必须做节点角色隔离，禁止单节点混用所有角色。</p>
@@ -247,7 +246,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="_15">第二部分：原有核心业务面试题（完整保留，无删减）</h1>
+<h2 id="_15">第二部分：原有核心业务面试题（完整保留，无删减）</h2>
 <h2 id="1">1、分片路由相关</h2>
 <h3 id="11-es">1.1 ES 文档路由分片原理？</h3>
 <p>文档路由公式：</p>
@@ -412,7 +411,7 @@
 <p>ILM 冷热流转单向 Hot→Warm→Cold→Delete，轮询执行不识别业务时间，只能节约存储不能解决热点倾斜；层级可以手动向上回退，修改 data_tier 加暂停 ILM 即可，操作全层级通用；索引删除不可逆，ES无默认快照，快照仓库、SLM备份都需要手动部署。</p>
 <p>改字段、改分片、改路由都只能 Reindex 零停机重构，配合别名无感切换；时序业务用 Rollover 自动拆索引配合 ILM 全生命周期管理。整套分片思想通用各类分布式中间件，生产优先原生能力，避免自研分片架构。</p>
 <hr />
-<h1 id="_16">第三部分：全场景运维命令合集（可直接复制执行）</h1>
+<h2 id="_16">第三部分：全场景运维命令合集（可直接复制执行）</h2>
 <h2 id="1_1">1、集群健康 \&amp; 分片排查（新增集群专属排查命令）</h2>
 <div class="codehilite"><pre><span></span><code><span class="err"># 集群整体健康状态</span>
 <span class="err">GET _cluster/health?v</span>
@@ -612,7 +611,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="shell">第四部分：批量运维 Shell 脚本</h1>
+<h2 id="shell">第四部分：批量运维 Shell 脚本</h2>
 <h2 id="1-warm-hotwarm_to_hotsh">脚本1：批量所有 Warm 索引回迁 Hot（warm_to_hot.sh）</h2>
 <div class="codehilite"><pre><span></span><code><span class="ch">#!/bin/bash</span>
 <span class="nv">ES_HOST</span><span class="o">=</span><span class="s2">"http://127.0.0.1:9200"</span>
@@ -660,6 +659,7 @@ chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
   <nav>
     <ul>
       <li class="lv2"><a href="#_1">文档说明</a></li>
+      <li class="lv2"><a href="#es">第一部分：ES集群架构高频面试题（新增，大厂必问）</a></li>
       <li class="lv2"><a href="#1-es">1. ES集群有哪些节点角色？各自作用是什么？生产如何规划节点？</a></li>
       <li class="lv3"><a href="#_2">标准答案</a></li>
       <li class="lv3"><a href="#_3">生产最佳节点规划</a></li>
@@ -678,6 +678,7 @@ chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
       <li class="lv2"><a href="#7-es">7. ES集群扩容怎么做？横向扩容节点后分片会自动均衡吗？</a></li>
       <li class="lv3"><a href="#_14">标准答案</a></li>
       <li class="lv2"><a href="#8-es7es6">8. ES7相较于ES6，集群架构核心改动有哪些？</a></li>
+      <li class="lv2"><a href="#_15">第二部分：原有核心业务面试题（完整保留，无删减）</a></li>
       <li class="lv2"><a href="#1">1、分片路由相关</a></li>
       <li class="lv3"><a href="#11-es">1.1 ES 文档路由分片原理？</a></li>
       <li class="lv3"><a href="#12">1.2 什么是分片倾斜？两种倾斜怎么解决？</a></li>
@@ -698,6 +699,7 @@ chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
       <li class="lv3"><a href="#52-rollover">5.2 Rollover 原理与适用场景？</a></li>
       <li class="lv2"><a href="#6">6、跨中间件通用分片思想（面试加分）</a></li>
       <li class="lv2"><a href="#73">7、3分钟面试口述总结（完整版，含集群架构）</a></li>
+      <li class="lv2"><a href="#_16">第三部分：全场景运维命令合集（可直接复制执行）</a></li>
       <li class="lv2"><a href="#1_1">1、集群健康 \&amp;amp; 分片排查（新增集群专属排查命令）</a></li>
       <li class="lv2"><a href="#2_2">2、分片均衡 \&amp;amp; 搬迁限流配置</a></li>
       <li class="lv2"><a href="#3ilm_1">3、ILM 生命周期运维命令</a></li>
@@ -712,6 +714,7 @@ chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
       <li class="lv2"><a href="#8-ilm">8、快照备份 \&amp;amp; 恢复（防ILM误删）</a></li>
       <li class="lv2"><a href="#9slm">9、SLM 自动定时快照策略</a></li>
       <li class="lv2"><a href="#10ilm">10、ILM删除阶段前置快照配置片段</a></li>
+      <li class="lv2"><a href="#shell">第四部分：批量运维 Shell 脚本</a></li>
       <li class="lv2"><a href="#1-warm-hotwarm_to_hotsh">脚本1：批量所有 Warm 索引回迁 Hot（warm_to_hot.sh）</a></li>
       <li class="lv3"><a href="#_18">使用方式</a></li>
     </ul>

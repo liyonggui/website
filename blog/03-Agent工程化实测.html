@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="agent-p95-836ms-12ms-agent">Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层</h1>
 <blockquote>
 <p>「高并发实测」系列第 3 篇。</p>
 <p>环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring Boot 3.4）+ Spring AI 接百炼，Agent 服务单独 8084 端口。k6 <strong>开环</strong> <code>constant-arrival-rate</code> 100/s × 20s，5 个城市名做热点工作集。<strong>这是我自己搭的实验环境，不是生产系统。</strong></p>

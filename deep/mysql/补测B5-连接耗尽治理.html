@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="b5max_connections">补测B5：连接耗尽治理（max_connections 打满）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>连接耗尽雪崩防护。当并发请求超过 MySQL <code>max_connections</code>，新连接报 <strong><code>Too many connections</code></strong>，请求大量失败，系统雪崩。需治理：连接池大小与 max_connections 匹配、耗尽时杀空闲连接 + 快速失败。</p>
 <h2 id="_2">二、耗尽原理</h2>

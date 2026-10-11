@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="11">场景11：主从延迟治理（写后读一致性方案）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>读写分离（场景6）把读压力分流到从库，但引入<strong>主从延迟</strong>：写主库后，从库需要经复制（binlog → relay log → SQL apply）才能同步，延迟窗口内从库读到的是<strong>旧数据</strong>。若业务"写后立即读"（如下单后查订单），会读到旧值，造成数据不一致。</p>
 <p>本场景聚焦<strong>如何治理"写后读"不一致</strong>，对比三种读方案：<strong>强一致读主库 / 最终一致读从库 / 延迟双读（Read-Your-Writes）</strong>。</p>

@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="11redis-string-intembstrraw-hash-listpackhashtable-zset-listpackskiplist-set-intsetlistpackhashtable">场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</h1>
 <blockquote>
 <p>已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需启动 <code>redis</code> + <code>lettuce-bench</code></p>
 </blockquote>
@@ -763,7 +762,7 @@ curl<span class="w"> </span>http://localhost:8082/str-encoding/status
 </code></pre></div>
 
 <hr />
-<h1 id="hash-listpack-vs-hashtable">第二部分：Hash 编码（listpack vs hashtable）性能压测</h1>
+<h2 id="hash-listpack-vs-hashtable">第二部分：Hash 编码（listpack vs hashtable）性能压测</h2>
 <blockquote>
 <p>已实测 ✅ 2026-08-04 | Redis 7 单体，compose 按需启动 <code>redis</code> + <code>lettuce-bench</code></p>
 </blockquote>
@@ -1385,7 +1384,7 @@ curl<span class="w"> </span>http://localhost:8082/hash-encoding/status
 </code></pre></div>
 
 <hr />
-<h1 id="zset-listpack-vs-skiplist">第三部分：ZSet 编码（listpack vs skiplist）性能压测</h1>
+<h2 id="zset-listpack-vs-skiplist">第三部分：ZSet 编码（listpack vs skiplist）性能压测</h2>
 <blockquote>
 <p>已实测 ✅ 2026-08-04 | Redis 7 单体，compose 按需启动 <code>redis</code> + <code>lettuce-bench</code></p>
 </blockquote>
@@ -1762,7 +1761,7 @@ curl<span class="w"> </span>http://localhost:8082/zset-encoding/status
 </code></pre></div>
 
 <hr />
-<h1 id="set-intset-listpack-hashtable">第四部分：Set 三种编码（intset / listpack / hashtable）</h1>
+<h2 id="set-intset-listpack-hashtable">第四部分：Set 三种编码（intset / listpack / hashtable）</h2>
 <h2 id="20-set">20. Set 三种编码原理</h2>
 <p>Redis Set 的内部编码由 <strong>member 类型</strong>、<strong>member 数量</strong> 和 <strong>member 字符串大小</strong> 决定：</p>
 <table>
@@ -2323,6 +2322,7 @@ curl<span class="w"> </span>http://localhost:8082/set-encoding/status
       <li class="lv3"><a href="#65-slowlog">6.5 slowlog 趋势</a></li>
       <li class="lv2"><a href="#7">7. 生产选型建议</a></li>
       <li class="lv2"><a href="#8">8. 压测代码文件</a></li>
+      <li class="lv2"><a href="#hash-listpack-vs-hashtable">第二部分：Hash 编码（listpack vs hashtable）性能压测</a></li>
       <li class="lv2"><a href="#9-hash">9. Hash 两种编码原理</a></li>
       <li class="lv2"><a href="#91-hash">9.1 Hash 两种编码的具体业务场景</a></li>
       <li class="lv3"><a href="#911-listpack">9.1.1 listpack 编码（小对象 / 字段少的实体）</a></li>
@@ -2344,6 +2344,7 @@ curl<span class="w"> </span>http://localhost:8082/set-encoding/status
       <li class="lv3"><a href="#135-on-vs-o1">13.5 实测结论（验证了 O(N) vs O(1) 的翻转）</a></li>
       <li class="lv3"><a href="#136">13.6 结论</a></li>
       <li class="lv2"><a href="#14-hash">14. Hash 压测代码文件</a></li>
+      <li class="lv2"><a href="#zset-listpack-vs-skiplist">第三部分：ZSet 编码（listpack vs skiplist）性能压测</a></li>
       <li class="lv2"><a href="#15-zset">15. ZSet 两种编码原理</a></li>
       <li class="lv2"><a href="#151-zset">15.1 ZSet 两种编码的具体业务场景</a></li>
       <li class="lv3"><a href="#1511-listpack-member">15.1.1 listpack 编码（小排行榜 / 少 member）</a></li>
@@ -2357,6 +2358,7 @@ curl<span class="w"> </span>http://localhost:8082/set-encoding/status
       <li class="lv3"><a href="#183-128-member-skiplist">18.3 128 member 未触发 skiplist 的原因</a></li>
       <li class="lv3"><a href="#184-zset">18.4 ZSet 生产选型建议</a></li>
       <li class="lv2"><a href="#19-zset">19. ZSet 压测代码文件</a></li>
+      <li class="lv2"><a href="#set-intset-listpack-hashtable">第四部分：Set 三种编码（intset / listpack / hashtable）</a></li>
       <li class="lv2"><a href="#20-set">20. Set 三种编码原理</a></li>
       <li class="lv2"><a href="#201-set">20.1 Set 三种编码的具体业务场景</a></li>
       <li class="lv3"><a href="#2011-intset">20.1.1 intset 编码（纯整数小集合）</a></li>

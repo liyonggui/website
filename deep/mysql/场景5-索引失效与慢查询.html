@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="5">场景5：索引失效与慢查询</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>MySQL 在<strong>数据量大</strong>时，若查询未命中合适的索引，会退化为<strong>全表扫描（type=ALL）</strong>，导致<strong>慢查询</strong>、<strong>CPU 打满</strong>、<strong>锁表</strong>。索引失效通常源于<strong>写法问题</strong>（函数、隐式转换、like 前导、or、最左前缀、范围等），而非索引本身失效。</p>
 <p>本场景用大数据量表 <code>t_idx_test</code>（20 万行）系统性复现<strong>六类索引失效</strong>，并通过 <code>EXPLAIN</code> + 实测耗时 + 并发压测量化"索引失效 → 慢查询"的因果链。</p>

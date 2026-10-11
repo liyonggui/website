@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="3-vs">场景3：悲观锁 vs 乐观锁</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高并发写场景下，保证数据一致性有两种主流方案：
 - <strong>悲观锁</strong>：<code>SELECT ... FOR UPDATE</code> 先锁定数据行，阻塞其它写，再读改写。依赖 InnoDB 行锁。

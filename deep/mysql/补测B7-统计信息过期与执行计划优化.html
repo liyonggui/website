@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="b7">补测B7：统计信息过期与执行计划优化</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>优化器依赖<strong>统计信息</strong>选索引。数据量突变/统计信息过期时，优化器可能<strong>选错索引</strong>（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是<strong>高度倾斜数据</strong>（一个值占绝大部分），InnoDB 基数采样严重失真。</p>
 <h2 id="_2">二、原理</h2>

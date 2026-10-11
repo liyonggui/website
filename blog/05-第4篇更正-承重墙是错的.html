@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="4">我发出去的文章里有一句承重墙是错的（第 4 篇更正）</h1>
 <blockquote>
 <p>「高并发实测」系列 · 第 4 篇更正。</p>
 <p>第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条评论：<strong>"后续若能公开 gold 样例及逐题相关块标注，会更方便读者复算 0.55 的来源。"</strong></p>
@@ -198,7 +197,7 @@
 <p><strong>这才是 precision@4 = 0.55 难看而 MRR = 1.0 满分的真正原因</strong>，比我在第 4 篇给的解释干净得多：<strong>它是算术，不是观点。</strong></p>
 <p>（顺带：第 4 篇<strong>第三节</strong>那张"precision@k vs hit@1/MRR"对比表里，"天花板被 k 压死"这一格也一并作废——<strong>同一个错误我写了三遍。</strong>）</p>
 <p>而且它顺带说明另一件事——<strong><code>/evalrank</code> 的 <code>pool=10</code> 意味着候选池就是全库</strong>，所谓"排序质量满分"，是在一个 10 项的列表上排第一。<strong>这个 1.0 的分量，远比我文章里暗示的要轻。</strong></p>
-<h2 id="4_1">五、那第 4 篇还剩什么</h2>
+<h2 id="4">五、那第 4 篇还剩什么</h2>
 <table>
 <thead>
 <tr>
@@ -316,7 +315,7 @@
       <li class="lv3"><a href="#_3">⬜ 待填：逐题计数表</a></li>
       <li class="lv2"><a href="#_4">三、第二层：那句&quot;零噪声&quot;是错的，我用来护住核心结论的那句话塌了</a></li>
       <li class="lv2"><a href="#_5">四、第三层：这一条我原文根本没写，但它才是最该用的解释</a></li>
-      <li class="lv2"><a href="#4_1">五、那第 4 篇还剩什么</a></li>
+      <li class="lv2"><a href="#4">五、那第 4 篇还剩什么</a></li>
       <li class="lv2"><a href="#gold">六、关于&quot;公开 gold 集&quot;：我答应复算路径，但不原样贴题目</a></li>
       <li class="lv2"><a href="#_6">七、机制：我为什么会犯，以及怎么防</a></li>
       <li class="lv2"><a href="#_7">八、局限（这篇也一样先说）</a></li>

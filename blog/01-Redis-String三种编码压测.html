@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="44-12-redis-string">别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距</h1>
 <blockquote>
 <p>环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对值受客户端影响，<strong>请关注相对差距</strong>，全部数据来自我自己的压测工程，文末附复现方式。</p>
 </blockquote>

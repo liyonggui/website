@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="spring-cloud-k3s-k8s">Spring Cloud → K3s 极简落地：用最小子集认识 K8s</h1>
 <blockquote>
 <p><strong>目标定位</strong>：本方案的目的<strong>不是验证微服务全功能</strong>（分布式事务 / 消息队列 / 定时任务 / 链路追踪都不在目标内），而是<strong>借助 spring-cloud 这个现成项目，在已搭好的 K3s 上认识 K8s 核心概念</strong>。因此尽量精简：只保留最少服务和最少依赖，把注意力放在 K8s 本身。
 <strong>状态</strong>：§4、§5 已于 2026-10-07 实跑通。落地载体<strong>不是原项目</strong>，而是新建的独立最小项目 <code>k3s-project/sc-user</code>（<code>spring-cloud</code> 源码一行未改，<code>git status</code> 已核）；清单在 <code>k3s-project/manifests/sc-user/</code>，命名空间 <code>sc-demo</code>。

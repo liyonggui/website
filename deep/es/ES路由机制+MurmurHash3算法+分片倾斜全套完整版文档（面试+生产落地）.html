@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="esmurmurhash3">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（面试+生产落地）</h1>
 <h2 id="es">一、ES写入分片路由核心公式（源码原生）</h2>
 <h3 id="1-es717">1. 路由计算源码公式（ES7.17 固定不变）</h3>
 <div class="codehilite"><pre><span></span><code><span class="c1">// 1. 确定路由key：优先自定义routing，没有则使用文档_id</span>
@@ -349,7 +348,7 @@
 <blockquote>
 <p>（注：部分内容可能由 AI 生成）</p>
 </blockquote>
-<h1 id="es_1">ES 冷热分层完整落地方案（可直接上线）</h1>
+<h2 id="es_1">ES 冷热分层完整落地方案（可直接上线）</h2>
 <h2 id="_4">一、集群节点角色划分</h2>
 <h3 id="1-elasticsearchyml">1. 节点角色配置 <code>elasticsearch.yml</code></h3>
 <h4 id="ssd">热节点（SSD高配，负责实时写入、高频查询）</h4>
@@ -553,6 +552,7 @@
       <li class="lv3"><a href="#_1">参数说明</a></li>
       <li class="lv2"><a href="#_2">七、分片倾斜线上排查命令（一键复用）</a></li>
       <li class="lv2"><a href="#_3">八、面试一页纸极简背诵答案（直接口述）</a></li>
+      <li class="lv2"><a href="#es_1">ES 冷热分层完整落地方案（可直接上线）</a></li>
       <li class="lv2"><a href="#_4">一、集群节点角色划分</a></li>
       <li class="lv3"><a href="#1-elasticsearchyml">1. 节点角色配置 elasticsearch.yml</a></li>
       <li class="lv2"><a href="#ilm">二、创建统一ILM生命周期策略（全自动流转）</a></li>

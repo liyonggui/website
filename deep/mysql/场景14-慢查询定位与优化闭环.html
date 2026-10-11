@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="14">场景14：慢查询定位与优化闭环</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要<strong>完整闭环</strong>：<strong>定位 → 分析 → 优化 → 验证</strong>，而不是拍脑袋改。</p>
 <p>本场景用表 <code>t_slow_demo</code>（20 万行，初态无索引）演示完整闭环。</p>

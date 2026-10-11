@@ -51,13 +51,12 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="_1">写入链路降级设计：本地文件兜底 + 限速回放</h1>
 <blockquote>
 <p>性质：工程设计方案（内部沉淀，暂不作为文章内容发布）
 适用：demo 高并发写入链路（HTTP → Disruptor → Kafka → 3 消费者 → MySQL/Redis/ES/Mongo）
 前提数据：单机实测正常峰值 ~5,000~10,000 QPS，单条 payload ~200B</p>
 </blockquote>
-<h2 id="_2">一、目标与非目标</h2>
+<h2 id="_1">一、目标与非目标</h2>
 <p><strong>目标</strong></p>
 <ol>
 <li>中间件不可用期间，写入接口保持可用（返回 200，不阻塞业务方）</li>
@@ -70,7 +69,7 @@
 <li>不追求自动降级（切换由人决策，见第四节）</li>
 <li>不解决"MySQL 挂掉时的读"（无解，只能选陈旧快照或拒绝，见 3.2）</li>
 </ul>
-<h2 id="_3">二、整体流程</h2>
+<h2 id="_2">二、整体流程</h2>
 <div class="codehilite"><pre><span></span><code>正常态：HTTP → Disruptor → Kafka → 消费者 → 四库写入
 
 降级态（开关 ON）：
@@ -80,7 +79,7 @@
 恢复态：限速回放器读取本地文件 → 幂等写回四库 → 对账 → 关闭降级开关
 </code></pre></div>
 
-<h2 id="_4">三、只读降级矩阵（关键：只读需要活着的读源）</h2>
+<h2 id="_3">三、只读降级矩阵（关键：只读需要活着的读源）</h2>
 <table>
 <thead>
 <tr>
@@ -130,14 +129,14 @@
 <li>读请求直接返回 503（保写不保读）</li>
 <li>只读从库兜底（前提：从库独立故障域，否则同生共死）</li>
 </ol>
-<h2 id="_5">四、切换机制：手动开关 + 自动告警</h2>
+<h2 id="_4">四、切换机制：手动开关 + 自动告警</h2>
 <ul>
 <li><strong>配置中心一个布尔开关</strong>（Nacos/Apollo），秒级推送到全部实例，全集群状态一致</li>
 <li>自动探活<strong>只做告警和建议</strong>，不自动切换。理由：网络抖动会造成频繁来回切；部分实例降级部分不降级会导致数据分裂，回放时无法定序</li>
 <li>开关状态必须打进每条落盘记录（<code>degraded=true</code> + 开关版本），便于回放时按批次识别</li>
 <li>切换动作要写审计日志（谁、何时、原因）</li>
 </ul>
-<h2 id="_6">五、落盘文件格式（能重放才算兜底）</h2>
+<h2 id="_5">五、落盘文件格式（能重放才算兜底）</h2>
 <div class="codehilite"><pre><span></span><code>[4B 长度 N][N 字节 payload JSON][4B CRC32]
 </code></pre></div>
 
@@ -179,7 +178,7 @@
 <li><strong>文件滚动</strong>：按大小或时间切分（如 256MB/个），回放完成即归档删除</li>
 <li><strong>刷盘策略</strong>：降级期数据不能只进 page cache——至少 <code>FileChannel.force(false)</code> 定时（如每 100ms）触发，否则机器宕机一样丢</li>
 </ol>
-<h2 id="_7">六、磁盘水位线（不做就是反向故障）</h2>
+<h2 id="_6">六、磁盘水位线（不做就是反向故障）</h2>
 <p>按 5,000 QPS × 200B 估算落盘量：</p>
 <table>
 <thead>
@@ -227,7 +226,7 @@
 </tbody>
 </table>
 <p>理由：磁盘写满会让服务从"降级可用"直接变成"彻底不可用"——<strong>这是比丢数据更糟的结局</strong>。宁可提前拒绝，不可最后崩盘。</p>
-<h2 id="_8">七、回放状态机</h2>
+<h2 id="_7">七、回放状态机</h2>
 <div class="codehilite"><pre><span></span><code>IDLE → REPLAYING → VERIFYING → DONE
          ↓ (异常/需暂停)
        PAUSED → REPLAYING
@@ -242,7 +241,7 @@
 <li><strong>回放顺序</strong>：先 MySQL（主数据源）→ 再 Redis/ES/Mongo（可从 MySQL 重建的派生数据）</li>
 <li><strong>回放期间双写共存</strong>：新数据走正常链路，旧数据回放，两者互不阻塞</li>
 </ol>
-<h2 id="_9">八、验收标准（对账，不是"看起来好了"）</h2>
+<h2 id="_8">八、验收标准（对账，不是"看起来好了"）</h2>
 <div class="codehilite"><pre><span></span><code>1. 起压测（250 并发持续）
 2. 中途 docker stop 全部中间件 → 打开降级开关
 3. 持续写入 N 条，验证：接口全程 200、本地落盘 N 条、无半行/坏行
@@ -253,14 +252,14 @@
 </code></pre></div>
 
 <p>任何一步对不上，方案不成立。可复用 <code>demo/verify.sh</code> 的四库对账逻辑。</p>
-<h2 id="_10">九、待决问题（后续演练时回答）</h2>
+<h2 id="_9">九、待决问题（后续演练时回答）</h2>
 <ul>
 <li>[ ] 多实例部署时，本地文件分散在各机器，回放由谁调度？（需中心化的任务分配或各实例自回放 + 全局对账）</li>
 <li>[ ] 降级期间 Kafka 恢复但开关未关，新数据走文件还是走 Kafka？（需要"开关切换瞬间"的双写窗口设计）</li>
 <li>[ ] 回放期间业务读请求命中不到未回放数据，是否需要"回放进度"对外暴露？</li>
 <li>[ ] 磁盘 IO 本身成为降级期瓶颈时的表现（追加写吞吐上限、是否需要内存缓冲批量落盘）</li>
 </ul>
-<h2 id="_11">十、现有代码基础</h2>
+<h2 id="_10">十、现有代码基础</h2>
 <table>
 <thead>
 <tr>
@@ -297,17 +296,17 @@
   <summary>目录</summary>
   <nav>
     <ul>
-      <li class="lv2"><a href="#_2">一、目标与非目标</a></li>
-      <li class="lv2"><a href="#_3">二、整体流程</a></li>
-      <li class="lv2"><a href="#_4">三、只读降级矩阵（关键：只读需要活着的读源）</a></li>
+      <li class="lv2"><a href="#_1">一、目标与非目标</a></li>
+      <li class="lv2"><a href="#_2">二、整体流程</a></li>
+      <li class="lv2"><a href="#_3">三、只读降级矩阵（关键：只读需要活着的读源）</a></li>
       <li class="lv3"><a href="#32-mysql">3.2 MySQL 故障时的三选一（需业务方预先签字）</a></li>
-      <li class="lv2"><a href="#_5">四、切换机制：手动开关 + 自动告警</a></li>
-      <li class="lv2"><a href="#_6">五、落盘文件格式（能重放才算兜底）</a></li>
-      <li class="lv2"><a href="#_7">六、磁盘水位线（不做就是反向故障）</a></li>
-      <li class="lv2"><a href="#_8">七、回放状态机</a></li>
-      <li class="lv2"><a href="#_9">八、验收标准（对账，不是&quot;看起来好了&quot;）</a></li>
-      <li class="lv2"><a href="#_10">九、待决问题（后续演练时回答）</a></li>
-      <li class="lv2"><a href="#_11">十、现有代码基础</a></li>
+      <li class="lv2"><a href="#_4">四、切换机制：手动开关 + 自动告警</a></li>
+      <li class="lv2"><a href="#_5">五、落盘文件格式（能重放才算兜底）</a></li>
+      <li class="lv2"><a href="#_6">六、磁盘水位线（不做就是反向故障）</a></li>
+      <li class="lv2"><a href="#_7">七、回放状态机</a></li>
+      <li class="lv2"><a href="#_8">八、验收标准（对账，不是&quot;看起来好了&quot;）</a></li>
+      <li class="lv2"><a href="#_9">九、待决问题（后续演练时回答）</a></li>
+      <li class="lv2"><a href="#_10">十、现有代码基础</a></li>
     </ul>
   </nav>
 </details></aside>

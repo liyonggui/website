@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="es717">ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）</h1>
 <h2 id="_1">文档说明</h2>
 <p>本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注<strong>使用算法、底层数据结构、磁盘存储格式、源码逻辑</strong>，适配后端面试、源码学习、性能调优使用，所有内容贴合Lucene底层及ES原生源码实现。</p>
 <hr />
@@ -86,7 +85,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="_3">一、分片路由：数据分到哪个节点【分片分配算法】</h1>
+<h2 id="_3">一、分片路由：数据分到哪个节点【分片分配算法】</h2>
 <h2 id="1">1. 文档分片路由哈希算法</h2>
 <ul>
 <li>
@@ -133,7 +132,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="translog">二、写入第一步：Translog 事务日志存储【落盘日志算法】</h1>
+<h2 id="translog">二、写入第一步：Translog 事务日志存储【落盘日志算法】</h2>
 <p>ES写入遵循<strong>先写日志、后写内存索引</strong>原则，依靠WAL机制保证宕机数据不丢失。</p>
 <h2 id="1-translog">1. Translog基础存储结构</h2>
 <ul>
@@ -164,7 +163,7 @@
 <h2 id="3_1">3. 宕机恢复算法</h2>
 <p><strong>顺序回放算法</strong>：ES节点重启后，定位最后一次Flush持久化点位，从断点开始顺序读取translog日志，重做所有写入操作，恢复内存中未落盘的索引数据。</p>
 <hr />
-<h1 id="_4">三、写入第二步：内存缓冲区存储【内存索引结构+算法】</h1>
+<h2 id="_4">三、写入第二步：内存缓冲区存储【内存索引结构+算法】</h2>
 <p>translog日志写入完成后，数据写入Lucene内存索引缓冲区，构建内存级临时索引，此时数据仅在内存，不可被检索。</p>
 <h2 id="1_2">1. 核心底层数据结构</h2>
 <ol>
@@ -190,7 +189,7 @@
 <h2 id="3_2">3. 并发写入控制算法</h2>
 <p><strong>分段锁 + 内存块隔离算法</strong>：同一个分片支持多线程并发写入，按照文档ID哈希做分段拆分，不同分段加独立锁，避免单一把锁导致的写入串行化，最大化分片并发写入能力。</p>
 <hr />
-<h1 id="refresh">四、Refresh 刷新阶段【核心：倒排索引构建+排序算法】</h1>
+<h2 id="refresh">四、Refresh 刷新阶段【核心：倒排索引构建+排序算法】</h2>
 <p>默认1秒自动执行一次Refresh，将内存缓冲区数据生成不可变内存Segment，构建完整倒排索引，数据可被检索，<strong>无磁盘IO</strong>。</p>
 <h2 id="1_3">1. 分词底层算法</h2>
 <ul>
@@ -248,7 +247,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="flush-segment">五、Flush 阶段：内存Segment → 磁盘持久化【磁盘文件存储算法】</h1>
+<h2 id="flush-segment">五、Flush 阶段：内存Segment → 磁盘持久化【磁盘文件存储算法】</h2>
 <p>内存Segment达到阈值（默认内存达到512MB/定时触发）执行Flush，将内存索引批量落盘，同时清空translog事务日志。</p>
 <h2 id="1-segment">1. 磁盘Segment六大核心文件及对应存储算法</h2>
 <table>
@@ -307,7 +306,7 @@
 </li>
 </ul>
 <hr />
-<h1 id="merge">六、后台段合并 Merge 阶段【合并重排+清理算法】</h1>
+<h2 id="merge">六、后台段合并 Merge 阶段【合并重排+清理算法】</h2>
 <p>ES后台异步执行Segment合并，将大量小Segment合并为大Segment，减少文件句柄、提升查询效率，全程不影响前端业务读写。</p>
 <h2 id="1_4">1. 小段筛选算法</h2>
 <p><strong>大小比例筛选策略</strong>：自动识别体积相近、差距较小的小Segment，避免合并大小差距悬殊的段，减少合并IO开销。</p>
@@ -325,7 +324,7 @@
 <h2 id="4-io">4. 合并IO限流算法</h2>
 <p><strong>令牌桶流量控制算法</strong>：限制后台段合并每秒磁盘IO吞吐量，防止业务高峰期合并操作打满磁盘IO，影响线上写入、查询业务。</p>
 <hr />
-<h1 id="_5">七、不同字段类型专属存储算法（精准区分）</h1>
+<h2 id="_5">七、不同字段类型专属存储算法（精准区分）</h2>
 <ol>
 <li>
 <p><strong>keyword 精准字符串</strong>
@@ -354,7 +353,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="_6">八、写入全程算法执行顺序（一字不差面试背诵版）</h1>
+<h2 id="_6">八、写入全程算法执行顺序（一字不差面试背诵版）</h2>
 <ol>
 <li>
 <p>文档<code>_id</code>经过<strong>MurmurHash3哈希算法</strong> 计算分片ID，确定文档归属主分片</p>
@@ -412,7 +411,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="_7">九、核心面试精准问答（纯算法考点，直接背）</h1>
+<h2 id="_7">九、核心面试精准问答（纯算法考点，直接背）</h2>
 <ol>
 <li>
 <p><strong>Q：ES分片路由用什么哈希算法？</strong>
@@ -453,29 +452,38 @@ A：词条全局排序、构建FST压缩词条词典</p>
     <ul>
       <li class="lv2"><a href="#_1">文档说明</a></li>
       <li class="lv2"><a href="#_2">目录</a></li>
+      <li class="lv2"><a href="#_3">一、分片路由：数据分到哪个节点【分片分配算法】</a></li>
       <li class="lv2"><a href="#1">1. 文档分片路由哈希算法</a></li>
       <li class="lv2"><a href="#2">2. 分片节点物理分配算法</a></li>
+      <li class="lv2"><a href="#translog">二、写入第一步：Translog 事务日志存储【落盘日志算法】</a></li>
       <li class="lv2"><a href="#1-translog">1. Translog基础存储结构</a></li>
       <li class="lv2"><a href="#2_1">2. 日志编码与刷盘核心算法</a></li>
       <li class="lv3"><a href="#1_1">（1）序列化算法</a></li>
       <li class="lv3"><a href="#2_2">（2）刷盘持久化两种策略</a></li>
       <li class="lv3"><a href="#3">（3）日志清理算法</a></li>
       <li class="lv2"><a href="#3_1">3. 宕机恢复算法</a></li>
+      <li class="lv2"><a href="#_4">三、写入第二步：内存缓冲区存储【内存索引结构+算法】</a></li>
       <li class="lv2"><a href="#1_2">1. 核心底层数据结构</a></li>
       <li class="lv2"><a href="#2_3">2. 不同字段内存存储规则</a></li>
       <li class="lv2"><a href="#3_2">3. 并发写入控制算法</a></li>
+      <li class="lv2"><a href="#refresh">四、Refresh 刷新阶段【核心：倒排索引构建+排序算法】</a></li>
       <li class="lv2"><a href="#1_3">1. 分词底层算法</a></li>
       <li class="lv2"><a href="#2_4">2. 倒排索引两大核心结构</a></li>
       <li class="lv2"><a href="#3_3">3. 词条全局排序（面试必考）</a></li>
       <li class="lv2"><a href="#4-lucene">4. 词典压缩核心算法（Lucene核心）</a></li>
       <li class="lv2"><a href="#5-posting-list">5. 倒排链表Posting List压缩算法</a></li>
+      <li class="lv2"><a href="#flush-segment">五、Flush 阶段：内存Segment → 磁盘持久化【磁盘文件存储算法】</a></li>
       <li class="lv2"><a href="#1-segment">1. 磁盘Segment六大核心文件及对应存储算法</a></li>
       <li class="lv2"><a href="#2_5">2. 磁盘写入落盘算法</a></li>
       <li class="lv2"><a href="#3_4">3. 文档原始内容压缩算法</a></li>
+      <li class="lv2"><a href="#merge">六、后台段合并 Merge 阶段【合并重排+清理算法】</a></li>
       <li class="lv2"><a href="#1_4">1. 小段筛选算法</a></li>
       <li class="lv2"><a href="#2_6">2. 索引合并重排两大核心算法</a></li>
       <li class="lv2"><a href="#3_5">3. 逻辑删除物理清理算法</a></li>
       <li class="lv2"><a href="#4-io">4. 合并IO限流算法</a></li>
+      <li class="lv2"><a href="#_5">七、不同字段类型专属存储算法（精准区分）</a></li>
+      <li class="lv2"><a href="#_6">八、写入全程算法执行顺序（一字不差面试背诵版）</a></li>
+      <li class="lv2"><a href="#_7">九、核心面试精准问答（纯算法考点，直接背）</a></li>
     </ul>
   </nav>
 </details></aside>

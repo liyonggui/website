@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="redis-on-k3s">单实例 Redis on K3s（学习用）</h1>
 <p>把 Redis 放上 K8s，比 <code>sc-user</code> 只多一个概念：<strong>数据要持久化、身份要稳定</strong>。
 对应到资源就是三件套：<code>StatefulSet</code> + <code>volumeClaimTemplates(PVC)</code> + <code>Service</code>。</p>
 <h2 id="_1">文件清单</h2>

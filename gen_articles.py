@@ -146,14 +146,52 @@ def get_title(md_text, fallback):
     return fallback
 
 
+def extract_title(text, fallback):
+    """取文档最前面的 h1/h2 标题作为页头标题，并从正文移除该行，
+    避免正文再渲染一次造成标题重复。
+    - `# 标题` 或 `## 标题` 均可（有的文档首行写的是 ##）。
+    - 仅当文档第一个非空行就是标题时才剔除；否则保持原样。
+    """
+    lines = text.splitlines()
+    for i, line in enumerate(lines[:10]):
+        s = line.strip()
+        if not s:
+            continue
+        m = re.match(r"^#{1,2}\s+(.+?)\s*#*\s*$", s)
+        if m:
+            title = re.sub(r"\s*#+\s*$", "", m.group(1)).strip()
+            rest = "\n".join(lines[:i] + lines[i + 1:]).lstrip("\n")
+            return title, rest
+        break  # 首个非空行不是标题：不动正文
+    return fallback, text
+
+
+def demote_h1(text):
+    """把正文剩余的 `# ` 标题降级为 `## `（页头已有 h1，正文不应再出现 h1）。
+    跳过 ``` 代码围栏内的行，避免改动 shell 注释等内容。"""
+    out = []
+    in_code = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+            out.append(line)
+            continue
+        if not in_code and re.match(r"^#\s+", line):
+            line = "#" + line
+        out.append(line)
+    return "\n".join(out)
+
+
 def _toc_items(tokens):
-    """从 toc_tokens 全递归抽取 h2/h3 条目（文档序）-> [(level, id, name)]"""
+    """从 toc_tokens 全递归抽取条目（文档序）-> [(level, id, name)]。
+    level 1 视作 2（正文 h1 会在输出层降级为 h2，目录同步收录）。"""
     items = []
 
     def walk(toks):
         for tk in toks:
-            if tk["level"] in (2, 3):
-                items.append((tk["level"], tk["id"], tk["name"]))
+            lv = tk["level"]
+            if lv in (1, 2, 3):
+                items.append((2 if lv == 1 else lv, tk["id"], tk["name"]))
             walk(tk.get("children", []))
 
     walk(tokens)
@@ -190,6 +228,9 @@ def md_to_html(text):
         },
     )
     body = md.convert(text)
+    # 兜底：个别文档代码围栏不配对，md 层降级会漏；输出层强制正文无 h1。
+    # toc 扩展同样给 h1 分配了 id，替换后锚点仍然有效。
+    body = body.replace("<h1", "<h2").replace("</h1>", "</h2>")
     return body, build_toc(md)
 
 
@@ -214,8 +255,8 @@ def process_dir(rel_dir, active, back_label):
         src = os.path.join(abs_dir, fn)
         with open(src, "r", encoding="utf-8") as f:
             text = f.read()
-        title = get_title(text, fn[:-3])
-        body, toc = md_to_html(text)
+        title, text = extract_title(text, fn[:-3])
+        body, toc = md_to_html(demote_h1(text))
         out_name = fn[:-3] + ".html"
         out_path = os.path.join(abs_dir, out_name)
         html_doc = build_html(prefix, title, body, active, back_href, back_label, toc)

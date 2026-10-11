@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="elasticsearch-ilmreindex">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</h1>
 <h2 id="_1">目录</h2>
 <ol>
 <li>索引/分片/节点层级基础关系</li>
@@ -69,7 +68,7 @@
 <li>面试精简总结</li>
 </ol>
 <hr />
-<h1 id="_2">一、索引 / 分片 / 节点 层级关系</h1>
+<h2 id="_2">一、索引 / 分片 / 节点 层级关系</h2>
 <h2 id="_3">层级结构</h2>
 <p>集群 Cluster → 多个索引 Index → 索引包含主分片+副本分片 → 分片部署在节点 Node → 节点依托服务器磁盘、内存、CPU</p>
 <h2 id="_4">两条核心铁律</h2>
@@ -95,7 +94,7 @@
 - 节点：存储容器，容纳任意索引分片
 - 分片：索引私有存储单元，不可跨索引复用</p>
 <hr />
-<h1 id="murmurhash3">二、路由寻址底层原理 &amp; MurmurHash3</h1>
+<h2 id="murmurhash3">二、路由寻址底层原理 &amp; MurmurHash3</h2>
 <h2 id="1">1、路由计算公式（底层固定）</h2>
 <div class="codehilite"><pre><span></span><code><span class="n">String</span><span class="w"> </span><span class="n">routingKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">自定义routing</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">自定义routing</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">文档_id</span><span class="p">;</span>
 <span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3HashFunction</span><span class="p">.</span><span class="na">hash</span><span class="p">(</span><span class="n">routingKey</span><span class="p">);</span>
@@ -143,7 +142,7 @@
 <p>## 4、路由打散与MySQL兼容性</p>
 <p>路由二次打散仅修改 <code>_routing</code> 字段，文档 <code>_id</code>、业务主键不变，ES与MySQL可依靠唯一主键正常关联。</p>
 <hr />
-<h1 id="_6">三、两类分片倾斜成因 + 路由二次打散解决方案</h1>
+<h2 id="_6">三、两类分片倾斜成因 + 路由二次打散解决方案</h2>
 <h2 id="1_1">类型1：路由数据倾斜（业务层面，分片均衡算法无法解决）</h2>
 <h3 id="_7">成因</h3>
 <p>为减少跨分片聚合，使用<strong>省份、日期、商户ID、大客户ID</strong>作为自定义 routing；热点Key长期落在单个分片，分片数据体量悬殊。</p>
@@ -182,7 +181,7 @@
 <p>## 类型2：节点分片分配倾斜（集群层面，ES均衡算法自动调节）</p>
 <p>现象：节点总分片数量差距过大，例：3节点理论各6分片，实际A=10、B=5、C=3。</p>
 <hr />
-<h1 id="_9">四、分片节点分配算法完整解析</h1>
+<h2 id="_9">四、分片节点分配算法完整解析</h2>
 <h2 id="1_2">1、分配整体流程</h2>
 <p>前置过滤校验 → 候选节点打分计算 → 择优分配/搬迁分片</p>
 <h3 id="_10">前置过滤规则（优先级最高）</h3>
@@ -220,7 +219,7 @@
 2. 多副本自动打散不同节点、机架（开启机架感知）
 3. 副本跟随主分片同步流转冷热层级</p>
 <hr />
-<h1 id="_11">五、索引&amp;节点容量规划规范（生产落地标准）</h1>
+<h2 id="_11">五、索引&amp;节点容量规划规范（生产落地标准）</h2>
 <h2 id="1_3">1、单分片合理容量（核心规划依据）</h2>
 <ul>
 <li>热数据高写入高频查询：<strong>20~35GB</strong></li>
@@ -249,7 +248,7 @@
   中大型集群：单索引 ≤3TB
   时序数据禁止单索引长期膨胀，采用 Rollover+ILM 滚动拆分。</p>
 <hr />
-<h1 id="ilm">六、ILM 冷热分层完整手册</h1>
+<h2 id="ilm">六、ILM 冷热分层完整手册</h2>
 <h2 id="61">6.1 底层核心原理</h2>
 <ol>
 <li><strong>流转最小单位：整个索引，不支持单条文档单独冷热迁移</strong></li>
@@ -458,21 +457,21 @@ PUT _index_template/template_order
 </table>
 <h2 id="67-ilm">6.7 ILM常用运维命令</h2>
 <p>```http</p>
-<h1 id="_12">查看索引生命周期流转详情（核心排障）</h1>
+<h2 id="_12">查看索引生命周期流转详情（核心排障）</h2>
 <p>GET /index_name/_ilm/explain</p>
-<h1 id="ilm_1">查看全局ILM轮询配置</h1>
+<h2 id="ilm_1">查看全局ILM轮询配置</h2>
 <p>GET _cluster/settings?include_defaults=true&amp;filter_path=indices.lifecycle*</p>
-<h1 id="ilm_2">手动触发一轮ILM巡检</h1>
+<h2 id="ilm_2">手动触发一轮ILM巡检</h2>
 <p>POST _ilm/start
 POST _ilm/stop</p>
-<h1 id="_13">修改轮询间隔</h1>
+<h2 id="_13">修改轮询间隔</h2>
 <p>PUT _cluster/settings
 {
 "transient": {
 "indices.lifecycle.poll_interval": "10m"
 }
 }</p>
-<h1 id="_14">查看索引冷热分配标签</h1>
+<h2 id="_14">查看索引冷热分配标签</h2>
 <p>GET index_name/_settings?filter_path=*.data_tier
 ```</p>
 <h2 id="68-ilm">6.8 ILM策略修改快速判断口诀</h2>
@@ -488,7 +487,7 @@ POST _ilm/stop</p>
 </li>
 </ol>
 <hr />
-<h1 id="reindex">七、Reindex 数据重构全场景方案</h1>
+<h2 id="reindex">七、Reindex 数据重构全场景方案</h2>
 <h2 id="_15">前置核心结论</h2>
 <p>ILM、分片均衡、磁盘水位属于<strong>常驻动态集群配置</strong>，满足条件自动执行；
 修改字段、修改分片数、修改路由规则属于<strong>一次性架构变更</strong>，ES无法原地修改，只能采用：
@@ -564,7 +563,7 @@ ctx._routing = ctx._source.province + "_" + suffix;
 </li>
 </ol>
 <hr />
-<h1 id="_19">八、索引别名架构设计 + 上线初始化标准模板</h1>
+<h2 id="_19">八、索引别名架构设计 + 上线初始化标准模板</h2>
 <h2 id="_20">核心认知</h2>
 <ol>
 <li>别名不是索引，是虚拟软链接，本身不存数据；真实索引带版本迭代（order_v1、order_v2），别名是长期固定业务访问入口。</li>
@@ -619,7 +618,7 @@ ctx._routing = ctx._source.province + "_" + suffix;
 <p>## 8.5 别名设计总结</p>
 <p>上线初始化创建带版本物理索引，同步绑定固定业务别名，挂载ILM实现冷热自动流转；该架构天然适配后续Reindex各类重构，仅原子切换别名即可业务无感迁移，降低迭代与回滚成本。</p>
 <hr />
-<h1 id="_21">九、全局分片异常统一排障手册</h1>
+<h2 id="_21">九、全局分片异常统一排障手册</h2>
 <h3 id="1_4">现象1：节点分片数量分布不均衡</h3>
 <p>原因：均衡阈值保守、搬迁并发偏低、节点磁盘水位偏高
 处理：低峰调大rebalance并发、调低balance.threshold、清理高水位磁盘，等待自动收敛</p>
@@ -643,7 +642,7 @@ ctx._routing = ctx._source.province + "_" + suffix;
 <p>原因：手动篡改索引data_tier、索引模板配置错乱
 处理：重置索引层级绑定，核对节点角色配置</p>
 <hr />
-<h1 id="es-mysql-redis-kafka">十、跨中间件统一分片思想（ES / MySQL / Redis / Kafka）</h1>
+<h2 id="es-mysql-redis-kafka">十、跨中间件统一分片思想（ES / MySQL / Redis / Kafka）</h2>
 <ol>
 <li>分布式分片底层通用逻辑：<strong>分片键 → 哈希/取模运算 → 绑定固定分片</strong></li>
 <li>分片键为热度不均匀字段（时间、地域、头部商户），必然产生数据倾斜</li>
@@ -655,7 +654,7 @@ ctx._routing = ctx._source.province + "_" + suffix;
    补充：主流中间件大多由大厂海量业务打磨验证边界场景；小公司不适合从零自研分布式分片架构，务实路线吃透开源中间件原理、适度二次封装适配业务即可。</li>
 </ol>
 <hr />
-<h1 id="3_1">十一、面试3分钟整体总结背诵版</h1>
+<h2 id="3_1">十一、面试3分钟整体总结背诵版</h2>
 <p>ES分片分为路由数据倾斜、节点分片分配倾斜两类。路由依靠MurmurHash3 32位哈希取模分配分片，主分片创建后不可修改，哈希碰撞不会覆盖数据；省份、日期自定义路由极易热点倾斜，解决方案为路由Key后缀二次打散。
 节点分片依靠IndexBalance、ShardBalance加权算法实现分片数量均衡，受磁盘三级水位、主副隔离、冷热层级三大前置约束管控分配逻辑；容量上单分片控制30~50GB，前期分片规划宁多勿少。
 冷热分层依托ILM实现索引单向Hot→Warm→Cold→Delete流转，仅依据索引创建/滚动时间判断，不识别文档业务时间；采用后台轮询调度，对比自研Cron定时任务流量更平滑、自带幂等状态、异常自愈更强，仅修改索引data_tier标签完成层级迁移，只能节约存储成本，无法治理热分片倾斜。
@@ -667,32 +666,48 @@ ctx._routing = ctx._source.province + "_" + suffix;
   <nav>
     <ul>
       <li class="lv2"><a href="#_1">目录</a></li>
+      <li class="lv2"><a href="#_2">一、索引 / 分片 / 节点 层级关系</a></li>
       <li class="lv2"><a href="#_3">层级结构</a></li>
       <li class="lv2"><a href="#_4">两条核心铁律</a></li>
+      <li class="lv2"><a href="#murmurhash3">二、路由寻址底层原理 &amp;amp; MurmurHash3</a></li>
       <li class="lv2"><a href="#1">1、路由计算公式（底层固定）</a></li>
       <li class="lv3"><a href="#_5">硬性约束</a></li>
+      <li class="lv2"><a href="#_6">三、两类分片倾斜成因 + 路由二次打散解决方案</a></li>
       <li class="lv2"><a href="#1_1">类型1：路由数据倾斜（业务层面，分片均衡算法无法解决）</a></li>
       <li class="lv3"><a href="#_7">成因</a></li>
       <li class="lv3"><a href="#_8">典型场景</a></li>
+      <li class="lv2"><a href="#_9">四、分片节点分配算法完整解析</a></li>
       <li class="lv2"><a href="#1_2">1、分配整体流程</a></li>
       <li class="lv3"><a href="#_10">前置过滤规则（优先级最高）</a></li>
+      <li class="lv2"><a href="#_11">五、索引&amp;amp;节点容量规划规范（生产落地标准）</a></li>
       <li class="lv2"><a href="#1_3">1、单分片合理容量（核心规划依据）</a></li>
+      <li class="lv2"><a href="#ilm">六、ILM 冷热分层完整手册</a></li>
       <li class="lv2"><a href="#61">6.1 底层核心原理</a></li>
       <li class="lv2"><a href="#66-ilm">6.6 ILM故障排查对照表</a></li>
       <li class="lv2"><a href="#67-ilm">6.7 ILM常用运维命令</a></li>
+      <li class="lv2"><a href="#_12">查看索引生命周期流转详情（核心排障）</a></li>
+      <li class="lv2"><a href="#ilm_1">查看全局ILM轮询配置</a></li>
+      <li class="lv2"><a href="#ilm_2">手动触发一轮ILM巡检</a></li>
+      <li class="lv2"><a href="#_13">修改轮询间隔</a></li>
+      <li class="lv2"><a href="#_14">查看索引冷热分配标签</a></li>
       <li class="lv2"><a href="#68-ilm">6.8 ILM策略修改快速判断口诀</a></li>
+      <li class="lv2"><a href="#reindex">七、Reindex 数据重构全场景方案</a></li>
       <li class="lv2"><a href="#_15">前置核心结论</a></li>
       <li class="lv2"><a href="#71">7.1 场景一：全量修改字段名称、字段类型</a></li>
       <li class="lv3"><a href="#_16">不可原地修改清单</a></li>
       <li class="lv3"><a href="#_17">完整零停机步骤</a></li>
       <li class="lv3"><a href="#_18">常见误区澄清</a></li>
+      <li class="lv2"><a href="#_19">八、索引别名架构设计 + 上线初始化标准模板</a></li>
       <li class="lv2"><a href="#_20">核心认知</a></li>
+      <li class="lv2"><a href="#_21">九、全局分片异常统一排障手册</a></li>
       <li class="lv3"><a href="#1_4">现象1：节点分片数量分布不均衡</a></li>
       <li class="lv3"><a href="#2-unassigned">现象2：集群黄/红，分片 unassigned 未分配</a></li>
       <li class="lv3"><a href="#3">现象3：分片搬迁速度极慢</a></li>
       <li class="lv3"><a href="#4">现象4：分片数量均衡，但单个分片数据爆满倾斜</a></li>
       <li class="lv3"><a href="#5io">现象5：高峰期分片搬迁打满IO</a></li>
       <li class="lv3"><a href="#6">现象6：冷热分片跨层级乱跑</a></li>
+      <li class="lv2"><a href="#es-mysql-redis-kafka">十、跨中间件统一分片思想（ES / MySQL / Redis / Kafka）</a></li>
+      <li class="lv2"><a href="#3_1">十一、面试3分钟整体总结背诵版</a></li>
     </ul>
   </nav>
 </details></aside>

@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="b6limit">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高频慢查询源头：<code>LIMIT 1000000,20</code> 深分页。MySQL 需<strong>扫描并丢弃前 100 万行</strong>，offset 越大越慢，是列表页/管理后台最常见的慢查询。</p>
 <h2 id="_2">二、深分页原理</h2>

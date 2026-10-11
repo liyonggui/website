@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="15mysql">场景15：MySQL 高可用（主从切换 / 故障演练）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>单点 MySQL 一旦故障，整个服务不可用。<strong>高可用（HA）</strong> 的核心是：故障时能<strong>快速探测 + 自动切换</strong>，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓扑，演示 HA 能力。</p>
 <blockquote>

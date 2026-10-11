@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>KingbaseES-锁与事务排查手册 · 小番茄程序猿</title>
-<meta name="description" content="KingbaseES-锁与事务排查手册 —— 小番茄程序猿的技术文章。"/>
+<title>KingbaseES / PostgreSQL 锁与长事务排查手册 · 小番茄程序猿</title>
+<meta name="description" content="KingbaseES / PostgreSQL 锁与长事务排查手册 —— 小番茄程序猿的技术文章。"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="KingbaseES-锁与事务排查手册 · 小番茄程序猿" />
-<meta property="og:description" content="KingbaseES-锁与事务排查手册 —— 小番茄程序猿的技术文章。" />
+<meta property="og:title" content="KingbaseES / PostgreSQL 锁与长事务排查手册 · 小番茄程序猿" />
+<meta property="og:description" content="KingbaseES / PostgreSQL 锁与长事务排查手册 —— 小番茄程序猿的技术文章。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -47,11 +47,10 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>KingbaseES-锁与事务排查手册</h1>
+    <h1>KingbaseES / PostgreSQL 锁与长事务排查手册</h1>
   </div>
   <div class="article-layout">
     <article class="prose">
-<h2 id="kingbasees-postgresql">KingbaseES / PostgreSQL 锁与长事务排查手册</h2>
 <blockquote>
 <p>适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产库 <code>zhcl</code>，运维账号 <code>dgcl_ylf</code>，客户端 KStudio，经 aTrust 零信任 VPN 连接。
 本手册既是本次「卡死事务」事件的复盘，也是可长期复用的锁/事务排查 runbook。
@@ -801,7 +800,6 @@
   <summary>目录</summary>
   <nav>
     <ul>
-      <li class="lv2"><a href="#kingbasees-postgresql">KingbaseES / PostgreSQL 锁与长事务排查手册</a></li>
       <li class="lv3"><a href="#_1">目录</a></li>
       <li class="lv2"><a href="#1-2">1. 案例回顾：一个挂了 2 天的卡死事务</a></li>
       <li class="lv2"><a href="#2-mvcc">2. 事务、快照与 MVCC —— 为什么「长事务」是万恶之源</a></li>

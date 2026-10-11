@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="10redis-mysql">场景10：Redis 缓存 + MySQL 双写一致性</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>Redis 缓存能大幅提升读性能（内存读 vs 磁盘读），但引入<strong>缓存与数据库双写一致性</strong>问题：更新 MySQL 后，缓存若不更新，业务会读到<strong>过期数据（脏数据）</strong>。本场景演示双写不一致的成因，以及 Cache Aside、延迟双删等解决策略。</p>
 <p>演示表 <code>t_cache_goods</code>（商品），缓存 key：<code>goods:GOODS-001</code>。</p>

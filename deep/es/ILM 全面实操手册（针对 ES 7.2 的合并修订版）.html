@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Elasticsearch 分片 / 路由 / ILM 全面实操手册（针对 ES 7.2 的合并修订版） · 小番茄程序猿</title>
-<meta name="description" content="Elasticsearch 分片 / 路由 / ILM 全面实操手册（针对 ES 7.2 的合并修订版） —— 小番茄程序猿的技术文章。"/>
+<title>ILM 全面实操手册（针对 ES 7.2 的合并修订版） · 小番茄程序猿</title>
+<meta name="description" content="ILM 全面实操手册（针对 ES 7.2 的合并修订版） —— 小番茄程序猿的技术文章。"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="Elasticsearch 分片 / 路由 / ILM 全面实操手册（针对 ES 7.2 的合并修订版） · 小番茄程序猿" />
-<meta property="og:description" content="Elasticsearch 分片 / 路由 / ILM 全面实操手册（针对 ES 7.2 的合并修订版） —— 小番茄程序猿的技术文章。" />
+<meta property="og:title" content="ILM 全面实操手册（针对 ES 7.2 的合并修订版） · 小番茄程序猿" />
+<meta property="og:description" content="ILM 全面实操手册（针对 ES 7.2 的合并修订版） —— 小番茄程序猿的技术文章。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -47,7 +47,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>Elasticsearch 分片 / 路由 / ILM 全面实操手册（针对 ES 7.2 的合并修订版）</h1>
+    <h1>ILM 全面实操手册（针对 ES 7.2 的合并修订版）</h1>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -396,8 +396,8 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 
 <span class="err">POST your_index/_ilm/stop</span>
 
-<span class="err"># 等待 recovery 完成（查看 _cat/recovery?v）</span>
-<span class="err"># 回迁完毕后恢复生命周期</span>
+<span class="err">## 等待 recovery 完成（查看 _cat/recovery?v）</span>
+<span class="err">## 回迁完毕后恢复生命周期</span>
 <span class="err">POST your_index/_ilm/start</span>
 </code></pre></div>
 
@@ -463,9 +463,9 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <p>脚本示例（改为通过 settings 字段判断 box_type 为 warm 的索引）：</p>
 <div class="codehilite"><pre><span></span><code><span class="ch">#!/bin/bash</span>
 <span class="nv">ES_HOST</span><span class="o">=</span><span class="s2">"http://127.0.0.1:9200"</span>
-<span class="c1"># ES_USER/ES_PWD if needed</span>
+<span class="c1">## ES_USER/ES_PWD if needed</span>
 
-<span class="c1"># 获取所有索引 settings 并筛选出 box_type=warm 的索引（需要 jq）</span>
+<span class="c1">## 获取所有索引 settings 并筛选出 box_type=warm 的索引（需要 jq）</span>
 curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings?pretty"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'to_entries[] | select(.value.settings.index."routing.allocation.require".box_type == "warm") | .key'</span><span class="w"> </span>&gt;<span class="w"> </span>warm_indices.txt
 
 <span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>index<span class="p">;</span><span class="w"> </span><span class="k">do</span>
@@ -491,7 +491,7 @@ curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><
 <li>在 ES 7.2 上，推荐使用 node attributes（node.attr.box_type）+ index.routing.allocation.require.* 做冷热层级分配；若想使用 data_tier / searchable snapshots / SLM 等新功能，应评估升级计划到 &gt;=7.10。  </li>
 </ul>
 <hr />
-<h1 id="_7">附：我已具体修改的地方（供审计）</h1>
+<h2 id="_7">附：我已具体修改的地方（供审计）</h2>
 <ul>
 <li>修正了所有示例脚本中 Math.abs(...) 的用法，改用 Math.floorMod 或 bitmask，避免 Integer.MIN_VALUE 溢出问题。</li>
 <li>把 index.routing.allocation.data_tier 的示例替换为兼容 7.2 的 node.attr + index.routing.allocation.require 示例，并在文中明确标出 data_tier 为 &gt;=7.10 的特性。</li>
@@ -523,6 +523,7 @@ curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><
       <li class="lv2"><a href="#_5">十二、运维监控与告警（新增建议，便于生产）</a></li>
       <li class="lv2"><a href="#_6">十三、常见操作脚本与修正（示例）</a></li>
       <li class="lv2"><a href="#3">十四、面试 / 总结要点（3 分钟版）</a></li>
+      <li class="lv2"><a href="#_7">附：我已具体修改的地方（供审计）</a></li>
     </ul>
   </nav>
 </details></aside>

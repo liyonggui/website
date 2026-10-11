@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="redis-11statefulset">Redis 1主1从（StatefulSet 主从复制）</h1>
 <p>在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解
 <strong>StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 DNS</strong>，以及 Redis 主从复制本身。</p>
 <h2 id="_1">这次改了什么（相对单实例）</h2>

@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="13innodb">场景13：InnoDB 参数调优对吞吐的影响</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用"<strong>强持久性</strong>"配置：每次事务提交都执行 <code>fsync</code> 刷盘，保证崩溃不丢数据，但<strong>牺牲写入性能</strong>。调优的本质是<strong>「性能 vs 持久性」的权衡</strong>——降低刷盘频率可显著提升吞吐，但崩溃时可能丢失少量已提交数据。</p>
 <h2 id="_2">二、关键参数</h2>

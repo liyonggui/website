@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="mysql">MySQL 连接层参数详细辨析</h1>
 <blockquote>
 <p>基于 MySQL 5.7/8.0，线程缓存 <code>thread_cache_size</code> 参数，<strong>区分：连接、会话、线程、事务</strong>。
 重要前提：MySQL 一个 TCP 连接 ≈ 一个会话(session)；一个会话绑定一个服务线程（1:1 模型），8.0 默认没有线程池（企业版才有线程池插件）。</p>

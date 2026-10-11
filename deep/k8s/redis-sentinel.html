@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="redis-113">Redis 1主1从3哨兵（自动故障转移）</h1>
 <p>在「1主1从」之上加 3 个哨兵，补齐最后一块：<strong>主库宕机自动选主 + 客户端经哨兵发现当前主库</strong>。
 这是 Redis 高可用的完整形态，也是「在 K8s 上跑有状态中间件」最有收获的一课。</p>
 <h2 id="_1">架构</h2>

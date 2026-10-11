@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>确保 3 主 3 从集群已运行 · 小番茄程序猿</title>
-<meta name="description" content="确保 3 主 3 从集群已运行 —— 小番茄程序猿的技术文章。"/>
+<title>场景 8: 热点 Key Pipeline INCR 自增 · 小番茄程序猿</title>
+<meta name="description" content="场景 8: 热点 Key Pipeline INCR 自增 —— 小番茄程序猿的技术文章。"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="确保 3 主 3 从集群已运行 · 小番茄程序猿" />
-<meta property="og:description" content="确保 3 主 3 从集群已运行 —— 小番茄程序猿的技术文章。" />
+<meta property="og:title" content="场景 8: 热点 Key Pipeline INCR 自增 · 小番茄程序猿" />
+<meta property="og:description" content="场景 8: 热点 Key Pipeline INCR 自增 —— 小番茄程序猿的技术文章。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -47,11 +47,10 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>确保 3 主 3 从集群已运行</h1>
+    <h1>场景 8: 热点 Key Pipeline INCR 自增</h1>
   </div>
   <div class="article-layout">
     <article class="prose">
-<h2 id="8-key-pipeline-incr">场景 8: 热点 Key Pipeline INCR 自增</h2>
 <h3 id="81">8.1 背景与问题</h3>
 <div class="codehilite"><pre><span></span><code>Redis Cluster + Pipeline 高并发 INCR 同一个热点 key:
 
@@ -1637,46 +1636,7 @@ docker-compose<span class="w"> </span>--profile<span class="w"> </span>replicati
 <p><strong>选型原则</strong>：复杂计算在应用层完成 → 批量 INCRBY 写回 Redis / 外部存储。让 Redis 只做"汇总持久化"，不做"实时原子计算"。</p>
 </blockquote>
     </article>
-    <aside class="toc-side"><details class="toc" open>
-  <summary>目录</summary>
-  <nav>
-    <ul>
-      <li class="lv2"><a href="#8-key-pipeline-incr">场景 8: 热点 Key Pipeline INCR 自增</a></li>
-      <li class="lv3"><a href="#81">8.1 背景与问题</a></li>
-      <li class="lv3"><a href="#82-key">8.2 热点 Key 与集群的矛盾</a></li>
-      <li class="lv3"><a href="#83">8.3 风险现象</a></li>
-      <li class="lv3"><a href="#84">8.4 五种模式对比</a></li>
-      <li class="lv3"><a href="#85">8.5 压测架构</a></li>
-      <li class="lv3"><a href="#86-rest">8.6 REST 端点</a></li>
-      <li class="lv3"><a href="#87">8.7 测试方法</a></li>
-      <li class="lv3"><a href="#88-16-batchsize10015s">8.8 实测对比数据（16 并发，batchSize=100，15s 采样）</a></li>
-      <li class="lv3"><a href="#89">8.9 解决方案对比</a></li>
-      <li class="lv3"><a href="#810">8.10 解决方案实现</a></li>
-      <li class="lv3"><a href="#811">8.11 生产级计算策略决策树</a></li>
-      <li class="lv3"><a href="#812">8.12 核心结论</a></li>
-      <li class="lv3"><a href="#813">8.13 停止</a></li>
-      <li class="lv2"><a href="#814">场景 8.14: 主从同步压测 — 管道高写入 + 从库全量重同步</a></li>
-      <li class="lv3"><a href="#8141">8.14.1 背景与问题</a></li>
-      <li class="lv3"><a href="#8142">8.14.2 全量同步触发条件</a></li>
-      <li class="lv3"><a href="#8143">8.14.3 压测架构</a></li>
-      <li class="lv3"><a href="#8144">8.14.4 实测数据：三轮逐步演进</a></li>
-      <li class="lv3"><a href="#8145">8.14.5 核心风险现象（实测验证）</a></li>
-      <li class="lv3"><a href="#8146">8.14.6 根除方案：三层防御体系</a></li>
-      <li class="lv3"><a href="#8147">8.14.7 应用层自动降速 — 最终防线</a></li>
-      <li class="lv3"><a href="#8148">8.14.8 开发踩坑记录</a></li>
-      <li class="lv3"><a href="#8149-rest">8.14.9 REST 端点</a></li>
-      <li class="lv3"><a href="#81410">8.14.10 测试方法</a></li>
-      <li class="lv3"><a href="#81411">8.14.11 观测维度</a></li>
-      <li class="lv3"><a href="#81412">8.14.12 生产部署建议</a></li>
-      <li class="lv3"><a href="#81413">8.14.13 停止</a></li>
-      <li class="lv3"><a href="#81414">8.14.14 监控指标建议</a></li>
-      <li class="lv3"><a href="#81415">8.14.15 自动降速设计规范（生产级）</a></li>
-      <li class="lv3"><a href="#81416-repl-diskless-sync">8.14.16 repl-diskless-sync 注意事项</a></li>
-      <li class="lv3"><a href="#81417">8.14.17 持久化与数据安全性警示</a></li>
-      <li class="lv3"><a href="#81418">8.14.18 额外可选架构 — 极端高并发计数</a></li>
-    </ul>
-  </nav>
-</details></aside>
+    <aside class="toc-side"></aside>
   </div>
   <section class="giscus-wrap">
     <div class="wrap">

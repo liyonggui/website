@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="4-next-key-lock">场景4：间隙锁 / Next-Key Lock</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>InnoDB 在 <strong>REPEATABLE READ</strong> 隔离级别下，通过<strong>间隙锁（Gap Lock）</strong>和 <strong>Next-Key Lock</strong> 防止幻读，但也因此引入了<strong>锁范围扩大</strong>与<strong>间隙锁死锁</strong>等并发问题。生产上常因对锁机制理解不清，出现<strong>插入被阻塞</strong>、<strong>死锁频发</strong>或<strong>锁范围过大拖垮并发</strong>。</p>
 <p>本场景用专用表 <code>t_gap_lock</code>（含非唯一索引）演示 InnoDB 的间隙锁行为。</p>

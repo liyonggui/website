@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="esilmrolloverreindex">ES分片+路由+ILM冷热+Rollover+Reindex+全层级回流 最终完整版手册</h1>
 <h2 id="_1">全文目录</h2>
 <ol>
 <li>
@@ -95,7 +94,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="1">1. 索引与分片核心基础</h1>
+<h2 id="1">1. 索引与分片核心基础</h2>
 <h2 id="11">1.1 集群层级结构</h2>
 <p>集群 → 索引 → 主分片/副本分片 → 物理节点 → 服务器硬件资源（CPU/内存/磁盘）</p>
 <h2 id="12">1.2 两条不可违背铁律</h2>
@@ -111,7 +110,7 @@
 <p>总分片数 = 主分片数 ×（副本数 + 1）</p>
 <p>示例：9主1副本 = 18个总分片，3节点集群，理论每节点均分6个分片</p>
 <hr />
-<h1 id="2">2. 路由哈希底层原理与分片分配规则</h1>
+<h2 id="2">2. 路由哈希底层原理与分片分配规则</h2>
 <h2 id="21">2.1 文档路由分片计算公式（底层固定不可改）</h2>
 <div class="codehilite"><pre><span></span><code><span class="c1">// 路由key优先使用自定义routing，没有则使用文档_id</span>
 <span class="n">String</span><span class="w"> </span><span class="n">routingKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">routing</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">routing</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">doc</span><span class="p">.</span><span class="na">_id</span><span class="p">;</span>
@@ -156,7 +155,7 @@
 </li>
 </ul>
 <hr />
-<h1 id="3">3. 两种分片倾斜问题 + 生产根治方案</h1>
+<h2 id="3">3. 两种分片倾斜问题 + 生产根治方案</h2>
 <h2 id="31">3.1 业务层：路由数据倾斜（均衡算法解决不了）</h2>
 <h3 id="_2">成因</h3>
 <p>为了减少跨分片聚合，使用省份、日期、大商户ID、大客户ID作为routing，热点key全部扎堆一个分片，单分片数据爆炸。</p>
@@ -185,7 +184,7 @@
 <h2 id="32-es">3.2 集群层：节点分片数量倾斜（ES自动均衡可修复）</h2>
 <p>现象：节点总分片数量差距过大，原因是分片搬迁限流、均衡阈值保守、磁盘水位过高。</p>
 <hr />
-<h1 id="4">4. 分片均衡算法 + 磁盘水位 + 搬迁限流运维</h1>
+<h2 id="4">4. 分片均衡算法 + 磁盘水位 + 搬迁限流运维</h2>
 <h2 id="41-es">4.1 ES分片均衡打分公式</h2>
 <p>综合得分 = 索引分片均衡差值(0.55权重) + 集群总分片均衡差值(0.45权重)</p>
 <p>得分越低，节点越空闲，优先分配分片</p>
@@ -214,7 +213,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="5">5. 生产索引、分片、节点容量标准化规划</h1>
+<h2 id="5">5. 生产索引、分片、节点容量标准化规划</h2>
 <h2 id="51">5.1 单分片标准容量（生产红线）</h2>
 <ul>
 <li>
@@ -244,7 +243,7 @@
 </li>
 </ul>
 <hr />
-<h1 id="6-ilm">6. ILM冷热分层全解（高频面试+生产核心）</h1>
+<h2 id="6-ilm">6. ILM冷热分层全解（高频面试+生产核心）</h2>
 <h2 id="61-ilm">6.1 ILM核心铁律（必考）</h2>
 <ol>
 <li>
@@ -311,7 +310,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="7-reindex">7. Reindex零停机重构全业务场景方案</h1>
+<h2 id="7-reindex">7. Reindex零停机重构全业务场景方案</h2>
 <h2 id="71-reindex">7.1 哪些操作不能原地修改，必须Reindex</h2>
 <ul>
 <li>
@@ -338,7 +337,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="8">8. 索引别名架构 + 普通业务索引上线标准模板</h1>
+<h2 id="8">8. 索引别名架构 + 普通业务索引上线标准模板</h2>
 <h2 id="81">8.1 别名核心思想</h2>
 <p>业务永远访问别名，绝不硬编码物理索引名；底层索引迭代、重构、迁移，业务无需改代码、无需重启服务。</p>
 <h2 id="82">8.2 原子别名切换（无感切流/回滚）</h2>
@@ -352,7 +351,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="9-rollover">9. Rollover时序滚动索引生产全套模板（日志/流水/埋点专用）</h1>
+<h2 id="9-rollover">9. Rollover时序滚动索引生产全套模板（日志/流水/埋点专用）</h2>
 <h2 id="91">9.1 架构说明</h2>
 <p>写入别名唯一写索引，达到容量/时间阈值自动滚动生成新索引，旧索引自动进入ILM冷热生命周期，适配无限时序写入场景。</p>
 <h2 id="92">9.2 滚动索引模板</h2>
@@ -389,7 +388,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="10-ilm">10. ILM全链路反向回流【全文重点】任意层级向上回退通用方案</h1>
+<h2 id="10-ilm">10. ILM全链路反向回流【全文重点】任意层级向上回退通用方案</h2>
 <h2 id="101">10.1 统一结论（回答你刚才的问题）</h2>
 <p><strong>热→温→冷→删除，任意上游层级回滚，操作完全通用！</strong>
 不管是温回热、冷回温、冷直接跨层回热，底层逻辑一模一样：
@@ -457,7 +456,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="11_1">11. 集群分片红黄异常全套排障手册</h1>
+<h2 id="11_1">11. 集群分片红黄异常全套排障手册</h2>
 <ul>
 <li>
 <p>分片未分配：使用GET _cluster/allocation/explain精准定位原因</p>
@@ -473,7 +472,7 @@
 </li>
 </ul>
 <hr />
-<h1 id="12_1">12. 中间件通用分片思想（面试加分）</h1>
+<h2 id="12_1">12. 中间件通用分片思想（面试加分）</h2>
 <p>ES、MySQL分库分表、Redis集群、Kafka分区底层完全一致：</p>
 <ol>
 <li>
@@ -490,7 +489,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="13-3">13. 面试3分钟完整版背诵话术（直接背）</h1>
+<h2 id="13-3">13. 面试3分钟完整版背诵话术（直接背）</h2>
 <p>ES通过Murmur3哈希+取模实现文档路由，主分片一旦创建不可修改；业务自定义路由容易产生热点分片倾斜，解决方案是路由key二次后缀打散。</p>
 <p>集群依靠双层加权算法实现分片均衡，同时受磁盘水位、主副分片隔离、冷热节点三层硬性约束。生产上单分片控制在30-50GB，前期分片规划宁多勿少。</p>
 <p>ILM冷热流转是单向Hot→Warm→Cold→Delete，依靠后台轮询调度，不识别业务时间，只能节约存储，无法解决热数据倾斜。<strong>所有层级向上回退操作完全通用，只需要修改data_tier标签并且暂停ILM即可</strong>，但是shrink缩分片不可逆，删除后数据无法恢复。</p>
@@ -505,34 +504,44 @@
   <nav>
     <ul>
       <li class="lv2"><a href="#_1">全文目录</a></li>
+      <li class="lv2"><a href="#1">1. 索引与分片核心基础</a></li>
       <li class="lv2"><a href="#11">1.1 集群层级结构</a></li>
       <li class="lv2"><a href="#12">1.2 两条不可违背铁律</a></li>
       <li class="lv2"><a href="#13">1.3 总分片计算公式</a></li>
+      <li class="lv2"><a href="#2">2. 路由哈希底层原理与分片分配规则</a></li>
       <li class="lv2"><a href="#21">2.1 文档路由分片计算公式（底层固定不可改）</a></li>
       <li class="lv2"><a href="#22">2.2 两种哈希算法分工</a></li>
       <li class="lv2"><a href="#23">2.3 关键误区</a></li>
+      <li class="lv2"><a href="#3">3. 两种分片倾斜问题 + 生产根治方案</a></li>
       <li class="lv2"><a href="#31">3.1 业务层：路由数据倾斜（均衡算法解决不了）</a></li>
       <li class="lv3"><a href="#_2">成因</a></li>
       <li class="lv3"><a href="#key">生产解决方案：路由key二次后缀打散</a></li>
       <li class="lv3"><a href="#java">可用Java工具类</a></li>
       <li class="lv2"><a href="#32-es">3.2 集群层：节点分片数量倾斜（ES自动均衡可修复）</a></li>
+      <li class="lv2"><a href="#4">4. 分片均衡算法 + 磁盘水位 + 搬迁限流运维</a></li>
       <li class="lv2"><a href="#41-es">4.1 ES分片均衡打分公式</a></li>
       <li class="lv2"><a href="#42">4.2 磁盘三级水位（硬性拦截，优先级最高）</a></li>
       <li class="lv2"><a href="#43-io">4.3 分片搬迁限流配置（生产必配，防IO雪崩）</a></li>
+      <li class="lv2"><a href="#5">5. 生产索引、分片、节点容量标准化规划</a></li>
       <li class="lv2"><a href="#51">5.1 单分片标准容量（生产红线）</a></li>
       <li class="lv2"><a href="#52">5.2 主分片规划原则</a></li>
       <li class="lv2"><a href="#53">5.3 节点磁盘使用率红线</a></li>
+      <li class="lv2"><a href="#6-ilm">6. ILM冷热分层全解（高频面试+生产核心）</a></li>
       <li class="lv2"><a href="#61-ilm">6.1 ILM核心铁律（必考）</a></li>
       <li class="lv2"><a href="#62-ilm">6.2 四阶段标准生产ILM策略</a></li>
       <li class="lv2"><a href="#63-ilm">6.3 ILM常见故障排障命令</a></li>
+      <li class="lv2"><a href="#7-reindex">7. Reindex零停机重构全业务场景方案</a></li>
       <li class="lv2"><a href="#71-reindex">7.1 哪些操作不能原地修改，必须Reindex</a></li>
       <li class="lv2"><a href="#72">7.2 标准零停机重构流程</a></li>
       <li class="lv2"><a href="#73-reindex">7.3 字段迁移Reindex脚本</a></li>
+      <li class="lv2"><a href="#8">8. 索引别名架构 + 普通业务索引上线标准模板</a></li>
       <li class="lv2"><a href="#81">8.1 别名核心思想</a></li>
       <li class="lv2"><a href="#82">8.2 原子别名切换（无感切流/回滚）</a></li>
+      <li class="lv2"><a href="#9-rollover">9. Rollover时序滚动索引生产全套模板（日志/流水/埋点专用）</a></li>
       <li class="lv2"><a href="#91">9.1 架构说明</a></li>
       <li class="lv2"><a href="#92">9.2 滚动索引模板</a></li>
       <li class="lv2"><a href="#93">9.3 初始化首个可写索引</a></li>
+      <li class="lv2"><a href="#10-ilm">10. ILM全链路反向回流【全文重点】任意层级向上回退通用方案</a></li>
       <li class="lv2"><a href="#101">10.1 统一结论（回答你刚才的问题）</a></li>
       <li class="lv2"><a href="#102">10.2 全场景一键回退命令速查（直接复制可用）</a></li>
       <li class="lv3"><a href="#1warm-hot">场景1：Warm 温层 → Hot 热层</a></li>
@@ -542,6 +551,9 @@
       <li class="lv2"><a href="#104-4">10.4 回流之后必须处理的4个不可逆动作</a></li>
       <li class="lv2"><a href="#105-delete">10.5 致命边界：Delete阶段无法回退</a></li>
       <li class="lv2"><a href="#106-shell">10.6 批量一键回流Shell脚本（全通用，改一行适配冷热）</a></li>
+      <li class="lv2"><a href="#11_1">11. 集群分片红黄异常全套排障手册</a></li>
+      <li class="lv2"><a href="#12_1">12. 中间件通用分片思想（面试加分）</a></li>
+      <li class="lv2"><a href="#13-3">13. 面试3分钟完整版背诵话术（直接背）</a></li>
     </ul>
   </nav>
 </details></aside>

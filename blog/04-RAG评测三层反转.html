@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="rag-precision-055mrr">RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</h1>
 <blockquote>
 <p>「高并发实测」系列第 4 篇。</p>
 <p>环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embedding 走百炼；评测用 Java 复刻的 RAGAS 四指标（LLM-as-judge，5 题 gold 集，temperature=0）。排序质量另用 <code>/evalrank</code> 数答案块在候选池里的首现排名——<strong>这一项是确定性计算，不经过模型裁判</strong>。</p>

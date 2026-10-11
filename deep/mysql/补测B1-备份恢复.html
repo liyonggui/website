@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="b1binlog-pitr">补测B1：备份恢复（binlog PITR / 误删误更新恢复）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>高并发治理除了"读写/一致性"，还需<strong>数据保底</strong>：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的<strong>时间点恢复（PITR）</strong>是核心兜底方案。</p>
 <h2 id="pitr">二、PITR 原理</h2>

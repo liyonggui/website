@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="6">场景6：读写分离与主从延迟</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>在 MySQL 高并发场景下，<strong>读多写少</strong>是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用<strong>读写分离</strong>：<strong>写走主库、读走从库</strong>，把读压力分摊到只读副本上。</p>
 <p>但读写分离引入一个新问题——<strong>主从延迟</strong>：主库写入后，从库需要经过复制（binlog → relay log → SQL apply）才能同步，这个时间窗口内从库读到的是<strong>旧数据</strong>（最终一致）。若业务强依赖"写后立即可见"（如下单后立即查订单），延迟会造成数据不一致。</p>

@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版） · 小番茄程序猿</title>
-<meta name="description" content="Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版） —— 小番茄程序猿的技术文章。"/>
+<title>ILM 全面实操手册（修订版） · 小番茄程序猿</title>
+<meta name="description" content="ILM 全面实操手册（修订版） —— 小番茄程序猿的技术文章。"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版） · 小番茄程序猿" />
-<meta property="og:description" content="Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版） —— 小番茄程序猿的技术文章。" />
+<meta property="og:title" content="ILM 全面实操手册（修订版） · 小番茄程序猿" />
+<meta property="og:description" content="ILM 全面实操手册（修订版） —— 小番茄程序猿的技术文章。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -47,7 +47,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）</h1>
+    <h1>ILM 全面实操手册（修订版）</h1>
   </div>
   <div class="article-layout">
     <article class="prose">
@@ -479,7 +479,7 @@ A: 会。写入时 routing 决定 shard。变更 routing 要么 reindex（把文
 <p>Q: 分片数应多还是少？<br />
 A: 既不宜过多（元数据、Heap 问题），也不宜过少（单分片过大迁移成本高）。按预计规模与单分片目标容量折中，建议略偏多并保留弹性。</p>
 <hr />
-<h1 id="_8">结束语（落地提示）</h1>
+<h2 id="_8">结束语（落地提示）</h2>
 <p>我已把文档中的技术漏洞与实践盲点修正并补充了运维/迁移/监控相关内容。建议下一步：</p>
 <ul>
 <li>基于你们集群的 ES 版本（请回复版本号，例如 7.10 / 7.17 / 8.4 等），我可以把示例 API/字段（如 rollover 参数、index.template 写法、data_tier 配置）逐条对齐到你们版本的准确语法并输出最终可跑的 API 脚本。</li>
@@ -522,6 +522,7 @@ A: 既不宜过多（元数据、Heap 问题），也不宜过少（单分片过
       <li class="lv2"><a href="#_6">八、备份 / 快照 / 冷归档（补充）</a></li>
       <li class="lv2"><a href="#_7">九、监控与告警（新增建议）</a></li>
       <li class="lv2"><a href="#faq">十、常见问答（FAQ 快速提示）</a></li>
+      <li class="lv2"><a href="#_8">结束语（落地提示）</a></li>
     </ul>
   </nav>
 </details></aside>

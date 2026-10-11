@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="k3s">k3s 实战：一个可跑通、可炸给你看的单机集群</h1>
 <p>这份东西不是"K8s 入门教程"，而是把前面几轮聊的结论落成<strong>能在你机器上跑、并且每个关键结论都有对应现场证据</strong>的一套材料。目标只有一个：让你亲手看到那些"背下来但没感觉"的机制——ConfigMap 不热更新、liveness 探针写错导致全站重启、requests 是调度门槛、NetworkPolicy 默认全通、local-path 的数据其实躺在本地目录里、滚动更新为什么会有一小撮 502。</p>
 <p>看完你应该能回答："我的 BladeX 单体上 K8s，第一天会踩什么坑。"</p>
 <h2 id="_1">目录结构</h2>
@@ -88,7 +87,7 @@
 </code></pre></div>
 
 <p><code>degraded</code> 在 WSL 里很常见（一些单元本来就不该跑），只要 <code>systemctl is-active k3s</code> 后面能变 active 就不用管。</p>
-<h2 id="k3s_1">装 k3s</h2>
+<h2 id="k3s">装 k3s</h2>
 <p>进 WSL，<strong>先把材料从 Windows 盘复制进 Linux 文件系统</strong>再动手。<code>/mnt/d/...</code>（drvfs）和 <code>/mnt/c/...</code> 一样走 9P，小文件读写慢一个数量级，而且这套东西是放进 <code>high-concurrency-projects</code> 仓库的，别在仓库工作树里直接跑——在 Linux 侧留一份干净副本：</p>
 <div class="codehilite"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>~/k3s-project<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>-r<span class="w"> </span>/mnt/d/high-concurrency-projects/k3s-project/*<span class="w"> </span>~/k3s-project/
 <span class="nb">cd</span><span class="w"> </span>~/k3s-project/scripts
@@ -399,7 +398,7 @@ sudo<span class="w"> </span>bash<span class="w"> </span><span class="m">99</span
     <ul>
       <li class="lv2"><a href="#_1">目录结构</a></li>
       <li class="lv2"><a href="#wsl2-systemd">前置：WSL2 里的 systemd</a></li>
-      <li class="lv2"><a href="#k3s_1">装 k3s</a></li>
+      <li class="lv2"><a href="#k3s">装 k3s</a></li>
       <li class="lv2"><a href="#scripts01-verifysh">底座自检：scripts/01-verify.sh</a></li>
       <li class="lv2"><a href="#apply">按序 apply</a></li>
       <li class="lv2"><a href="#ingress">Ingress：故意不给你&quot;开箱即用&quot;</a></li>

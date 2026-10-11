@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="8">场景8：批量写入优化</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>MySQL 单条 INSERT 的瓶颈主要在<strong>网络往返</strong>和<strong>事务提交</strong>：逐条插入时每条 SQL 一次网络往返 + 一个事务（autocommit），高并发/大批量导入时性能极差。<strong>批量写入</strong>通过减少 SQL 次数、合并事务、驱动级优化，可带来数量级的吞吐提升。</p>
 <p>本场景用表 <code>t_batch_test</code>，对比四种写入方式在同样 1 万行下的耗时与吞吐。</p>

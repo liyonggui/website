@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>场景4-分布式信号量多Writer竞争Pipeline槽位 · 小番茄程序猿</title>
-<meta name="description" content="场景4-分布式信号量多Writer竞争Pipeline槽位 —— 小番茄程序猿的技术文章。"/>
+<title>场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测 · 小番茄程序猿</title>
+<meta name="description" content="场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测 —— 小番茄程序猿的技术文章。"/>
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="场景4-分布式信号量多Writer竞争Pipeline槽位 · 小番茄程序猿" />
-<meta property="og:description" content="场景4-分布式信号量多Writer竞争Pipeline槽位 —— 小番茄程序猿的技术文章。" />
+<meta property="og:title" content="场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测 · 小番茄程序猿" />
+<meta property="og:description" content="场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测 —— 小番茄程序猿的技术文章。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <link rel="stylesheet" href="../../assets/css/style.css"/>
@@ -47,11 +47,10 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>场景4-分布式信号量多Writer竞争Pipeline槽位</h1>
+    <h1>场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</h1>
   </div>
   <div class="article-layout">
     <article class="prose">
-<h2 id="4-writer-pipeline">场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</h2>
 <hr />
 <h3 id="tldr">TL;DR</h3>
 <div class="codehilite"><pre><span></span><code>问题: 单服务压测最优 8 个 pipeline 槽位，生产 12 个 Java 服务同时写 Redis。

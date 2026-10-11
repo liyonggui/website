@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="7">场景7：分库分表（应用层水平分表）</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，<strong>单表 IO、索引深度、锁竞争</strong>仍是瓶颈。<strong>分库分表</strong>是终极方案：把单表数据<strong>物理拆分</strong>到多个库/表，缩小索引范围、缩短锁持有时间、拆分锁竞争区间。</p>
 <p>本场景用<strong>应用层水平分表</strong>演示：按 <code>user_id % 4</code> 将订单数据路由到 <code>t_order_shard_0 ~ t_order_shard_3</code> 四个物理分表。</p>
@@ -202,7 +201,7 @@
 <p><strong>分库分表</strong>：按路由键（如 user_id % N）把单表数据物理拆分到多个分表，缩小索引范围、缩短锁持有时间、拆分锁竞争区间。实测 8 万行均匀分布到 4 个分表，精确路由查询只扫单表（QPS 790），全分片扫描遍历所有分表（QPS 166，快 4.8 倍）；跨分片 COUNT/SUM 需分表分别算再合并。核心：路由键必须带、精确路由优先、避免跨分片查询/事务，否则分片反而增加复杂度。</p>
 </blockquote>
 <hr />
-<h1 id="_6">六、分库 + 分表完整结合（补强）</h1>
+<h2 id="_6">六、分库 + 分表完整结合（补强）</h2>
 <h2 id="61">6.1 背景</h2>
 <p>"只分表"数据仍在一个数据库实例，<strong>库的 IO、连接、锁竞争</strong>仍是单点瓶颈。生产终极方案是<strong>分库 + 分表结合</strong>：把数据分布到<strong>多个独立 MySQL 实例</strong>，每个实例内再分表。</p>
 <p>本场景搭建 <strong>2 个独立分库容器</strong>（<code>mysql-shard-0</code>/<code>mysql-shard-1</code>），每个分库内建 4 张分表，两级路由。</p>
@@ -364,6 +363,7 @@
       <li class="lv3"><a href="#4-shardbench">4. 并发吞吐对比（/shard/bench）</a></li>
       <li class="lv2"><a href="#_4">四、生产避坑准则</a></li>
       <li class="lv2"><a href="#_5">五、面试简述</a></li>
+      <li class="lv2"><a href="#_6">六、分库 + 分表完整结合（补强）</a></li>
       <li class="lv2"><a href="#61">6.1 背景</a></li>
       <li class="lv2"><a href="#62">6.2 两级路由规则</a></li>
       <li class="lv2"><a href="#63-2-4-8-8">6.3 实测结果（2 分库 × 4 分表 = 8 物理分片，共 8 万行）</a></li>

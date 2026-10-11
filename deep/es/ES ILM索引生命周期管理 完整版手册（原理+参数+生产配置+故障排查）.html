@@ -51,11 +51,10 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="es-ilm">ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）</h1>
 <h2 id="_1">前置说明</h2>
 <p>本文承接前文ES路由、分片分配、冷热分层全套内容，<strong>ILM是ES冷热分层唯一原生实现方案</strong>，全程无业务代码、无定时任务，配置驱动实现索引自动冷热流转；同时厘清所有人都踩过的时间误区、调度误区、流转误区，附带完整可用生产脚本+全覆盖故障排障。</p>
 <hr />
-<h1 id="ilm3">一、ILM核心底层原理（必背，解决你之前3个疑问）</h1>
+<h2 id="ilm3">一、ILM核心底层原理（必背，解决你之前3个疑问）</h2>
 <h2 id="1">1. 最小流转单位</h2>
 <p><strong>以【整个索引】为最小单位，不支持单条文档冷热迁移</strong>，不能把索引里一部分老数据挪冷节点、一部分留热节点。</p>
 <h2 id="2">2. 时间判断依据（高频面试坑点）</h2>
@@ -106,7 +105,7 @@
 <h2 id="5">5. 底层流转本质动作</h2>
 <p>ILM不搬运数据，只<strong>修改索引分片分配标签</strong>：给索引打上<code>data_tier:warm/cold</code>强制标签，ES分片分配算法自动将分片搬迁至对应节点池，全程集群内部自愈。</p>
 <hr />
-<h1 id="ilm">二、ILM全阶段参数详解（表格速查，全覆盖）</h1>
+<h2 id="ilm">二、ILM全阶段参数详解（表格速查，全覆盖）</h2>
 <h2 id="_2">通用公共参数</h2>
 <table>
 <thead>
@@ -201,7 +200,7 @@
 <h2 id="4-delete">4. Delete删除阶段</h2>
 <p>到达指定时长，直接删除整个索引，<strong>删除后不可恢复</strong>，生产务必谨慎配置</p>
 <hr />
-<h1 id="ilm_1">三、生产可直接复制：完整ILM策略+索引模板</h1>
+<h2 id="ilm_1">三、生产可直接复制：完整ILM策略+索引模板</h2>
 <h2 id="1-ilm">1. 创建ILM生命周期策略</h2>
 <div class="codehilite"><pre><span></span><code><span class="err">PUT</span><span class="w"> </span><span class="err">_ilm/policy/order_ho</span><span class="kc">t</span><span class="err">_warm_cold_policy</span>
 <span class="p">{</span>
@@ -287,7 +286,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="ilm_2">四、生产环境必看：ILM八大注意事项（避坑核心）</h1>
+<h2 id="ilm_2">四、生产环境必看：ILM八大注意事项（避坑核心）</h2>
 <ol>
 <li>
 <p><strong>冷热分层≠解决分片倾斜</strong>：ILM只能省磁盘成本，<strong>解决不了热数据路由热点倾斜</strong>，热节点依然必须做路由二次打散；温、冷数据无访问，倾斜无需处理</p>
@@ -315,7 +314,7 @@
 </li>
 </ol>
 <hr />
-<h1 id="ilm_3">五、ILM线上故障一页排查清单（现象→原因→解决方案）</h1>
+<h2 id="ilm_3">五、ILM线上故障一页排查清单（现象→原因→解决方案）</h2>
 <table>
 <thead>
 <tr>
@@ -365,7 +364,7 @@
 </tbody>
 </table>
 <hr />
-<h1 id="ilm_4">六、ILM常用运维命令（一键复制）</h1>
+<h2 id="ilm_4">六、ILM常用运维命令（一键复制）</h2>
 <div class="codehilite"><pre><span></span><code><span class="err"># 1.查看单个索引生命周期流转详情（最核心排障命令）</span>
 <span class="err">GET /index_name/_ilm/explain</span>
 
@@ -388,7 +387,7 @@
 </code></pre></div>
 
 <hr />
-<h1 id="3_1">七、面试3分钟口述标准答案（直接背诵）</h1>
+<h2 id="3_1">七、面试3分钟口述标准答案（直接背诵）</h2>
 <p>ES ILM是原生索引生命周期管理，用来实现冷热数据分层，全程零代码维护。首先ILM是以整个索引为最小流转单位，<strong>不识别文档内部创建和更新时间</strong>，只根据索引创建时间或者滚动rollover时间计时；调度层面不是定时Cron任务，而是后台线程默认10分钟轮询巡检一次。</p>
 <p>整体分为热、温、冷、删除四个阶段，单向流转不可回流，通过修改索引节点分配标签，让集群分片自动迁移到对应冷热节点。同时需要重点区分，冷热分层只能优化存储成本，<strong>无法解决热数据自定义路由带来的分片热点倾斜</strong>。</p>
 <p>生产落地需要注意，分片收缩不可逆、段合并IO压力大、索引删除不可恢复，日常排障优先使用ilm explain命令定位流转卡住原因，业务高峰期需要管控分片搬迁和段合并，避免集群IO雪崩。</p>
@@ -401,18 +400,25 @@
   <nav>
     <ul>
       <li class="lv2"><a href="#_1">前置说明</a></li>
+      <li class="lv2"><a href="#ilm3">一、ILM核心底层原理（必背，解决你之前3个疑问）</a></li>
       <li class="lv2"><a href="#1">1. 最小流转单位</a></li>
       <li class="lv2"><a href="#2">2. 时间判断依据（高频面试坑点）</a></li>
       <li class="lv2"><a href="#3">3. 底层调度方式（是不是定时任务？）</a></li>
       <li class="lv2"><a href="#4">4. 四阶段单向流转逻辑（不可逆）</a></li>
       <li class="lv2"><a href="#5">5. 底层流转本质动作</a></li>
+      <li class="lv2"><a href="#ilm">二、ILM全阶段参数详解（表格速查，全覆盖）</a></li>
       <li class="lv2"><a href="#_2">通用公共参数</a></li>
       <li class="lv2"><a href="#1-hot">1. Hot热阶段（写入阶段）核心参数</a></li>
       <li class="lv2"><a href="#2-warm">2. Warm温阶段（降配优化）核心参数</a></li>
       <li class="lv2"><a href="#3-cold">3. Cold冷阶段（归档阶段）核心参数</a></li>
       <li class="lv2"><a href="#4-delete">4. Delete删除阶段</a></li>
+      <li class="lv2"><a href="#ilm_1">三、生产可直接复制：完整ILM策略+索引模板</a></li>
       <li class="lv2"><a href="#1-ilm">1. 创建ILM生命周期策略</a></li>
       <li class="lv2"><a href="#2-ilm">2. 索引模板绑定ILM+冷热节点</a></li>
+      <li class="lv2"><a href="#ilm_2">四、生产环境必看：ILM八大注意事项（避坑核心）</a></li>
+      <li class="lv2"><a href="#ilm_3">五、ILM线上故障一页排查清单（现象→原因→解决方案）</a></li>
+      <li class="lv2"><a href="#ilm_4">六、ILM常用运维命令（一键复制）</a></li>
+      <li class="lv2"><a href="#3_1">七、面试3分钟口述标准答案（直接背诵）</a></li>
     </ul>
   </nav>
 </details></aside>

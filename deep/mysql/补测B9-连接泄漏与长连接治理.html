@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="b9">补测B9：连接泄漏与长连接治理</h1>
 <h2 id="_1">一、问题背景</h2>
 <p><strong>连接泄漏</strong>：获取数据库连接后忘记释放，连接池/数据库连接被<strong>慢性耗尽</strong>，最终报 <code>Too many connections</code> 雪崩。是生产环境最常见的"隐藏故障"（进程运行几天/几周后连接缓慢涨满）。</p>
 <h2 id="_2">二、原理</h2>

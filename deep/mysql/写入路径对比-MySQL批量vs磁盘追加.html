@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="mysql-vs">写入路径对比：单体 MySQL 批量 vs 本地磁盘追加</h1>
 <h2 id="_1">一、问题背景</h2>
 <p>同样的数据写入，两条线路性能差异巨大：
 - <strong>线路1</strong>：单体 MySQL 批量写入（JDBC batch + rewriteBatchedStatements，落 InnoDB）。

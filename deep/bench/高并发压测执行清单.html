@@ -51,12 +51,11 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="_1">高并发压测执行清单</h1>
 <p>本文用于 Java + Redis + MySQL + MQ 类系统的压测设计、执行、分析和复盘。目标不是只得到一个最高 QPS，而是建立一条可追溯的证据链：</p>
 <blockquote>
 <p>实验目标 → 假设 → 控制变量 → 观测指标 → 结果 → 归因 → 结论 → 下一轮实验</p>
 </blockquote>
-<h2 id="_2">一、压测前准备</h2>
+<h2 id="_1">一、压测前准备</h2>
 <h3 id="1">1. 明确实验目标</h3>
 <ul>
 <li>[ ] 明确本轮属于哪类测试：</li>
@@ -107,7 +106,7 @@
 <li>[ ] 每次实验前清理或记录缓存、队列、数据库和消费位点状态。</li>
 <li>[ ] 记录预热时间，不把 JVM 预热阶段作为正式结果。</li>
 </ul>
-<h2 id="_3">二、环境和可观测性</h2>
+<h2 id="_2">二、环境和可观测性</h2>
 <h3 id="1_1">1. 应用侧</h3>
 <ul>
 <li>[ ] 请求总量、成功量、失败量</li>
@@ -158,7 +157,7 @@
 <li>[ ] 分区/队列负载是否均衡</li>
 <li>[ ] Broker 磁盘、网络和请求延迟</li>
 </ul>
-<h2 id="_4">三、标准执行流程</h2>
+<h2 id="_3">三、标准执行流程</h2>
 <h3 id="1_2">阶段 1：功能和数据正确性</h3>
 <ul>
 <li>[ ] 低并发验证正常链路。</li>
@@ -204,7 +203,7 @@
 <li>[ ] 线程池、连接池或磁盘空间达到上限</li>
 <li>[ ] 验证重试上限、死信、补偿和对账机制</li>
 </ul>
-<h2 id="_5">四、核心实验清单</h2>
+<h2 id="_4">四、核心实验清单</h2>
 <h3 id="1_3">1. 同步与异步写入</h3>
 <ul>
 <li>[ ] 同步写库</li>
@@ -265,7 +264,7 @@
 <li>[ ] 消费者扩容</li>
 <li>[ ] 验证积压告警、限流、扩容和恢复时间</li>
 </ul>
-<h2 id="_6">五、结果判定标准</h2>
+<h2 id="_5">五、结果判定标准</h2>
 <p>一次实验不能只写“QPS 提升”。至少回答：</p>
 <ul>
 <li>[ ] 是否支持原始假设？</li>
@@ -282,7 +281,7 @@
 <blockquote>
 <p>在固定硬件、代码版本、数据分布和请求模型下，仅将 X 从 A 调整为 B。吞吐从 ___ 提升到 <strong><em>，p99 从 ___ 变化为 </em></strong>，CPU 从 ___ 变化为 <strong><em>。同时观察到 </em></strong>，说明主要瓶颈位于 ___。因此该方案在 ___ 条件下有效，但需要通过 ___ 控制副作用。</p>
 </blockquote>
-<h2 id="_7">六、实验记录模板</h2>
+<h2 id="_6">六、实验记录模板</h2>
 <div class="codehilite"><pre><span></span><code>实验名称：
 日期：
 代码提交号：
@@ -328,7 +327,7 @@
 - 下一轮实验：
 </code></pre></div>
 
-<h2 id="_8">七、最终检查</h2>
+<h2 id="_7">七、最终检查</h2>
 <ul>
 <li>[ ] 结果可复现</li>
 <li>[ ] 控制变量清晰</li>
@@ -347,25 +346,25 @@
   <summary>目录</summary>
   <nav>
     <ul>
-      <li class="lv2"><a href="#_2">一、压测前准备</a></li>
+      <li class="lv2"><a href="#_1">一、压测前准备</a></li>
       <li class="lv3"><a href="#1">1. 明确实验目标</a></li>
       <li class="lv3"><a href="#2">2. 写出实验假设</a></li>
       <li class="lv3"><a href="#3">3. 固定实验条件</a></li>
       <li class="lv3"><a href="#4">4. 控制变量</a></li>
-      <li class="lv2"><a href="#_3">二、环境和可观测性</a></li>
+      <li class="lv2"><a href="#_2">二、环境和可观测性</a></li>
       <li class="lv3"><a href="#1_1">1. 应用侧</a></li>
       <li class="lv3"><a href="#2-jvm">2. JVM 和操作系统</a></li>
       <li class="lv3"><a href="#3-mysql">3. MySQL</a></li>
       <li class="lv3"><a href="#4-redis">4. Redis</a></li>
       <li class="lv3"><a href="#5-mq">5. MQ</a></li>
-      <li class="lv2"><a href="#_4">三、标准执行流程</a></li>
+      <li class="lv2"><a href="#_3">三、标准执行流程</a></li>
       <li class="lv3"><a href="#1_2">阶段 1：功能和数据正确性</a></li>
       <li class="lv3"><a href="#2_1">阶段 2：性能基线</a></li>
       <li class="lv3"><a href="#3_1">阶段 3：单变量实验</a></li>
       <li class="lv3"><a href="#4_1">阶段 4：稳定性测试</a></li>
       <li class="lv3"><a href="#5">阶段 5：极限和过载测试</a></li>
       <li class="lv3"><a href="#6">阶段 6：故障注入和恢复</a></li>
-      <li class="lv2"><a href="#_5">四、核心实验清单</a></li>
+      <li class="lv2"><a href="#_4">四、核心实验清单</a></li>
       <li class="lv3"><a href="#1_3">1. 同步与异步写入</a></li>
       <li class="lv3"><a href="#2-redis-key-key">2. Redis 单 Key 与分片 Key</a></li>
       <li class="lv3"><a href="#3_2">3. 线程池</a></li>
@@ -373,9 +372,9 @@
       <li class="lv3"><a href="#5_1">5. 日志和输出</a></li>
       <li class="lv3"><a href="#6_1">6. 数据库写入</a></li>
       <li class="lv3"><a href="#7-mq">7. MQ 积压</a></li>
-      <li class="lv2"><a href="#_6">五、结果判定标准</a></li>
-      <li class="lv2"><a href="#_7">六、实验记录模板</a></li>
-      <li class="lv2"><a href="#_8">七、最终检查</a></li>
+      <li class="lv2"><a href="#_5">五、结果判定标准</a></li>
+      <li class="lv2"><a href="#_6">六、实验记录模板</a></li>
+      <li class="lv2"><a href="#_7">七、最终检查</a></li>
     </ul>
   </nav>
 </details></aside>

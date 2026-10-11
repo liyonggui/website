@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="es">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</h1>
 <h2 id="_1">前置原则</h2>
 <p>先定位、再评估影响、先应急降压、再根治修复，禁止高峰期大力度迁移分片、大批量 reindex。</p>
 <h3 id="1">步骤1：快速确认是否发生分片倾斜</h3>
@@ -145,7 +144,7 @@
 <li>非业务强聚合场景，禁止滥用自定义 routing</li>
 </ol>
 <hr />
-<h1 id="murmurhash3-es">二、MurmurHash3 完整知识点汇总（原理、版本、ES源码、场景、碰撞、面试全集）</h1>
+<h2 id="murmurhash3-es">二、MurmurHash3 完整知识点汇总（原理、版本、ES源码、场景、碰撞、面试全集）</h2>
 <h2 id="1_1">1. 基础概述</h2>
 <p>MurmurHash 是<strong>非加密型哈希函数</strong>，由 Austin Appleby 设计；
 特点：运算速度极快、雪崩性好、随机性强、低碰撞，适合分片打散、哈希表、基数统计场景；
@@ -249,6 +248,7 @@ MurmurHash3 是第三代最终版本，废弃 MurmurHash1/2。</p>
       <li class="lv2"><a href="#_1">前置原则</a></li>
       <li class="lv3"><a href="#1">步骤1：快速确认是否发生分片倾斜</a></li>
       <li class="lv3"><a href="#2">步骤2：定位倾斜根因</a></li>
+      <li class="lv2"><a href="#murmurhash3-es">二、MurmurHash3 完整知识点汇总（原理、版本、ES源码、场景、碰撞、面试全集）</a></li>
       <li class="lv2"><a href="#1_1">1. 基础概述</a></li>
       <li class="lv2"><a href="#2-murmurhash3">2. MurmurHash3 两大正式版本（核心区分）</a></li>
       <li class="lv3"><a href="#_2">关键结论</a></li>

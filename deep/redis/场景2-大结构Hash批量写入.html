@@ -51,7 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<h1 id="2-hash">场景 2 — 大结构 Hash 批量写入</h1>
 <h2 id="tldr">TL;DR</h2>
 <p>多 worker 并发写入大量大 Hash（每 key 10 field，每 field ~256B），key 总量 500k，TTL=600s，Redis 配置 maxmemory=256MB，policy=allkeys-lru。对比无持久化、RDB、AOF（percentage=100/500）四种模式下内存峰值、COW 尺寸、淘汰量和 OOM 风险。</p>
 <blockquote>
