@@ -328,6 +328,10 @@ section.first { border-top: 0; }
   box-shadow: var(--shadow-md);
 }
 .card:hover::before { opacity: 1; }
+/* ——— 项目卡片：整卡可点击跳转详情 ——— */
+a.card.proj { text-decoration: none; color: inherit; cursor: pointer; }
+a.card.proj:hover h3 { color: var(--accent); }
+a.card.proj .more { display: inline-flex; }
 .card h3 { margin: 0 0 6px; font-size: 17.5px; letter-spacing: -0.01em; font-weight: 700; }
 .card .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
 .tag {

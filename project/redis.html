@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis 高并发缓存架构 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="以 11 个实测场景覆盖 Redis 在高并发读写下的编码选型、Pipeline 边界、集群拓扑与热点治理，每个场景都给出对比数据与生产选型结论。"/>
+<meta name="keywords" content="Redis 高并发缓存架构, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/redis.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Redis 高并发缓存架构 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="以 11 个实测场景覆盖 Redis 在高并发读写下的编码选型、Pipeline 边界、集群拓扑与热点治理，每个场景都给出对比数据与生产选型结论。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/redis.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Redis 高并发缓存架构 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · 高并发后端</div><h1>Redis 高并发缓存架构</h1><p class="lead">以 11 个实测场景覆盖 Redis 在高并发读写下的编码选型、Pipeline 边界、集群拓扑与热点治理，每个场景都给出对比数据与生产选型结论。<span class="metric" style="margin-left:10px">11 场景压测</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">这条线从 Lettuce 客户端的真实问题切入：Pipeline 批量写入为何反而变慢、跨槽命令在 Cluster 下如何报错、连接数与 maxclients 的边界在哪。每个场景都保留原始压测数据与排查过程，而不是只给结论。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">除压测外，还沉淀了两份可直接照做的产出：一份 Redis 高并发缓存架构实战手册（缓存穿透/击穿/雪崩、双写一致性、热点探测），一份 11 场景总结汇总（每场景一句话结论 + 适用条件 + 反例）。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>11 个压测场景</strong><em>Lettuce/Pipeline、Hash 批量、TTL 过期、分布式信号量、HGETALL vs HSCAN、maxclients 边界、跨槽 Pipeline、热点 Key、RTT 敏感度、哨兵 vs 集群、String 三种编码</em></div></li><li><div class="step-body"><strong>编码阈值实测</strong><em>128/512 阈值边界不可靠：128 个短 member 未触发 listpack→skiplist 转换（需 129+），生产建议留足余量</em></div></li><li><div class="step-body"><strong>选型结论</strong><em>哨兵 vs 集群写入阶段各有胜场，按「是否跨槽 + 写入模式」决策，不迷信单一方案</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html"><strong>场景 1 — Lettuce Pipeline 压测问题排查与优化</strong><em>一切从这里开始：Lettuce + Pipeline 首个线上问题</em><span class="arr">→</span></a></li><li><a href="../deep/redis/%E5%9C%BA%E6%99%AF8-1-%E7%83%AD%E7%82%B9Key%20Pipeline%E8%87%AA%E5%A2%9E.html"><strong>场景 8: 热点 Key Pipeline INCR 自增</strong><em>热点 Key 计数的正确姿势</em><span class="arr">→</span></a></li><li><a href="../deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html"><strong>场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测</strong><em>写入阶段两种拓扑的实测对比</em><span class="arr">→</span></a></li><li><a href="../deep/redis/%E5%9C%BA%E6%99%AF11-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81int-embstr-raw%E5%8E%8B%E6%B5%8B.html"><strong>场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</strong><em>int/embstr/raw 编码边界实测</em><span class="arr">→</span></a></li><li><a href="../deep/redis/%E5%9C%BA%E6%99%AF1-11%E5%8E%8B%E6%B5%8B%E6%80%BB%E7%BB%93%E6%B1%87%E6%80%BB.html"><strong>Redis 高并发压测全场景总结（场景 1-11）</strong><em>11 个场景一句话结论汇总</em><span class="arr">→</span></a></li><li><a href="../deep/redis/Redis%20%E9%AB%98%E5%B9%B6%E5%8F%91%E7%BC%93%E5%AD%98%E6%9E%B6%E6%9E%84%E5%AE%9E%E6%88%98%E6%89%8B%E5%86%8C.html"><strong>Redis 高并发缓存架构实战手册</strong><em>生产级缓存架构手册</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 1/16 个</span><div class="pn-links"><span></span><a class="pn-next" href="mysql.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">MySQL 治理与调优</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>k6 压测体系 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="一套可复用的 k6 压测工程：基准脚本 + 六档并发梯度（50/100/150/200/250/300）+ 秒杀/库存/余额/突发尖峰场景，输出 benchmark HTML 报告。"/>
+<meta name="keywords" content="k6 压测体系, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/k6.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="k6 压测体系 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="一套可复用的 k6 压测工程：基准脚本 + 六档并发梯度（50/100/150/200/250/300）+ 秒杀/库存/余额/突发尖峰场景，输出 benchmark HTML 报告。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/k6.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>k6 压测体系 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · 高并发后端</div><h1>k6 压测体系</h1><p class="lead">一套可复用的 k6 压测工程：基准脚本 + 六档并发梯度（50/100/150/200/250/300）+ 秒杀/库存/余额/突发尖峰场景，输出 benchmark HTML 报告。<span class="metric" style="margin-left:10px">50→300 并发梯度</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">脚本设计遵循「先基准、再梯度、后专项」：基准脚本先摸清单接口水位，梯度脚本找拐点，专项脚本模拟秒杀抢购、库存超卖、余额扣减、突发尖峰（阶跃加压）。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">方法论上专门处理了压测领域最容易失真的问题——协同遗漏（Coordinated Omission）：为什么固定速率发压下 p99 会骗人、怎么用开环/闭环模式修正。降级设计沉淀了本地文件兜底与限速回放两套预案。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>六档并发梯度</strong><em>50→300 阶梯找系统拐点，输出对比 benchmark 报告</em></div></li><li><div class="step-body"><strong>协同遗漏修正</strong><em>Coordinated Omission 的成因与修正方法</em></div></li><li><div class="step-body"><strong>两套预案</strong><em>本地文件兜底 + 限速回放的降级设计</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/bench/Java%E7%A7%92%E6%9D%80%E5%BA%93%E5%AD%98%E5%9C%BA%E6%99%AF%E5%8E%8B%E6%B5%8B%E8%84%9A%E6%9C%AC%E8%AE%BE%E8%AE%A1%E6%B8%85%E5%8D%95.html"><strong>Java 秒杀/库存场景压测脚本设计清单</strong><em>秒杀库存压测脚本设计清单</em><span class="arr">→</span></a></li><li><a href="../deep/bench/%E5%8D%8F%E5%90%8C%E9%81%97%E6%BC%8F-Coordinated-Omission.html"><strong>协同遗漏（Coordinated Omission）—— 压测里最隐蔽的谎言</strong><em>压测数据失真的头号元凶</em><span class="arr">→</span></a></li><li><a href="../deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html"><strong>高并发压测执行清单</strong><em>压测执行清单</em><span class="arr">→</span></a></li><li><a href="../deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html"><strong>写入链路降级设计：本地文件兜底 + 限速回放</strong><em>降级与回放预案</em><span class="arr">→</span></a></li><li><a href="../deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html"><strong>高并发写入测试总结</strong><em>压测总结</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 7/16 个</span><div class="pn-links"><a class="pn-prev" href="jeepay.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Jeepay 支付集成</span></a><a class="pn-next" href="demo.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">秒杀 Demo</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

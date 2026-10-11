@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Jeepay 支付集成 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="基于开源聚合支付 Jeepay 打通下单、支付触发、渠道调用、异步回调的全流程，并修复两个集成期典型缺陷。"/>
+<meta name="keywords" content="Jeepay 支付集成, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/jeepay.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Jeepay 支付集成 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="基于开源聚合支付 Jeepay 打通下单、支付触发、渠道调用、异步回调的全流程，并修复两个集成期典型缺陷。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/jeepay.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Jeepay 支付集成 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · 高并发后端</div><h1>Jeepay 支付集成</h1><p class="lead">基于开源聚合支付 Jeepay 打通下单、支付触发、渠道调用、异步回调的全流程，并修复两个集成期典型缺陷。<span class="metric" style="margin-left:10px">下单→回调闭环</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">集成覆盖统一下单、跳转/二维码支付、渠道侧回调验签与订单状态回写。回调处理做了幂等与状态机校验：只有合法的状态迁移才落库，重复通知直接幂等返回。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">集成期修掉两个经典缺陷：其一，回调处理只更新了支付单状态、漏回写业务订单状态（订单永远停在待支付）；其二，容器内 localhost 通知地址不可达——notifyUrl 必须用容器网络可达地址，不能想当然写宿主机回环。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>全流程闭环</strong><em>下单 → 支付触发 → Jeepay 渠道调用 → 异步回调验签 → 状态回写</em></div></li><li><div class="step-body"><strong>回调幂等</strong><em>状态机校验 + 重复通知幂等处理</em></div></li><li><div class="step-body"><strong>两个典型修复</strong><em>漏回写订单状态缺陷；容器网络 localhost 不可达问题</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/bench/%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E6%89%A7%E8%A1%8C%E6%B8%85%E5%8D%95.html"><strong>高并发压测执行清单</strong><em>延伸：支付链路压测的执行清单</em><span class="arr">→</span></a></li><li><a href="../deep/mysql/%E5%9C%BA%E6%99%AF12-%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81.html"><strong>场景12：分布式锁（基于 MySQL 唯一索引 / 锁表）</strong><em>延伸：回调并发场景的分布式锁</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 6/16 个</span><div class="pn-links"><a class="pn-prev" href="k3s.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">K3s / K8s 运维</span></a><a class="pn-next" href="k6.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">k6 压测体系</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

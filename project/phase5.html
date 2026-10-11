@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Phase 5 · MCP · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="把业务接口封装成 MCP Server（streamable-http），Agent 改造为 MCP 客户端动态发现工具，从「硬编码工具」升级到「协议化工具」。"/>
+<meta name="keywords" content="Phase 5 · MCP, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/phase5.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Phase 5 · MCP · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="把业务接口封装成 MCP Server（streamable-http），Agent 改造为 MCP 客户端动态发现工具，从「硬编码工具」升级到「协议化工具」。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/phase5.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Phase 5 · MCP · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · AI Agent</div><h1>Phase 5 · MCP</h1><p class="lead">把业务接口封装成 MCP Server（streamable-http），Agent 改造为 MCP 客户端动态发现工具，从「硬编码工具」升级到「协议化工具」。<span class="metric" style="margin-left:10px">8085/8086 · 真实取数</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">Phase 3 的工具是编译期写死的 @Tool；这一阶段把工具协议化：业务后端封成 MCP Server，Agent 启动时动态发现工具列表，新增工具不需要改 Agent 代码。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">实测链路走真实取数：/wxma 接口封装为 MCP 工具，Agent 通过 streamable-http 通道调用，返回真实数据。架构对比图见项目清单页（Phase 3 直连 vs Phase 5 MCP 动态发现）。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>工具协议化</strong><em>@Tool 硬编码 → MCP Server 动态发现</em></div></li><li><div class="step-body"><strong>streamable-http</strong><em>标准协议通道，真实取数</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html"><strong>phase5 MCP 代码与原理详解（server + client · 含失控案例）</strong><em>MCP 代码与原理详解</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 13/16 个</span><div class="pn-links"><a class="pn-prev" href="phase4.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Phase 4 · Agent 运维</span></a><a class="pn-next" href="phase6.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">Phase 6 · 评测</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

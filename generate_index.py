@@ -192,6 +192,8 @@ def enc_url(rel):
 
 def build_sitemap(records):
     urls = [(SITE_URL + p, "weekly", pri, "") for p, pri in STATIC_PAGES]
+    for f in sorted((ROOT / "project").glob("*.html")):
+        urls.append((SITE_URL + "project/" + f.name, "monthly", "0.6", ""))
     for r in records:
         urls.append((enc_url(r["url"]), "monthly", "0.6", r["date"]))
     lines = [

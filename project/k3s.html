@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>K3s / K8s 运维 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="从 Compose 迁移到 K3s：工作负载、配置、存储、网络全套 manifests，加 NetworkPolicy 默认拒绝与 Redis 白名单，配套滚动更新与高可用实践。"/>
+<meta name="keywords" content="K3s / K8s 运维, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/k3s.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="K3s / K8s 运维 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="从 Compose 迁移到 K3s：工作负载、配置、存储、网络全套 manifests，加 NetworkPolicy 默认拒绝与 Redis 白名单，配套滚动更新与高可用实践。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/k3s.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>K3s / K8s 运维 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · 高并发后端</div><h1>K3s / K8s 运维</h1><p class="lead">从 Compose 迁移到 K3s：工作负载、配置、存储、网络全套 manifests，加 NetworkPolicy 默认拒绝与 Redis 白名单，配套滚动更新与高可用实践。<span class="metric" style="margin-left:10px">manifests + 网络策略</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">资源覆盖 Namespace / ConfigMap / Secret / Deployment / Service / Ingress，以及 Redis 用 StatefulSet + PVC 的有状态部署。网络策略做成了两层：默认拒绝所有入站，再按需放行（Redis 仅允许指定标签的应用访问）。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">运维实践包括滚动更新（探针参数与 maxSurge/maxUnavailable 的配合）、Ingress + HPA 弹性伸缩、Redis 主从与哨兵在 K8s 里的部署差异，以及一份 K8s 学习路线图。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>默认拒绝网络策略</strong><em>NetworkPolicy 默认 deny-all + 按标签白名单放行</em></div></li><li><div class="step-body"><strong>有状态部署</strong><em>Redis StatefulSet + PVC，主从/哨兵两种拓扑对比</em></div></li><li><div class="step-body"><strong>弹性伸缩</strong><em>Ingress + HPA 配置与压测验证</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/k8s/README.html"><strong>k3s 实战：一个可跑通、可炸给你看的单机集群</strong><em>K8s 系列总览</em><span class="arr">→</span></a></li><li><a href="../deep/k8s/compose-vs-k8s.html"><strong>Compose → K8s 概念对照（给已经会 docker-compose 的人）</strong><em>Compose vs K8s 迁移对比</em><span class="arr">→</span></a></li><li><a href="../deep/k8s/ROLLING-UPDATE.html"><strong>service-user 滚动更新练习（K8s 核心概念 · B）</strong><em>滚动更新实操</em><span class="arr">→</span></a></li><li><a href="../deep/k8s/ingress-hpa.html"><strong>Ingress + HPA 实践清单（sc-user）</strong><em>Ingress + HPA</em><span class="arr">→</span></a></li><li><a href="../deep/k8s/redis-sentinel.html"><strong>Redis 1主1从3哨兵（自动故障转移）</strong><em>Redis 哨兵上 K8s</em><span class="arr">→</span></a></li><li><a href="../deep/k8s/K8S-LEARNING-ROADMAP.html"><strong>K8s 实战学习路线图（已学 + 待学）</strong><em>K8s 学习路线图</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 5/16 个</span><div class="pn-links"><a class="pn-prev" href="es.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Elasticsearch 源码研读</span></a><a class="pn-next" href="jeepay.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">Jeepay 支付集成</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

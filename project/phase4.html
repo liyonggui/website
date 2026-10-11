@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Phase 4 · Agent 运维 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="给 Agent 加生产护栏：可观测、降级、LLM 舱壁隔离、语义缓存、自研熔断，全部用 k6 压测验证过效果。"/>
+<meta name="keywords" content="Phase 4 · Agent 运维, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/phase4.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Phase 4 · Agent 运维 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="给 Agent 加生产护栏：可观测、降级、LLM 舱壁隔离、语义缓存、自研熔断，全部用 k6 压测验证过效果。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/phase4.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Phase 4 · Agent 运维 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · AI Agent</div><h1>Phase 4 · Agent 运维</h1><p class="lead">给 Agent 加生产护栏：可观测、降级、LLM 舱壁隔离、语义缓存、自研熔断，全部用 k6 压测验证过效果。<span class="metric" style="margin-left:10px">8084 · 缓存 A/B p95 836→12ms</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">四个护栏各有实测数据：LLM 舱壁隔离（信号量 6/s）在打满时 90% 请求 503 而不是拖垮全服务；语义缓存 A/B 实测 p95 从 836ms 降到 12ms（↓98.6%）；自研熔断在连续异常后 16 次快速拒绝；可观测埋点覆盖工具调用耗时与 token 消耗。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">设计原则是「护栏不能比业务更脆弱」：降级路径、缓存维度一致性、熔断恢复都在故障注入里验证过，护栏代码与原理有逐行详解文档。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>缓存 A/B</strong><em>p95 836ms → 12ms，↓ 98.6%</em></div></li><li><div class="step-body"><strong>舱壁隔离</strong><em>信号量 6/s 打满时 90% 503，保护主链路</em></div></li><li><div class="step-body"><strong>自研熔断</strong><em>连续异常 16 次快速拒绝，防雪崩</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html"><strong>phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</strong><em>护栏代码逐行详解</em><span class="arr">→</span></a></li><li><a href="../deep/agent/Agent%E4%B8%AD%E9%97%B4%E4%BB%B6%E4%BC%98%E5%8C%96%E9%80%89%E5%9E%8B.html"><strong>Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）</strong><em>中间件优化选型</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 12/16 个</span><div class="pn-links"><a class="pn-prev" href="phase3.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Phase 3 · 业务 Agent</span></a><a class="pn-next" href="phase5.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">Phase 5 · MCP</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

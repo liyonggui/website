@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Phase 2 · RAG · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="在最小 Agent 上加检索增强：embedding + 向量库 + 带引用问答 + 召回评测，召回率实测 83%。"/>
+<meta name="keywords" content="Phase 2 · RAG, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/phase2.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Phase 2 · RAG · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="在最小 Agent 上加检索增强：embedding + 向量库 + 带引用问答 + 召回评测，召回率实测 83%。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/phase2.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Phase 2 · RAG · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · AI Agent</div><h1>Phase 2 · RAG</h1><p class="lead">在最小 Agent 上加检索增强：embedding + 向量库 + 带引用问答 + 召回评测，召回率实测 83%。<span class="metric" style="margin-left:10px">8082 · 召回 83%</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">实现走的是可解释路线：Spring AI 的 EmbeddingModel + Document 分层 + SimpleVectorStore 起步，再对比混合检索（向量 + BM25）与 rerank 的增益。每一步的召回率都可量化，不是「感觉变好了」。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">带引用问答是硬要求：答案必须标注来源文档，评测集单独维护，召回率 83% 是在这套评测集上跑出来的可复现数字。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>召回率 83%</strong><em>评测集量化，非主观感受</em></div></li><li><div class="step-body"><strong>带引用问答</strong><em>答案强制标注来源，可追溯</em></div></li><li><div class="step-body"><strong>混合检索</strong><em>向量 + BM25 + rerank 的分层对比</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html"><strong>RAG 代码与原理详解（phase2 深读 · 新手向）</strong><em>RAG 代码与原理详解</em><span class="arr">→</span></a></li><li><a href="../deep/agent/agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html"><strong>自研 agent 应用 工程化落地纪要</strong><em>工程化落地纪要</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 10/16 个</span><div class="pn-links"><a class="pn-prev" href="phase1.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Phase 1 · 最小 Agent</span></a><a class="pn-next" href="phase3.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">Phase 3 · 业务 Agent</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Agent 产品层 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="六阶段能力的集大成：rag_search（向量 + BM25 + RRF + rerank）+ MCP 业务工具 + Redis 三件套（向量/缓存/记忆）+ resilience4j + Langfuse 评测 + 鉴权脱敏。"/>
+<meta name="keywords" content="Agent 产品层, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/agent-prod.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Agent 产品层 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="六阶段能力的集大成：rag_search（向量 + BM25 + RRF + rerank）+ MCP 业务工具 + Redis 三件套（向量/缓存/记忆）+ resilience4j + Langfuse 评测 + 鉴权脱敏。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/agent-prod.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Agent 产品层 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · AI Agent</div><h1>Agent 产品层</h1><p class="lead">六阶段能力的集大成：rag_search（向量 + BM25 + RRF + rerank）+ MCP 业务工具 + Redis 三件套（向量/缓存/记忆）+ resilience4j + Langfuse 评测 + 鉴权脱敏。<span class="metric" style="margin-left:10px">8090 · gold 13/13</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">产品层把前面所有阶段拼成一个可交付系统：检索侧向量 + BM25 双路召回 RRF 融合再 rerank；工具侧走 MCP 动态发现；Redis 同时承担向量库、语义缓存与会话记忆；中间件用 resilience4j 收拢护栏。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">质量与安全两侧：Langfuse 全链路评测（gold 集 13/13 通过），语义缓存带维度一致性护栏（实测拦截 guardRejects=1，防止错缓存串答案）；入口鉴权 + 敏感信息脱敏。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>gold 集 13/13</strong><em>评测集全通过</em></div></li><li><div class="step-body"><strong>语义缓存护栏</strong><em>维度一致性校验，实测拦截 1 次错缓存</em></div></li><li><div class="step-body"><strong>安全侧</strong><em>入口鉴权 + 敏感信息脱敏</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/agent/agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html"><strong>自研 agent 应用 工程化落地纪要</strong><em>产品层工程化落地纪要</em><span class="arr">→</span></a></li><li><a href="../deep/agent/%E9%A1%B9%E7%9B%AE%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%94%B9%E8%BF%9B%E5%BB%BA%E8%AE%AE.html"><strong>AI Agent 项目集评估与改进建议</strong><em>项目评估与改进建议</em><span class="arr">→</span></a></li><li><a href="../deep/agent/Agent%E4%B8%AD%E9%97%B4%E4%BB%B6%E4%BC%98%E5%8C%96%E9%80%89%E5%9E%8B.html"><strong>Agent 中间件优化选型（性能 / 准确度 / 护栏 / 可观测）</strong><em>中间件选型</em><span class="arr">→</span></a></li><li><a href="../deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html"><strong>自研后端 × Agent 全链路（代码级）</strong><em>六阶段全链路</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 15/16 个</span><div class="pn-links"><a class="pn-prev" href="phase6.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Phase 6 · 评测</span></a><a class="pn-next" href="backend-sandbox.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">业务后端沙盒</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

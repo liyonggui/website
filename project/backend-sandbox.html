@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>业务后端沙盒 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="为 Agent 系列准备的业务后端沙盒（可修改副本，原仓不碰）：作为 Agent 业务工具的被测后端与基础设施来源。"/>
+<meta name="keywords" content="业务后端沙盒, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/backend-sandbox.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="业务后端沙盒 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="为 Agent 系列准备的业务后端沙盒（可修改副本，原仓不碰）：作为 Agent 业务工具的被测后端与基础设施来源。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/backend-sandbox.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>业务后端沙盒 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · AI Agent</div><h1>业务后端沙盒</h1><p class="lead">为 Agent 系列准备的业务后端沙盒（可修改副本，原仓不碰）：作为 Agent 业务工具的被测后端与基础设施来源。<span class="metric" style="margin-left:10px">端口 80</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">Agent 开发需要一个「可以随便折腾」的业务后端：真实接口、真实数据、但改坏了不心疼。沙盒从业务仓复制而来，独立运行在 80 端口，Phase 3 起的所有业务 @Tool 与 Phase 5 的 MCP Server 都以它为数据源。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">「可改，原仓不碰」是刻意的工程边界：沙盒允许为了测试护栏、异常注入而改造接口行为（比如模拟慢查询、限流），原仓保持干净可同步。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>被测后端</strong><em>Agent 业务工具的真实数据源</em></div></li><li><div class="step-body"><strong>可破坏性</strong><em>支持异常注入改造（慢查询/限流模拟），原仓不受影响</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/prj/02-%E5%A4%9A%E7%AB%AF%E4%B8%9A%E5%8A%A1%E5%90%8E%E5%8F%B0%E6%9E%B6%E6%9E%84.html"><strong>一个后端服务三个前端：多端业务后台的双存储、缓存工程化与影子表同步</strong><em>业务后台架构复盘</em><span class="arr">→</span></a></li><li><a href="../deep/prj/01-%E5%A4%96%E9%83%A8%E6%95%B0%E6%8D%AE%E6%A0%B8%E9%AA%8C%E6%89%B9%E5%A4%84%E7%90%86%E5%BC%95%E6%93%8E.html"><strong>外部数据核验批处理引擎：失败分类、分级重试与两轮校对的完整设计</strong><em>外部数据核验引擎复盘</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 16/16 个</span><div class="pn-links"><a class="pn-prev" href="agent-prod.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Agent 产品层</span></a><span></span></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

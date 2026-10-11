@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Phase 3 · 业务 Agent · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="把 Agent 接上真实业务：真实业务接口当 @Tool、多轮对话记忆、SSE 流式交互，实测「查北京院校 → 追问上海」能正确走记忆。"/>
+<meta name="keywords" content="Phase 3 · 业务 Agent, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/phase3.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Phase 3 · 业务 Agent · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="把 Agent 接上真实业务：真实业务接口当 @Tool、多轮对话记忆、SSE 流式交互，实测「查北京院校 → 追问上海」能正确走记忆。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/phase3.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Phase 3 · 业务 Agent · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · AI Agent</div><h1>Phase 3 · 业务 Agent</h1><p class="lead">把 Agent 接上真实业务：真实业务接口当 @Tool、多轮对话记忆、SSE 流式交互，实测「查北京院校 → 追问上海」能正确走记忆。<span class="metric" style="margin-left:10px">8083 · 多轮记忆</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">这一阶段回答「Agent 怎么接真实业务」：把业务后端的查询接口封装成 @Tool，模型在多轮对话里自主决定何时调用、何时追问。记忆层负责把上下文里已确认的条件带到下一轮。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">实测场景：第一轮查北京 1/2/11 三所院校，第二轮直接问「上海呢」，Agent 从记忆取上下文正确切换城市——这验证了记忆注入的时机与格式是对的。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>真实业务工具</strong><em>业务接口直接注册为 @Tool，非 mock</em></div></li><li><div class="step-body"><strong>多轮记忆</strong><em>跨轮次上下文保持，追问实测通过</em></div></li><li><div class="step-body"><strong>SSE 流式</strong><em>打字机式输出，交互不阻塞</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/agent/%E5%85%A8%E9%93%BE%E8%B7%AF.html"><strong>自研后端 × Agent 全链路（代码级）</strong><em>从 Phase 3 到产品层的全链路</em><span class="arr">→</span></a></li><li><a href="../deep/agent/AI-Agent%E6%96%B0%E6%89%8B%E6%95%99%E5%AD%A6.html"><strong>AI Agent 新手教学（后端工程师·零基础版）</strong><em>工具调用与记忆的实现细节</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 11/16 个</span><div class="pn-links"><a class="pn-prev" href="phase2.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Phase 2 · RAG</span></a><a class="pn-next" href="phase4.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">Phase 4 · Agent 运维</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

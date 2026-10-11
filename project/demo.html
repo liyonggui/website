@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>秒杀 Demo · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="可一键运行的秒杀库存压测 Demo：docker-compose 起全栈，自带 100–300 五档并发 benchmark HTML 报告与初始化数据。"/>
+<meta name="keywords" content="秒杀 Demo, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/demo.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="秒杀 Demo · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="可一键运行的秒杀库存压测 Demo：docker-compose 起全栈，自带 100–300 五档并发 benchmark HTML 报告与初始化数据。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/demo.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>秒杀 Demo · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · 高并发后端</div><h1>秒杀 Demo</h1><p class="lead">可一键运行的秒杀库存压测 Demo：docker-compose 起全栈，自带 100–300 五档并发 benchmark HTML 报告与初始化数据。<span class="metric" style="margin-left:10px">多档 benchmark 报告</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">定位是「拿来就能跑」的压测样例：docker-compose 一键起 MySQL + Redis + 应用，init.sql 初始化库存与账号数据，脚本按 100/150/200/250/300 五档并发跑完自动出 HTML 报告。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">Demo 同时是降级设计的试验田：Redis 预扣 + 本地文件兜底的库存方案，在 Redis 不可用时如何限速回放、如何保证最终一致，都在这个仓里可以直接看代码。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>一键起环境</strong><em>docker-compose 编排 MySQL + Redis + 应用</em></div></li><li><div class="step-body"><strong>五档报告</strong><em>100–300 并发 benchmark HTML 报告开箱即用</em></div></li><li><div class="step-body"><strong>兜底方案</strong><em>Redis 预扣 + 本地文件兜底 + 限速回放</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/bench/Java%E7%A7%92%E6%9D%80%E5%BA%93%E5%AD%98%E5%9C%BA%E6%99%AF%E5%8E%8B%E6%B5%8B%E8%84%9A%E6%9C%AC%E8%AE%BE%E8%AE%A1%E6%B8%85%E5%8D%95.html"><strong>Java 秒杀/库存场景压测脚本设计清单</strong><em>脚本设计清单</em><span class="arr">→</span></a></li><li><a href="../deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html"><strong>写入链路降级设计：本地文件兜底 + 限速回放</strong><em>降级设计详解</em><span class="arr">→</span></a></li><li><a href="../deep/bench/%E6%B5%8B%E8%AF%95%E6%80%BB%E7%BB%93.html"><strong>高并发写入测试总结</strong><em>压测结论</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 8/16 个</span><div class="pn-links"><a class="pn-prev" href="k6.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">k6 压测体系</span></a><a class="pn-next" href="phase1.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">Phase 1 · 最小 Agent</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

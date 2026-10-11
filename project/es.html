@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Elasticsearch 源码研读 · 小番茄程序猿项目详情 · 小番茄程序猿</title>
+<meta name="description" content="深入研读 Elasticsearch Java 源码：传输层、集群协调、搜索执行层 Query + Fetch 两阶段，梳理核心技术实现逻辑并整理成系列手册。"/>
+<meta name="keywords" content="Elasticsearch 源码研读, 项目详情, 高并发, AI Agent"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/project/es.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
+<link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Elasticsearch 源码研读 · 小番茄程序猿项目详情 · 小番茄程序猿" />
+<meta property="og:description" content="深入研读 Elasticsearch Java 源码：传输层、集群协调、搜索执行层 Query + Fetch 两阶段，梳理核心技术实现逻辑并整理成系列手册。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/project/es.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json"></script>
+<link rel="stylesheet" href="../assets/css/style.css?v=6"/>
+<link rel="stylesheet" href="../assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="../assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="../index.html">
+      <img class="logo" src="../assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="../" data-active="projects.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="projects.html">← 返回项目清单</a>
+    <h1>Elasticsearch 源码研读 · 小番茄程序猿项目详情</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">项目详情 · 高并发后端</div><h1>Elasticsearch 源码研读</h1><p class="lead">深入研读 Elasticsearch Java 源码：传输层、集群协调、搜索执行层 Query + Fetch 两阶段，梳理核心技术实现逻辑并整理成系列手册。<span class="metric" style="margin-left:10px">传输层 / 集群协调</span></p></div>
+<section class="path-stage">
+<h2>项目概述</h2>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">源码研读按三条主线展开：传输层（节点间通信、REST 与 Transport 的分工）、集群协调（选主、分片分配算法、MurmurHash3 路由）、搜索执行（Query + Fetch 两阶段为什么这样切分）。</p>
+<p style="max-width:760px;line-height:1.85;color:var(--ink-soft)">研读结论落到两份生产向产出：一套运维命令速查手册（集群架构 + 常用命令），一套分片倾斜应急处理步骤（线上可直接照做），另有 ILM 冷热分层、Reindex 重构、别名与 Rollover 的完整实操手册。</p>
+</section>
+<section class="path-stage">
+<h2>关键数据与亮点</h2>
+<ul class="ref-list"><li><div class="step-body"><strong>三条源码主线</strong><em>传输层 / 集群协调 / Query+Fetch 两阶段搜索</em></div></li><li><div class="step-body"><strong>生产落地</strong><em>倾斜应急步骤、运维命令速查、ILM 冷热分层全套手册</em></div></li></ul>
+</section>
+<section class="path-stage">
+<h2>相关文章</h2>
+<ul class="ref-list"><li><a href="../deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html"><strong>ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）</strong><em>写入全流程源码梳理</em><span class="arr">→</span></a></li><li><a href="../deep/es/Elasticsearch%20%E5%88%86%E7%89%87%E8%8A%82%E7%82%B9%E5%88%86%E9%85%8D%E7%AE%97%E6%B3%95%20%E8%B6%85%E8%AF%A6%E7%BB%86%E8%AF%A6%E8%A7%A3.html"><strong>Elasticsearch 分片节点分配算法 超详细详解</strong><em>分片分配算法</em><span class="arr">→</span></a></li><li><a href="../deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2BMurmurHash3%E7%AE%97%E6%B3%95%2B%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E5%85%A8%E5%A5%97%E5%AE%8C%E6%95%B4%E7%89%88%E6%96%87%E6%A1%A3%EF%BC%88%E7%94%9F%E4%BA%A7%E8%90%BD%E5%9C%B0%EF%BC%89.html"><strong>ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</strong><em>路由与倾斜治理</em><span class="arr">→</span></a></li><li><a href="../deep/es/%E4%B8%80%E3%80%81ES%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E7%BA%BF%E4%B8%8A%E5%BA%94%E6%80%A5%E5%A4%84%E7%90%86%E6%AD%A5%E9%AA%A4%EF%BC%88%E5%8F%AF%E7%9B%B4%E6%8E%A5%E7%85%A7%E7%9D%80%E6%93%8D%E4%BD%9C%EF%BC%89.html"><strong>一、ES分片倾斜线上应急处理步骤（可直接照着操作）</strong><em>线上应急步骤</em><span class="arr">→</span></a></li><li><a href="../deep/es/ES_%E9%9B%86%E7%BE%A4%E6%9E%B6%E6%9E%84%E4%B8%8E%E8%BF%90%E7%BB%B4%E5%91%BD%E4%BB%A4%E9%80%9F%E6%9F%A5%E6%89%8B%E5%86%8C.html"><strong>ES 集群架构与运维命令速查手册</strong><em>集群架构与命令速查</em><span class="arr">→</span></a></li></ul>
+</section>
+<nav class="path-nav"><div class="wrap"><span class="pn-label">项目详情 · 第 4/16 个</span><div class="pn-links"><a class="pn-prev" href="springcloud.html"><span class="pn-dir">← 上一个项目</span><span class="pn-title">Spring Cloud 高并发电商</span></a><a class="pn-next" href="k3s.html"><span class="pn-dir">下一个项目 →</span><span class="pn-title">K3s / K8s 运维</span></a></div></div></nav>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="../assets/js/nav.js?v=2"></script>
+  <script src="../assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="../about.html">关于</a> · <a href="../tags.html">标签</a> · <a href="../archives.html">归档</a> · <a href="../search.html">搜索</a> · <a href="../rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>
