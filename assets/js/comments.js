@@ -8,10 +8,10 @@
  */
 (function () {
   var CONFIG = {
-    repo: "OWNER/REPO",        // 例如 "yimu-dev/yimu-dev.github.io"
-    repoId: "REPO_ID",         // giscus.app 生成的 repository ID
+    repo: "liyonggui/website", // 你的仓库全名
+    repoId: "R_kgDOVEpTBA",     // giscus.app 生成的 repository ID
     category: "Announcements", // 对应 Discussions 分类名
-    categoryId: "CATEGORY_ID", // giscus.app 生成的 category ID
+    categoryId: "DIC_kwDOVEpTBM4DHjWl", // giscus.app 生成的 category ID
     mapping: "pathname",       // 每页按路径生成独立评论线程
     strict: "0",
     reactionsEnabled: "1",
