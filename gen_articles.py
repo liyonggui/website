@@ -44,7 +44,7 @@ TEMPLATE = """<!DOCTYPE html>
 <meta property="og:url" content="__CANONICAL__" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">__JSONLD__</script>
-<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=7"/>
+<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=8"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
 <script>
@@ -462,7 +462,7 @@ def process_dir(rel_dir, active, back_label, catalog):
     if not os.path.isdir(abs_dir):
         return 0
     prefix = depth_prefix(rel_dir)
-    back_href = prefix + ("blog.html" if active == "blog" else "deep.html")
+    back_href = prefix + ("blog.html" if active == "blog" else "projects.html" if active == "proj" else "deep.html")
     count = 0
     for fn in sorted(os.listdir(abs_dir)):
         if not fn.endswith(".md"):
@@ -524,7 +524,7 @@ def main():
     total += process_dir("deep/bench", "deep", "返回深度技术", catalog)
     total += process_dir("deep/k8s", "deep", "返回深度技术", catalog)
     total += process_dir("deep/agent", "deep", "返回深度技术", catalog)
-    total += process_dir("deep/prj", "deep", "返回深度技术", catalog)
+    total += process_dir("deep/prj", "proj", "返回项目清单", catalog)
     print("生成文章页总数:", total)
     print("pygments.css:", "已存在" if os.path.exists(PYG_CSS) else "已生成")
 

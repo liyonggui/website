@@ -500,6 +500,11 @@ a.card:hover { text-decoration: none; }
   align-items: center; justify-content: center; font-size: 14px;
   background: var(--accent-soft); color: var(--accent); font-weight: 800;
 }
+.deep-group h3 .group-link {
+  margin-left: auto; font-size: 13px; font-weight: 600; color: var(--accent);
+  white-space: nowrap;
+}
+.deep-group h3 .group-link:hover { text-decoration: underline; }
 .deep-group .docs { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s2); }
 .deep-group .docs a {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;

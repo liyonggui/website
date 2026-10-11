@@ -20,13 +20,10 @@ SERIES = [
      "Redis 主从复制与哨兵、Ingress + HPA 弹性、滚动更新、compose vs k8s、K8s 学习路线图。", "K"),
     ("agent", "AI Agent 底层原理",
      "RAG / MCP / 护栏 / 评测的代码与原理详解，Agent 中间件选型，自研 Agent 工程化落地，phase1-6 阶段 README。", "A"),
-    ("prj", "项目工程实战",
-     "三个真实生产项目（已脱敏）的架构复盘：外部数据核验批处理引擎、多端业务后台、AI Agent 质量门禁——整体思路、代码逻辑与工程实践全解析。", "P"),
 ]
 
 SHORT = {"mysql": "MySQL", "redis": "Redis", "es": "Elasticsearch",
-         "bench": "压测方法论", "k8s": "K8s 云原生", "agent": "Agent 原理",
-         "prj": "工程实战"}
+         "bench": "压测方法论", "k8s": "K8s 云原生", "agent": "Agent 原理"}
 
 CORE = ["原理", "详解", "核心汇总", "实战手册", "架构演变", "数据类型原理", "写入全流程",
         "路由机制", "ILM", "Coordinated", "降级", "RAG代码", "MCP代码", "护栏代码",
@@ -55,7 +52,7 @@ HEAD = """<!DOCTYPE html>
   <meta property="og:description" content="数据库内核、压测方法论、云原生、AI Agent 原理——项目背后的硬核底层知识库。" />
   <meta property="og:url" content="https://liyonggui.github.io/website/deep.html" />
   <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-  <link rel="stylesheet" href="assets/css/style.css?v=7" />
+  <link rel="stylesheet" href="assets/css/style.css?v=8" />
   <script>
     (function () {
       try {
@@ -191,9 +188,6 @@ for key, title, desc, ic in SERIES:
         % (key, key, SHORT[key], count))
 
     items = []
-    if key == "mysql":
-        items.append('              <a class="path-entry" href="mysql-path.html">学习线路 · %d 站，从这里开始 →</a>\n'
-                     % len(MYSQL_ORDER))
     for fn in files:
         href = "deep/%s/%s" % (key, urllib.parse.quote(fn[:-3] + ".html"))
         if fn == "README.md":
@@ -204,9 +198,12 @@ for key, title, desc, ic in SERIES:
         items.append('              <a href="%s">%s%s</a>\n' % (href, label, badge))
     groups_html.append(
         '          <div class="deep-group" id="%s">\n'
-        '            <h3><span class="ic">%s</span>%s</h3>\n'
+        '            <h3><span class="ic">%s</span>%s%s</h3>\n'
         '            <div class="docs">\n%s            </div>\n'
-        '          </div>\n' % (key, ic, title, "".join(items)))
+        '          </div>\n'
+        % (key, ic, title,
+           ('<a class="group-link" href="mysql-path.html">学习路线 →</a>' if key == "mysql" else ""),
+           "".join(items)))
 
 html = HEAD + "".join(nav_html) + TAIL.replace(GROUPS_PLACEHOLDER, "".join(groups_html))
 with open(os.path.join(ROOT, "deep.html"), "w", encoding="utf-8") as f:
