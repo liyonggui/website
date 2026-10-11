@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/prj/02-多端业务后台架构.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "一个后端服务三个前端：多端业务后台的双存储、缓存工程化与影子表同步", "description": "一套教育升学服务后台的真实架构（已脱敏）：单体后端同时服务管理端、考生端 Web 与微信小程序。核心设计：MySQL + MongoDB 双存储分工、三级缓存与质数 TTL 防雪崩、EasyExcel SAX 流式解析 + 影子表原子切换的大文件同步、双轨认证与考试安全体系。", "url": "https://liyonggui.github.io/website/deep/prj/02-多端业务后台架构.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/prj/02-多端业务后台架构.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-10", "keywords": "架构设计, Spring Boot, MySQL, MongoDB, 工程实践, 工程实战"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=5"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -36,14 +36,7 @@
       <span>小番茄程序猿<span class="dot">.</span>dev</span>
     </a>
     <div class="nav-right">
-      <nav class="nav-links" id="navLinks">
-        <a href="../../index.html">首页</a>
-        <a href="../../projects.html">项目</a>
-        <a href="../../blog.html">博客</a>
-        <a href="../../deep.html" class="active">深度</a>
-        <a href="../../learn.html">学习</a>
-        <a href="../../about.html">关于</a>
-      </nav>
+      <nav class="nav-links" id="navLinks" data-prefix="../../" data-active="deep.html"></nav>
       <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
       <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
     </div>
@@ -244,6 +237,7 @@ DB
       <div id="giscus-comments"></div>
     </div>
   </section>
+  <script src="../../assets/js/nav.js?v=2"></script>
   <script src="../../assets/js/comments.js?v=2"></script>
 </main>
 <footer>

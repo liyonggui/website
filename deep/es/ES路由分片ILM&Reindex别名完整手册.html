@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册", "description": "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…", "url": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-01", "keywords": "Elasticsearch, 分库分表, ILM, es"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=5"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -36,14 +36,7 @@
       <span>小番茄程序猿<span class="dot">.</span>dev</span>
     </a>
     <div class="nav-right">
-      <nav class="nav-links" id="navLinks">
-        <a href="../../index.html">首页</a>
-        <a href="../../projects.html">项目</a>
-        <a href="../../blog.html">博客</a>
-        <a href="../../deep.html" class="active">深度</a>
-        <a href="../../learn.html">学习</a>
-        <a href="../../about.html">关于</a>
-      </nav>
+      <nav class="nav-links" id="navLinks" data-prefix="../../" data-active="deep.html"></nav>
       <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
       <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
     </div>
@@ -740,6 +733,7 @@ ctx._routing = ctx._source.province + "_" + suffix;
       <div id="giscus-comments"></div>
     </div>
   </section>
+  <script src="../../assets/js/nav.js?v=2"></script>
   <script src="../../assets/js/comments.js?v=2"></script>
 </main>
 <footer>

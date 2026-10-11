@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/agent/phase4-护栏代码与原理详解.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）", "description": "配套：AI-Agent新手教学.md 第 7 课。代码在 phase4-agent-ops 模块。 > 一句话：把 LLM 当不靠谱下游服务，用后…", "url": "https://liyonggui.github.io/website/deep/agent/phase4-护栏代码与原理详解.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/agent/phase4-护栏代码与原理详解.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-09-22", "keywords": "AI Agent, Spring AI, 源码, 缓存, agent"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=5"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -36,14 +36,7 @@
       <span>小番茄程序猿<span class="dot">.</span>dev</span>
     </a>
     <div class="nav-right">
-      <nav class="nav-links" id="navLinks">
-        <a href="../../index.html">首页</a>
-        <a href="../../projects.html">项目</a>
-        <a href="../../blog.html">博客</a>
-        <a href="../../deep.html" class="active">深度</a>
-        <a href="../../learn.html">学习</a>
-        <a href="../../about.html">关于</a>
-      </nav>
+      <nav class="nav-links" id="navLinks" data-prefix="../../" data-active="deep.html"></nav>
       <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
       <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
     </div>
@@ -231,6 +224,7 @@
       <div id="giscus-comments"></div>
     </div>
   </section>
+  <script src="../../assets/js/nav.js?v=2"></script>
   <script src="../../assets/js/comments.js?v=2"></script>
 </main>
 <footer>

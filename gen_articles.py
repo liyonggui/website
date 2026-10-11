@@ -44,7 +44,7 @@ TEMPLATE = """<!DOCTYPE html>
 <meta property="og:url" content="__CANONICAL__" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">__JSONLD__</script>
-<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=3"/>
+<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=5"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
 <script>
@@ -65,14 +65,7 @@ TEMPLATE = """<!DOCTYPE html>
       <span>小番茄程序猿<span class="dot">.</span>dev</span>
     </a>
     <div class="nav-right">
-      <nav class="nav-links" id="navLinks">
-        <a href="__PREFIX__index.html"__A_HOME__>首页</a>
-        <a href="__PREFIX__projects.html"__A_PROJ__>项目</a>
-        <a href="__PREFIX__blog.html"__A_BLOG__>博客</a>
-        <a href="__PREFIX__deep.html"__A_DEEP__>深度</a>
-        <a href="__PREFIX__learn.html"__A_LEARN__>学习</a>
-        <a href="__PREFIX__about.html"__A_ABOUT__>关于</a>
-      </nav>
+      <nav class="nav-links" id="navLinks" data-prefix="__PREFIX__" data-active="__ACTIVE__"></nav>
       <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
       <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
     </div>
@@ -100,6 +93,7 @@ __RELATED__
       <div id="giscus-comments"></div>
     </div>
   </section>
+  <script src="__PREFIX__assets/js/nav.js?v=2"></script>
   <script src="__PREFIX__assets/js/comments.js?v=2"></script>
 </main>
 <footer>
@@ -195,11 +189,14 @@ def build_html(prefix, title, body, active, back_href, back_label, toc="", meta=
     a = {"home": "", "proj": "", "blog": "", "deep": "", "about": "", "learn": ""}
     if active in a:
         a[active] = ' class="active"'
+    active_map = {"home": "index.html", "proj": "projects.html", "blog": "blog.html",
+                  "deep": "deep.html", "learn": "learn.html", "about": "about.html"}
     meta = meta or {}
     if not desc:
         desc = str(meta.get("summary") or "").strip() or f"{title} —— 小番茄程序猿的技术文章"
     return (TEMPLATE
             .replace("__PREFIX__", prefix)
+            .replace("__ACTIVE__", active_map.get(active, ""))
             .replace("__TITLE__", html.escape(title))
             .replace("__DESC__", html.escape(desc))
             .replace("__KEYWORDS__", html.escape(keywords, quote=True))
