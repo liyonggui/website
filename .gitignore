@@ -1,0 +1,7 @@
+# 评论拉取快照（运行产物，数据源在 GitHub Discussions，重跑 fetch_comments.py 即可再生）
+data/comments.json
+data/comments.md
+
+# Python 运行缓存
+__pycache__/
+*.pyc
