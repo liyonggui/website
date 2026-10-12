@@ -1,33 +1,40 @@
 # -*- coding: utf-8 -*-
-"""生成 mysql-path.html：MySQL 学习线路页（38 站主线路 + 6 篇随查手册）。"""
+"""生成学习线路页：mysql-path.html（38 站）与 redis-path.html（15 站）。
+
+数据驱动：线路定义在 path_data.py，加新线路时定义 STAGES/REFERENCE/ORDER
+并往 PATHS 里加一条即可。
+"""
 import os
 import urllib.parse
 
-from gen_articles import ROOT, SITE_BASE, TEMPLATE, build_html, scan_catalog
-from path_data import MYSQL_STAGES, MYSQL_REFERENCE, MYSQL_ORDER
+from gen_articles import ROOT, SITE_BASE, build_html, scan_catalog
+from path_data import (
+    MYSQL_STAGES, MYSQL_REFERENCE, MYSQL_ORDER,
+    REDIS_STAGES, REDIS_REFERENCE, REDIS_ORDER,
+)
 
 
-def build_body(titles):
-    total = len(MYSQL_ORDER)
+def build_body(name, stages, refs, order, titles, base_dir):
+    total = len(order)
     parts = []
     parts.append(
         '<div class="path-hero">'
-        '<div class="eyebrow">学习线路 · MySQL</div>'
-        '<h1>MySQL 学习线路：<br/>从原理到生产治理的 %d 站。</h1>'
-        '<p class="lead">这条线路把本站全部 %d 篇 MySQL 文章按「认知顺序」重新组织：'
+        '<div class="eyebrow">学习线路 · %s</div>'
+        '<h1>%s 学习线路：<br/>从原理到生产实战的 %d 站。</h1>'
+        '<p class="lead">这条线路把本站全部 %d 篇 %s 文章按「认知顺序」重新组织：'
         '%d 站主线路建议按顺序读——每一站回答一个问题：<b>读完它你能解决什么</b>；'
         '另有 %d 篇随查手册放在最后，工作中直接翻，不必按顺序。</p>'
         '<div class="path-progressbar"><i style="width:0"></i></div>'
-        '</div>' % (total, total + len(MYSQL_REFERENCE), total, len(MYSQL_REFERENCE))
+        '</div>' % (name, name, total, total + len(refs), name, total, len(refs))
     )
 
     step = 0
-    for si, (stage_name, stage_desc, items) in enumerate(MYSQL_STAGES, 1):
+    for si, (stage_name, stage_desc, items) in enumerate(stages, 1):
         lis = []
         for stem, line in items:
             step += 1
-            title = titles.get("deep/mysql/" + stem + ".html", stem)
-            href = "deep/mysql/" + urllib.parse.quote(stem + ".html")
+            title = titles.get(base_dir + "/" + stem + ".html", stem)
+            href = base_dir + "/" + urllib.parse.quote(stem + ".html")
             lis.append(
                 '<li><a href="%s">'
                 '<span class="step-no">%02d</span>'
@@ -45,11 +52,11 @@ def build_body(titles):
             % (si, stage_name, stage_desc, len(items), "".join(lis))
         )
 
-    refs = []
-    for stem, line in MYSQL_REFERENCE:
-        title = titles.get("deep/mysql/" + stem + ".html", stem)
-        href = "deep/mysql/" + urllib.parse.quote(stem + ".html")
-        refs.append(
+    refs_html = []
+    for stem, line in refs:
+        title = titles.get(base_dir + "/" + stem + ".html", stem)
+        href = base_dir + "/" + urllib.parse.quote(stem + ".html")
+        refs_html.append(
             '<li><a href="%s"><strong>%s</strong><em>%s</em></a></li>'
             % (href, title, line)
         )
@@ -58,37 +65,60 @@ def build_body(titles):
         '<h2>附 · 随查手册（%d 篇）</h2>'
         '<p>不按顺序读：线上出问题时，这些是直接照着操作的手册。</p>'
         '<ul class="ref-list">%s</ul>'
-        '</section>' % (len(MYSQL_REFERENCE), "".join(refs))
+        '</section>' % (len(refs), "".join(refs_html))
     )
     return "\n".join(parts)
+
+
+PATHS = [
+    {
+        "slug": "mysql-path",
+        "name": "MySQL",
+        "stages": MYSQL_STAGES, "refs": MYSQL_REFERENCE, "order": MYSQL_ORDER,
+        "dir": "deep/mysql",
+        "keywords": "MySQL, 学习路线, 学习线路, 事务, 锁, 索引, 高可用",
+        "desc_t": "把本站全部 MySQL 文章按认知顺序组织成 %d 站学习线路：打底、事务与锁、索引与 SQL、"
+                  "连接与容量、扩展与高可用、进阶专题，另附随查手册。",
+    },
+    {
+        "slug": "redis-path",
+        "name": "Redis",
+        "stages": REDIS_STAGES, "refs": REDIS_REFERENCE, "order": REDIS_ORDER,
+        "dir": "deep/redis",
+        "keywords": "Redis, 学习路线, 学习线路, Pipeline, 缓存, Cluster, 哨兵, 高并发",
+        "desc_t": "把本站全部 Redis 文章按认知顺序组织成 %d 站学习线路：打底、Pipeline 与网络往返、"
+                  "数据结构与访问模式、过期与淘汰、集群与高可用，另附随查手册。",
+    },
+]
 
 
 def main():
     catalog = scan_catalog()
     titles = {e["rel_url"]: e["title"] for e in catalog}
-    body = build_body(titles)
-    doc = build_html(
-        prefix="",
-        title="MySQL 学习线路：从原理到生产治理的 %d 站" % len(MYSQL_ORDER),
-        body=body,
-        active="learn",
-        back_href="learn.html",
-        back_label="返回学习线路",
-        toc="",
-        meta=None,
-        canonical=SITE_BASE + "mysql-path.html",
-        keywords="MySQL, 学习路线, 学习线路, 事务, 锁, 索引, 高可用",
-        jsonld='{"@context":"https://schema.org","@type":"Article",'
-               '"headline":"MySQL 学习线路","author":{"@type":"Person","name":"小番茄程序猿"},'
-               '"url":"' + SITE_BASE + 'mysql-path.html","inLanguage":"zh-CN"}',
-        related_html="",
-        desc="把本站全部 MySQL 文章按认知顺序组织成 %d 站学习线路：打底、事务与锁、索引与 SQL、"
-             "连接与容量、扩展与高可用、进阶专题，另附随查手册。" % len(MYSQL_ORDER),
-    )
-    out = os.path.join(ROOT, "mysql-path.html")
-    with open(out, "w", encoding="utf-8") as f:
-        f.write(doc)
-    print("mysql-path.html generated,", len(MYSQL_ORDER), "站 +", len(MYSQL_REFERENCE), "篇随查手册")
+    for p in PATHS:
+        body = build_body(p["name"], p["stages"], p["refs"], p["order"], titles, p["dir"])
+        total = len(p["order"])
+        doc = build_html(
+            prefix="",
+            title="%s 学习线路：从原理到生产实战的 %d 站" % (p["name"], total),
+            body=body,
+            active="learn",
+            back_href="learn.html",
+            back_label="返回学习线路",
+            toc="",
+            meta=None,
+            canonical=SITE_BASE + p["slug"] + ".html",
+            keywords=p["keywords"],
+            jsonld='{"@context":"https://schema.org","@type":"Article",'
+                   '"headline":"%s 学习线路","author":{"@type":"Person","name":"小番茄程序猿"},'
+                   '"url":"' % p["name"] + SITE_BASE + p["slug"] + '.html","inLanguage":"zh-CN"}',
+            related_html="",
+            desc=p["desc_t"] % total,
+        )
+        out = os.path.join(ROOT, p["slug"] + ".html")
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(doc)
+        print("%s.html generated, %d 站 + %d 篇随查手册" % (p["slug"], total, len(p["refs"])))
 
 
 if __name__ == "__main__":

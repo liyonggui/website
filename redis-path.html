@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Redis 学习线路：从原理到生产实战的 15 站 · 小番茄程序猿</title>
+<meta name="description" content="把本站全部 Redis 文章按认知顺序组织成 15 站学习线路：打底、Pipeline 与网络往返、数据结构与访问模式、过期与淘汰、集群与高可用，另附随查手册。"/>
+<meta name="keywords" content="Redis, 学习路线, 学习线路, Pipeline, 缓存, Cluster, 哨兵, 高并发"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/redis-path.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml" />
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Redis 学习线路：从原理到生产实战的 15 站 · 小番茄程序猿" />
+<meta property="og:description" content="把本站全部 Redis 文章按认知顺序组织成 15 站学习线路：打底、Pipeline 与网络往返、数据结构与访问模式、过期与淘汰、集群与高可用，另附随查手册。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/redis-path.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Redis 学习线路","author":{"@type":"Person","name":"小番茄程序猿"},"url":"https://liyonggui.github.io/website/redis-path.html","inLanguage":"zh-CN"}</script>
+<link rel="stylesheet" href="assets/css/style.css?v=8"/>
+<link rel="stylesheet" href="assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img class="logo" src="assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="" data-active="learn.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="learn.html">← 返回学习线路</a>
+    <h1>Redis 学习线路：从原理到生产实战的 15 站</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">学习线路 · Redis</div><h1>Redis 学习线路：<br/>从原理到生产实战的 15 站。</h1><p class="lead">这条线路把本站全部 18 篇 Redis 文章按「认知顺序」重新组织：15 站主线路建议按顺序读——每一站回答一个问题：<b>读完它你能解决什么</b>；另有 3 篇随查手册放在最后，工作中直接翻，不必按顺序。</p><div class="path-progressbar"><i style="width:0"></i></div></div>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">1</span><div class="stage-tt"><h2>打底</h2><p>先建立全局图景：Redis 为什么这么快、架构怎么一步步演变、每种数据类型的底层结构。</p></div><span class="stage-cnt">3 站</span></div><ol class="path-list"><li><a href="deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html"><span class="step-no">01</span><span class="step-body"><strong>Redis架构演变过程</strong><em>从单机到主从、哨兵、集群，每一步演进解决什么问题、引入什么新代价</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%8E%9F%E7%90%86.html"><span class="step-no">02</span><span class="step-body"><strong>Redis 数据类型原理</strong><em>SDS、跳表、listpack、skiplist……每种类型背后的结构选型依据</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E5%85%B7%E4%BD%93%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF.html"><span class="step-no">03</span><span class="step-body"><strong>Redis 数据类型具体使用场景</strong><em>String/Hash/List/Set/ZSet 各自的典型业务落点，选型不靠背</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">2</span><div class="stage-tt"><h2>Pipeline 与网络往返</h2><p>Redis 的瓶颈往往不在计算而在 RTT：Pipeline 怎么用、什么时候反而不快、边界在哪。</p></div><span class="stage-cnt">6 站</span></div><ol class="path-list"><li><a href="deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html"><span class="step-no">04</span><span class="step-body"><strong>场景 1 — Lettuce Pipeline 压测问题排查与优化</strong><em>批量写入吞吐不升反降的现场还原：从现象到定位到调参</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF2-%E5%A4%A7%E7%BB%93%E6%9E%84Hash%E6%89%B9%E9%87%8F%E5%86%99%E5%85%A5.html"><span class="step-no">05</span><span class="step-body"><strong>场景 2 — 大结构 Hash 批量写入</strong><em>大 Hash 的批量写入策略，分片与批次的权衡</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF4-%E5%88%86%E5%B8%83%E5%BC%8F%E4%BF%A1%E5%8F%B7%E9%87%8F%E5%A4%9AWriter%E7%AB%9E%E4%BA%89Pipeline%E6%A7%BD%E4%BD%8D.html"><span class="step-no">06</span><span class="step-body"><strong>场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</strong><em>多 Writer 竞争下批量通道怎么分配才不打架</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF6-%E9%AB%98%E5%B9%B6%E5%8F%91%E5%A4%9A%E8%BF%9E%E6%8E%A5Pipeline-maxclients%E8%BE%B9%E7%95%8C%E6%8E%A2%E6%B5%8B.html"><span class="step-no">07</span><span class="step-body"><strong>场景 6: 高并发多连接 Pipeline — maxclients 边界探测</strong><em>连接数 × Pipeline 的组合拳，把 maxclients 边界探出来</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF8-1-%E7%83%AD%E7%82%B9Key%20Pipeline%E8%87%AA%E5%A2%9E.html"><span class="step-no">08</span><span class="step-body"><strong>场景 8: 热点 Key Pipeline INCR 自增</strong><em>热点 key 打爆单分片：Pipeline 合并写 + key 打散实测</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF8-2-Pipeline%20RTT%E6%95%8F%E6%84%9F%E5%BA%A6%E4%B8%8EWAIT.html"><span class="step-no">09</span><span class="step-body"><strong>场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化</strong><em>RTT 对批量收益的影响量化，WAIT 在什么场景值得开</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">3</span><div class="stage-tt"><h2>数据结构与访问模式</h2><p>同一个 key 用不同的姿势访问，性能差出一个数量级：编码转换、渐进遍历、集合运算。</p></div><span class="stage-cnt">3 站</span></div><ol class="path-list"><li><a href="deep/redis/%E5%9C%BA%E6%99%AF11-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81int-embstr-raw%E5%8E%8B%E6%B5%8B.html"><span class="step-no">10</span><span class="step-body"><strong>场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</strong><em>int / embstr / raw 的转换阈值与性能差异，内存预估不再失真</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF5-%E8%AF%BB%E5%86%99%E4%BA%89%E6%8A%A2HGETALL-vs-HSCAN%E5%85%A8%E7%BB%B4%E5%BA%A6%E9%AA%8C%E8%AF%81.html"><span class="step-no">11</span><span class="step-body"><strong>场景 5: 读写争抢 — HGETALL vs HSCAN 全维度验证</strong><em>HGETALL 的大 key 风险与 HSCAN 渐进遍历的全维度对比</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF9-%E9%9B%86%E5%90%88%E8%BF%90%E7%AE%97%E9%AB%98%E5%B9%B6%E5%8F%91%E5%8E%8B%E6%B5%8B%E9%AA%8C%E8%AF%81.html"><span class="step-no">12</span><span class="step-body"><strong>场景 9: 集合运算（合并/交集/差集）高并发压测</strong><em>SINTER/SUNION 这类集合运算在高并发下的真实成本</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">4</span><div class="stage-tt"><h2>过期与淘汰</h2><p>TTL 不是免费的：海量过期 key 灌入时，过期风暴怎么拖垮实例。</p></div><span class="stage-cnt">1 站</span></div><ol class="path-list"><li><a href="deep/redis/%E5%9C%BA%E6%99%AF3-%E7%9F%AD%E6%9C%9FTTL%E6%B5%B7%E9%87%8F%E8%BF%87%E6%9C%9Fkey%E6%8C%81%E7%BB%AD%E7%81%8C%E5%85%A5.html"><span class="step-no">13</span><span class="step-body"><strong>场景 3 — 短期 TTL 海量过期 key 持续灌入</strong><em>短期 TTL + 海量灌入的过期风暴实测，主动/被动过期的配合与治理</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">5</span><div class="stage-tt"><h2>集群与高可用</h2><p>从单机走向分布式：跨槽限制、哨兵与集群的写入选型。</p></div><span class="stage-cnt">2 站</span></div><ol class="path-list"><li><a href="deep/redis/%E5%9C%BA%E6%99%AF7-Cluster%E8%B7%A8%E6%A7%BDPipeline%E9%94%99%E8%AF%AF%E8%BD%B0%E7%82%B8.html"><span class="step-no">14</span><span class="step-body"><strong>场景 7: Cluster 跨槽 Pipeline 错误轰炸</strong><em>CROSSSLOT 错误轰炸的根因：CRC16 slot 分组与同槽合批的正确姿势</em></span><span class="arr">→</span></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html"><span class="step-no">15</span><span class="step-body"><strong>场景 10: 哨兵（Sentinel）vs 集群（Cluster）— 写入阶段选型压测</strong><em>写入阶段的哨兵 vs 集群选型依据，附实测数据</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-ref"><h2>附 · 随查手册（3 篇）</h2><p>不按顺序读：线上出问题时，这些是直接照着操作的手册。</p><ul class="ref-list"><li><a href="deep/redis/Redis%20%E9%AB%98%E5%B9%B6%E5%8F%91%E7%BC%93%E5%AD%98%E6%9E%B6%E6%9E%84%E5%AE%9E%E6%88%98%E6%89%8B%E5%86%8C.html"><strong>Redis 高并发缓存架构实战手册</strong><em>缓存架构全景手册：穿透/击穿/雪崩、一致性、热点治理的方案清单</em></a></li><li><a href="deep/redis/%E5%9C%BA%E6%99%AF1-11%E5%8E%8B%E6%B5%8B%E6%80%BB%E7%BB%93%E6%B1%87%E6%80%BB.html"><strong>Redis 高并发压测全场景总结（场景 1-11）</strong><em>全部 11 个压测场景的结论汇总，一页速查</em></a></li><li><a href="deep/redis/Redis%E5%8D%95%E4%BD%93%E5%B7%A5%E5%85%B7%E7%B1%BB%E4%BD%BF%E7%94%A8%E6%96%87%E6%A1%A3.html"><strong>Redis 单体工具类使用文档</strong><em>单体 Redis 工具类的使用说明与注意事项</em></a></li></ul></section>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="assets/js/nav.js?v=2"></script>
+  <script src="assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="about.html">关于</a> · <a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

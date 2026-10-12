@@ -75,3 +75,49 @@ MYSQL_REFERENCE = [
 ]
 
 MYSQL_ORDER = [stem for _, _, items in MYSQL_STAGES for stem, _ in items]
+
+
+# ============ Redis 学习线路 ============
+# 与 MySQL 线路同构：REDIS_STAGES 供线路页渲染，REDIS_ORDER 供文章页上一站/下一站导航。
+
+REDIS_STAGES = [
+    ("打底", "先建立全局图景：Redis 为什么这么快、架构怎么一步步演变、每种数据类型的底层结构。",
+     [
+         ("Redis架构演变过程", "从单机到主从、哨兵、集群，每一步演进解决什么问题、引入什么新代价"),
+         ("Redis数据类型原理", "SDS、跳表、listpack、skiplist……每种类型背后的结构选型依据"),
+         ("Redis数据类型具体使用场景", "String/Hash/List/Set/ZSet 各自的典型业务落点，选型不靠背"),
+     ]),
+    ("Pipeline 与网络往返", "Redis 的瓶颈往往不在计算而在 RTT：Pipeline 怎么用、什么时候反而不快、边界在哪。",
+     [
+         ("场景1-Lettuce-Pipeline压测问题排查与优化", "批量写入吞吐不升反降的现场还原：从现象到定位到调参"),
+         ("场景2-大结构Hash批量写入", "大 Hash 的批量写入策略，分片与批次的权衡"),
+         ("场景4-分布式信号量多Writer竞争Pipeline槽位", "多 Writer 竞争下批量通道怎么分配才不打架"),
+         ("场景6-高并发多连接Pipeline-maxclients边界探测", "连接数 × Pipeline 的组合拳，把 maxclients 边界探出来"),
+         ("场景8-1-热点Key Pipeline自增", "热点 key 打爆单分片：Pipeline 合并写 + key 打散实测"),
+         ("场景8-2-Pipeline RTT敏感度与WAIT", "RTT 对批量收益的影响量化，WAIT 在什么场景值得开"),
+     ]),
+    ("数据结构与访问模式", "同一个 key 用不同的姿势访问，性能差出一个数量级：编码转换、渐进遍历、集合运算。",
+     [
+         ("场景11-String三种编码int-embstr-raw压测", "int / embstr / raw 的转换阈值与性能差异，内存预估不再失真"),
+         ("场景5-读写争抢HGETALL-vs-HSCAN全维度验证", "HGETALL 的大 key 风险与 HSCAN 渐进遍历的全维度对比"),
+         ("场景9-集合运算高并发压测验证", "SINTER/SUNION 这类集合运算在高并发下的真实成本"),
+     ]),
+    ("过期与淘汰", "TTL 不是免费的：海量过期 key 灌入时，过期风暴怎么拖垮实例。",
+     [
+         ("场景3-短期TTL海量过期key持续灌入", "短期 TTL + 海量灌入的过期风暴实测，主动/被动过期的配合与治理"),
+     ]),
+    ("集群与高可用", "从单机走向分布式：跨槽限制、哨兵与集群的写入选型。",
+     [
+         ("场景7-Cluster跨槽Pipeline错误轰炸", "CROSSSLOT 错误轰炸的根因：CRC16 slot 分组与同槽合批的正确姿势"),
+         ("场景10-哨兵vs集群写入阶段选型", "写入阶段的哨兵 vs 集群选型依据，附实测数据"),
+     ]),
+]
+
+REDIS_ORDER = [stem for _, _, items in REDIS_STAGES for stem, _ in items]
+
+# 随查手册：不按顺序读，工作中直接翻
+REDIS_REFERENCE = [
+    ("Redis 高并发缓存架构实战手册", "缓存架构全景手册：穿透/击穿/雪崩、一致性、热点治理的方案清单"),
+    ("场景1-11压测总结汇总", "全部 11 个压测场景的结论汇总，一页速查"),
+    ("Redis单体工具类使用文档", "单体 Redis 工具类的使用说明与注意事项"),
+]

@@ -15,7 +15,7 @@ import urllib.parse
 import markdown
 from pygments.formatters import HtmlFormatter
 
-from path_data import MYSQL_ORDER
+from path_data import MYSQL_ORDER, REDIS_ORDER
 
 try:
     import yaml
@@ -401,16 +401,24 @@ def build_related_html(related, prefix):
     )
 
 
-def build_path_nav(idx, path_titles, prefix):
-    """MySQL 学习线路的上一站/下一站导航（idx 从 0 起）。"""
-    total = len(MYSQL_ORDER)
-    stem = MYSQL_ORDER[idx]
-    prev_stem = MYSQL_ORDER[idx - 1] if idx > 0 else None
-    next_stem = MYSQL_ORDER[idx + 1] if idx < total - 1 else None
+# 学习线路导航配置：目录 -> (ORDER, 线路页, 线路名)
+PATH_NAV_CONF = {
+    "deep/mysql": (MYSQL_ORDER, "mysql-path.html", "MySQL 学习线路"),
+    "deep/redis": (REDIS_ORDER, "redis-path.html", "Redis 学习线路"),
+}
+
+
+def build_path_nav(idx, path_titles, prefix, dir_key):
+    """学习线路的上一站/下一站导航（idx 从 0 起）。"""
+    order, path_page, path_label = PATH_NAV_CONF[dir_key]
+    total = len(order)
+    stem = order[idx]
+    prev_stem = order[idx - 1] if idx > 0 else None
+    next_stem = order[idx + 1] if idx < total - 1 else None
 
     def _link(stem_, cls, dir_txt, fallback):
-        t = path_titles.get("deep/mysql/" + stem_ + ".html", stem_)
-        href = prefix + "deep/mysql/" + urllib.parse.quote(stem_ + ".html")
+        t = path_titles.get(dir_key + "/" + stem_ + ".html", stem_)
+        href = prefix + dir_key + "/" + urllib.parse.quote(stem_ + ".html")
         return (f'<a class="{cls}" href="{href}">'
                 f'<span class="pn-dir">{dir_txt}</span>'
                 f'<span class="pn-title">{html.escape(t or fallback)}</span></a>')
@@ -418,18 +426,18 @@ def build_path_nav(idx, path_titles, prefix):
     if prev_stem:
         prev_html = _link(prev_stem, "pn-prev", "← 上一站", "上一站")
     else:
-        prev_html = (f'<a class="pn-prev pn-home" href="{prefix}mysql-path.html">'
+        prev_html = (f'<a class="pn-prev pn-home" href="{prefix}{path_page}">'
                      f'<span class="pn-dir">← 上一站</span>'
                      f'<span class="pn-title">线路总览</span></a>')
     if next_stem:
         next_html = _link(next_stem, "pn-next", "下一站 →", "下一站")
     else:
-        next_html = (f'<a class="pn-next pn-home" href="{prefix}mysql-path.html">'
+        next_html = (f'<a class="pn-next pn-home" href="{prefix}{path_page}">'
                      f'<span class="pn-dir">下一站 →</span>'
                      f'<span class="pn-title">回到线路总览</span></a>')
     return (
         '  <nav class="path-nav"><div class="wrap">'
-        f'<span class="pn-label">MySQL 学习线路 · 第 {idx + 1}/{total} 站</span>'
+        f'<span class="pn-label">{path_label} · 第 {idx + 1}/{total} 站</span>'
         f'<div class="pn-links">{prev_html}{next_html}</div>'
         '</div></nav>\n'
     )
@@ -493,9 +501,10 @@ def process_dir(rel_dir, active, back_label, catalog):
         desc = str(meta.get("summary") or "").strip() or f"{title} —— 小番茄程序猿的技术文章"
         related = find_related(catalog, rel_url, series, tags)
         pathnav = ""
-        if rel_dir == "deep/mysql" and fn[:-3] in MYSQL_ORDER:
+        conf = PATH_NAV_CONF.get(rel_dir)
+        if conf and fn[:-3] in conf[0]:
             path_titles = {e["rel_url"]: e["title"] for e in catalog}
-            pathnav = build_path_nav(MYSQL_ORDER.index(fn[:-3]), path_titles, prefix)
+            pathnav = build_path_nav(conf[0].index(fn[:-3]), path_titles, prefix, rel_dir)
         html_doc = build_html(
             prefix, title, body, active, back_href, back_label, toc, meta,
             canonical=SITE_BASE + rel_url,

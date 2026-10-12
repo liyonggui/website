@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>学习线路 · 小番茄程序猿</title>
-  <meta name="description" content="学习线路总览：把零散的技术文章按认知顺序串成线路，每一站回答「读完它能解决什么」。MySQL 线路 38 站已上线，Redis / ES / K8s 线路整理中。" />
+  <meta name="description" content="学习线路总览：把零散的技术文章按认知顺序串成线路，每一站回答「读完它能解决什么」。MySQL 线路 38 站、Redis 线路 15 站已上线，ES / K8s 线路整理中。" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="学习线路 · 小番茄程序猿" />
@@ -72,10 +72,25 @@
         </div>
 
         <div class="grid grid-3">
-          <div class="card" style="opacity:.65">
-            <h3>Redis 高并发线路</h3>
-            <p>编码与结构选型、Pipeline 边界、缓存一致性、哨兵与集群——11 个压测场景正在重新编排。</p>
-            <div class="more"><span class="tag gray">整理中</span></div>
+          <div class="card">
+            <div class="proj-top">
+              <h3>Redis 高并发线路</h3>
+              <span class="metric">15 站 + 3 篇随查手册</span>
+            </div>
+            <p>
+              从架构演变与数据类型原理到生产实战：Pipeline 边界、编码转换、大 key 访问模式、
+              过期风暴、Cluster 跨槽与哨兵/集群选型——全部 18 篇 Redis 文章串成一条线。
+            </p>
+            <div class="tag-row">
+              <span class="tag gray">打底 3 站</span>
+              <span class="tag gray">Pipeline 与网络往返 6 站</span>
+              <span class="tag gray">数据结构与访问模式 3 站</span>
+              <span class="tag gray">过期与淘汰 1 站</span>
+              <span class="tag gray">集群与高可用 2 站</span>
+            </div>
+            <div class="more" style="margin-top:var(--s3)">
+              <a class="btn btn-primary" href="redis-path.html">进入线路 <span class="arr">→</span></a>
+            </div>
           </div>
           <div class="card" style="opacity:.65">
             <h3>Elasticsearch 线路</h3>

@@ -180,7 +180,8 @@ def build_rss(records):
 
 STATIC_PAGES = [
     ("", "1.0"), ("projects.html", "0.9"), ("about.html", "0.7"),
-    ("blog.html", "0.8"), ("deep.html", "0.9"), ("learn.html", "0.9"), ("mysql-path.html", "0.8"),
+    ("blog.html", "0.8"), ("deep.html", "0.9"), ("learn.html", "0.9"),
+    ("mysql-path.html", "0.8"), ("redis-path.html", "0.8"),
     ("tags.html", "0.5"), ("archives.html", "0.5"), ("search.html", "0.5"),
 ]
 
