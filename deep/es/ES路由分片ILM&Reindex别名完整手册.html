@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册 · 小番茄程序猿</title>
+<title>ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册） · 小番茄程序猿</title>
 <meta name="description" content="1. 索引/分片/节点层级基础关系 2. 路由寻址原理 &amp; MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…"/>
 <meta name="keywords" content="Elasticsearch, 分库分表, ILM, es"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册 · 小番茄程序猿" />
+<meta property="og:title" content="ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册） · 小番茄程序猿" />
 <meta property="og:description" content="1. 索引/分片/节点层级基础关系 2. 路由寻址原理 &amp; MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册", "description": "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…", "url": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-01", "keywords": "Elasticsearch, 分库分表, ILM, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册）", "description": "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…", "url": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-01", "keywords": "Elasticsearch, 分库分表, ILM, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</h1>
+    <h1>ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册）</h1>
 <div class="meta-row"><span class="m-item">2026-08-01</span><span class="m-item">es 系列</span><span class="m-item">约 33 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a><a class="m-tag" href="../../tags.html?t=ILM">ILM</a></span></div><div class="doc-role"><span class="role-badge r-main">主文</span><span class="role-note">Reindex + 别名的双写与原子切换，完整方案手册。</span></div>
   </div>
   <div class="article-layout">
@@ -712,15 +712,15 @@ ctx._routing = ctx._source.province + "_" + suffix;
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">ES 学习线路 · 第 8/9 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E9%92%88%E5%AF%B9%20ES%207.2%20%E7%9A%84%E5%90%88%E5%B9%B6%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html"><span class="pn-dir">← 上一站</span><span class="pn-title">ILM 全面实操手册（针对 ES 7.2 的合并修订版）</span></a><a class="pn-next" href="../../deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87%2BILM%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2BReindex%E9%87%8D%E6%9E%84%2B%E5%88%AB%E5%90%8D%2BRollover%E6%97%B6%E5%BA%8F%E7%B4%A2%E5%BC%95%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C.html"><span class="pn-dir">下一站 →</span><span class="pn-title">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">ES 学习线路 · 第 8/9 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E9%92%88%E5%AF%B9%20ES%207.2%20%E7%9A%84%E5%90%88%E5%B9%B6%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html"><span class="pn-dir">← 上一站</span><span class="pn-title">ILM 全面实操手册（针对 ES 7.2 的合并修订版）</span></a><a class="pn-next" href="../../deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87%2BILM%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2BReindex%E9%87%8D%E6%9E%84%2B%E5%88%AB%E5%90%8D%2BRollover%E6%97%B6%E5%BA%8F%E7%B4%A2%E5%BC%95%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C.html"><span class="pn-dir">下一站 →</span><span class="pn-title">ES 路由分片 · ILM 冷热分层 · Reindex 重构 · 别名 · Rollover 时序索引（整合手册）</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES_分片ILM_完整终版手册-3.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES 路由分片 · ILM 冷热分层 · Reindex 重构 · 别名 · Rollover 时序索引（整合手册）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES_分片ILM_完整终版手册-3.html"><span class="rel-title">ES 路由 · 分片 · ILM · Reindex · 别名 · Rollover · 反向回流（终版汇总）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">ES 分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ILM 全面实操手册（针对 ES 7.2 的合并修订版）.html"><span class="rel-title">ILM 全面实操手册（针对 ES 7.2 的合并修订版）</span><span class="rel-meta">es 系列</span></a></li>
         <li><a href="../../deep/es/ILM 全面实操手册（修订版）.html"><span class="rel-title">ILM 全面实操手册（修订版）</span><span class="rel-meta">es 系列</span></a></li>
       </ul>

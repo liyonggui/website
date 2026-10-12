@@ -1,5 +1,5 @@
 ---
-title: "场景 6: 高并发多连接 Pipeline — maxclients 边界探测"
+title: "场景 6 · 高并发多连接 Pipeline — maxclients 边界探测"
 summary: "生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …"
 date: 2026-07-02
 author: "小番茄程序猿"

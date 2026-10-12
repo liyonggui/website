@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>场景15：MySQL 高可用（主从切换 / 故障演练） · 小番茄程序猿</title>
+<title>场景 15 · MySQL 高可用（主从切换 / 故障演练） · 小番茄程序猿</title>
 <meta name="description" content="单点 MySQL 一旦故障，整个服务不可用。高可用（HA） 的核心是：故障时能快速探测 + 自动切换，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓…"/>
 <meta name="keywords" content="MySQL, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景15-MySQL高可用.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="场景15：MySQL 高可用（主从切换 / 故障演练） · 小番茄程序猿" />
+<meta property="og:title" content="场景 15 · MySQL 高可用（主从切换 / 故障演练） · 小番茄程序猿" />
 <meta property="og:description" content="单点 MySQL 一旦故障，整个服务不可用。高可用（HA） 的核心是：故障时能快速探测 + 自动切换，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景15-MySQL高可用.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景15：MySQL 高可用（主从切换 / 故障演练）", "description": "单点 MySQL 一旦故障，整个服务不可用。高可用（HA） 的核心是：故障时能快速探测 + 自动切换，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓…", "url": "https://liyonggui.github.io/website/deep/mysql/场景15-MySQL高可用.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景15-MySQL高可用.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-29", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 15 · MySQL 高可用（主从切换 / 故障演练）", "description": "单点 MySQL 一旦故障，整个服务不可用。高可用（HA） 的核心是：故障时能快速探测 + 自动切换，让从库接替主库继续服务。本项目基于主库(3306) + 从库(3307)复制拓…", "url": "https://liyonggui.github.io/website/deep/mysql/场景15-MySQL高可用.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景15-MySQL高可用.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-29", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>场景15：MySQL 高可用（主从切换 / 故障演练）</h1>
+    <h1>场景 15 · MySQL 高可用（主从切换 / 故障演练）</h1>
 <div class="meta-row"><span class="m-item">2026-03-29</span><span class="m-item">mysql 系列</span><span class="m-item">约 8 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div><div class="doc-role"><span class="role-badge r-main">场景实测 · 主文</span><span class="role-note">单场景完整链路：问题 → 排查 → 修复 → 实测数据。</span></div>
   </div>
   <div class="article-layout">
@@ -245,17 +245,17 @@ replica: server_id=2, read_only=1, version=8.4.9
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 27/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E5%9C%BA%E6%99%AF7-%E5%88%86%E5%BA%93%E5%88%86%E8%A1%A8.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景7：分库分表（应用层水平分表）</span></a><a class="pn-next" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html"><span class="pn-dir">下一站 →</span><span class="pn-title">补测B1：备份恢复（binlog PITR / 误删误更新恢复）</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 27/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E5%9C%BA%E6%99%AF7-%E5%88%86%E5%BA%93%E5%88%86%E8%A1%A8.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景 7 · 分库分表（应用层水平分表）</span></a><a class="pn-next" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB1-%E5%A4%87%E4%BB%BD%E6%81%A2%E5%A4%8D.html"><span class="pn-dir">下一站 →</span><span class="pn-title">补测 B1 · 备份恢复（binlog PITR / 误删误更新恢复）</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/mysql/连接层参数详细辨析.html"><span class="rel-title">MySQL 连接层参数详细辨析</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测B9：连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测B8：容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测B7：统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测 B9 · 连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测 B8 · 容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测 B7 · 统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测 B6 · 深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

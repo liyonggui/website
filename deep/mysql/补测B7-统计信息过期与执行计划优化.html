@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>补测B7：统计信息过期与执行计划优化 · 小番茄程序猿</title>
+<title>补测 B7 · 统计信息过期与执行计划优化 · 小番茄程序猿</title>
 <meta name="description" content="优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…"/>
 <meta name="keywords" content="MySQL, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="补测B7：统计信息过期与执行计划优化 · 小番茄程序猿" />
+<meta property="og:title" content="补测 B7 · 统计信息过期与执行计划优化 · 小番茄程序猿" />
 <meta property="og:description" content="优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测B7：统计信息过期与执行计划优化", "description": "优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…", "url": "https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-22", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测 B7 · 统计信息过期与执行计划优化", "description": "优化器依赖统计信息选索引。数据量突变/统计信息过期时，优化器可能选错索引（type=ALL 全表扫）或 rows 严重高估，SQL 突然变慢。特别是高度倾斜数据（一个值占绝大部分）…", "url": "https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B7-统计信息过期与执行计划优化.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-22", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>补测B7：统计信息过期与执行计划优化</h1>
+    <h1>补测 B7 · 统计信息过期与执行计划优化</h1>
 <div class="meta-row"><span class="m-item">2026-05-22</span><span class="m-item">mysql 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div><div class="doc-role"><span class="role-badge r-sup">补充实测</span><span class="role-note">对主线场景的边界补强，独立成篇可单独读。</span></div>
   </div>
   <div class="article-layout">
@@ -138,17 +138,17 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/plan/status"
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 13/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景14：慢查询定位与优化闭环</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 13/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB6-%E6%B7%B1%E5%88%86%E9%A1%B5%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测 B6 · 深分页查询优化（LIMIT 深翻页 / 游标分页）</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景 14 · 慢查询定位与优化闭环</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/mysql/连接层参数详细辨析.html"><span class="rel-title">MySQL 连接层参数详细辨析</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测B9：连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测B8：容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B5-连接耗尽治理.html"><span class="rel-title">补测B5：连接耗尽治理（max_connections 打满）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测 B9 · 连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测 B8 · 容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测 B6 · 深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B5-连接耗尽治理.html"><span class="rel-title">补测 B5 · 连接耗尽治理（max_connections 打满）</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

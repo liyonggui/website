@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用） · 小番茄程序猿</title>
+<title>ES 路由机制 · 分片分配 · 冷热分层 · 故障排障（整合手册 · 生产通用） · 小番茄程序猿</title>
 <meta name="description" content="本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…"/>
 <meta name="keywords" content="Elasticsearch, 分库分表, es"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用） · 小番茄程序猿" />
+<meta property="og:title" content="ES 路由机制 · 分片分配 · 冷热分层 · 故障排障（整合手册 · 生产通用） · 小番茄程序猿" />
 <meta property="og:description" content="本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）", "description": "本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…", "url": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-04", "keywords": "Elasticsearch, 分库分表, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 路由机制 · 分片分配 · 冷热分层 · 故障排障（整合手册 · 生产通用）", "description": "本文打通ES文档路由寻址、哈希算法、分片倾斜治理、冷热分层、分片节点分配、线上故障排障全链路，同时联动MySQL分库分表、Redis/Kafka分片通用思想，区分两大核心倾斜：路由…", "url": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-04", "keywords": "Elasticsearch, 分库分表, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）</h1>
+    <h1>ES 路由机制 · 分片分配 · 冷热分层 · 故障排障（整合手册 · 生产通用）</h1>
 <div class="meta-row"><span class="m-item">2026-08-04</span><span class="m-item">es 系列</span><span class="m-item">约 17 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a></span></div><div class="doc-role"><span class="role-badge r-ref">生产整合</span><span class="role-note">路由 / ILM / Reindex / 别名 / Rollover 的全景整合，生产通用入口。</span></div>
   </div>
   <div class="article-layout">
@@ -474,11 +474,11 @@
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html"><span class="rel-title">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES_分片ILM_完整终版手册-3.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">ES 分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html"><span class="rel-title">ES 路由机制与 MurmurHash3 · 分片倾斜全套（生产落地）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES 路由分片 · ILM 冷热分层 · Reindex 重构 · 别名 · Rollover 时序索引（整合手册）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES_分片ILM_完整终版手册-3.html"><span class="rel-title">ES 路由 · 分片 · ILM · Reindex · 别名 · Rollover · 反向回流（终版汇总）</span><span class="rel-meta">es 系列</span></a></li>
       </ul>
     </div>
   </section>

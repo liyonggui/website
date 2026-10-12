@@ -1,5 +1,5 @@
 ---
-title: "phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）"
+title: "Phase 4 · 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）"
 summary: "配套：AI-Agent新手教学.md 第 7 课。代码在 phase4-agent-ops 模块。 > 一句话：把 LLM 当不靠谱下游服务，用后…"
 date: 2026-09-22
 author: "小番茄程序猿"

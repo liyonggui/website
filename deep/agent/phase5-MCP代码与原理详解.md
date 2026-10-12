@@ -1,5 +1,5 @@
 ---
-title: "phase5 MCP 代码与原理详解（server + client · 含失控案例）"
+title: "Phase 5 · MCP 代码与原理详解（server + client · 含失控案例）"
 summary: "配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 phase5-mcp-server 与 phase5-mcp-cli…"
 date: 2026-09-23
 author: "小番茄程序猿"

@@ -1,5 +1,5 @@
 ---
-title: "phase1-minimal-agent"
+title: "AI Agent 项目总览：六个 Phase 的全景地图"
 summary: "阶段 1 骨架：Spring Boot + Spring AI Alibaba（DashScope / 通义千问）最小 Agent 循环。 目的不是做产品，是亲手把「模型 → 选工…"
 date: 2026-10-05
 author: "小番茄程序猿"

@@ -1,5 +1,5 @@
 ---
-title: "场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测"
+title: "场景 4 · 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测"
 summary: "问题: 单服务压测最优 8 个 pipeline 槽位，生产 12 个 Java 服务同时写 Redis。 如果每服务 8 个 pipeline → 96 个并发管道，超出 Red…"
 date: 2026-06-21
 author: "小番茄程序猿"

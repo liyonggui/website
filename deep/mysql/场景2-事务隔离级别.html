@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>场景2：事务隔离级别（脏读 / 不可重复读 / 幻读） · 小番茄程序猿</title>
+<title>场景 2 · 事务隔离级别（脏读 / 不可重复读 / 幻读） · 小番茄程序猿</title>
 <meta name="description" content="MySQL 并发事务访问同一数据时，不同隔离级别决定是否出现脏读、不可重复读、幻读。生产环境常因错误设置隔离级别或对现象理解不清，导致数据一致性问题或性能下降。"/>
 <meta name="keywords" content="MySQL, 事务, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景2-事务隔离级别.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="场景2：事务隔离级别（脏读 / 不可重复读 / 幻读） · 小番茄程序猿" />
+<meta property="og:title" content="场景 2 · 事务隔离级别（脏读 / 不可重复读 / 幻读） · 小番茄程序猿" />
 <meta property="og:description" content="MySQL 并发事务访问同一数据时，不同隔离级别决定是否出现脏读、不可重复读、幻读。生产环境常因错误设置隔离级别或对现象理解不清，导致数据一致性问题或性能下降。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景2-事务隔离级别.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）", "description": "MySQL 并发事务访问同一数据时，不同隔离级别决定是否出现脏读、不可重复读、幻读。生产环境常因错误设置隔离级别或对现象理解不清，导致数据一致性问题或性能下降。", "url": "https://liyonggui.github.io/website/deep/mysql/场景2-事务隔离级别.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景2-事务隔离级别.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-03", "keywords": "MySQL, 事务, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 2 · 事务隔离级别（脏读 / 不可重复读 / 幻读）", "description": "MySQL 并发事务访问同一数据时，不同隔离级别决定是否出现脏读、不可重复读、幻读。生产环境常因错误设置隔离级别或对现象理解不清，导致数据一致性问题或性能下降。", "url": "https://liyonggui.github.io/website/deep/mysql/场景2-事务隔离级别.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景2-事务隔离级别.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-03", "keywords": "MySQL, 事务, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>场景2：事务隔离级别（脏读 / 不可重复读 / 幻读）</h1>
+    <h1>场景 2 · 事务隔离级别（脏读 / 不可重复读 / 幻读）</h1>
 <div class="meta-row"><span class="m-item">2026-04-03</span><span class="m-item">mysql 系列</span><span class="m-item">约 7 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=事务">事务</a></span></div><div class="doc-role"><span class="role-badge r-main">场景实测 · 主文</span><span class="role-note">单场景完整链路：问题 → 排查 → 修复 → 实测数据。</span></div>
   </div>
   <div class="article-layout">
@@ -268,13 +268,13 @@
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 4/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/MySQL%E6%A0%B8%E5%BF%83%E8%A6%81%E7%82%B9%E4%B8%8E%E8%84%91%E5%9B%BE%E9%80%9F%E8%AE%B0.html"><span class="pn-dir">← 上一站</span><span class="pn-title">MySQL 核心要点 &amp; 脑图速记</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景9：InnoDB 并发控制（MVCC 多版本并发控制）</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 4/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/MySQL%E6%A0%B8%E5%BF%83%E8%A6%81%E7%82%B9%E4%B8%8E%E8%84%91%E5%9B%BE%E9%80%9F%E8%AE%B0.html"><span class="pn-dir">← 上一站</span><span class="pn-title">MySQL 核心要点 &amp; 脑图速记</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景 9 · InnoDB 并发控制（MVCC 多版本并发控制）</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/mysql/场景9-InnoDB并发控制MVCC.html"><span class="rel-title">场景9：InnoDB 并发控制（MVCC 多版本并发控制）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景9-InnoDB并发控制MVCC.html"><span class="rel-title">场景 9 · InnoDB 并发控制（MVCC 多版本并发控制）</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL原理篇.html"><span class="rel-title">MySQL 原理篇：架构 · InnoDB · 索引 · 事务 · 锁 · 复制</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL-事务与锁排查治理手册.html"><span class="rel-title">MySQL（InnoDB）事务与锁排查治理手册</span><span class="rel-meta">mysql 系列</span></a></li>

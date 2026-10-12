@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>补测B12：死锁后的应用重试机制 · 小番茄程序猿</title>
+<title>补测 B12 · 死锁后的应用重试机制 · 小番茄程序猿</title>
 <meta name="description" content="死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。"/>
 <meta name="keywords" content="MySQL, 锁, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="补测B12：死锁后的应用重试机制 · 小番茄程序猿" />
+<meta property="og:title" content="补测 B12 · 死锁后的应用重试机制 · 小番茄程序猿" />
 <meta property="og:description" content="死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测B12：死锁后的应用重试机制", "description": "死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。", "url": "https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-10", "keywords": "MySQL, 锁, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测 B12 · 死锁后的应用重试机制", "description": "死锁（错误码 1213）时 InnoDB 会回滚一个事务，业务不处理则请求失败。高并发下死锁/锁等待是正常现象，应用需捕获 1213/1205 + 自动重试，否则业务失败率高。", "url": "https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B12-死锁后的应用重试机制.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-10", "keywords": "MySQL, 锁, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>补测B12：死锁后的应用重试机制</h1>
+    <h1>补测 B12 · 死锁后的应用重试机制</h1>
 <div class="meta-row"><span class="m-item">2026-05-10</span><span class="m-item">mysql 系列</span><span class="m-item">约 4 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=锁">锁</a></span></div><div class="doc-role"><span class="role-badge r-sup">补充实测</span><span class="role-note">对主线场景的边界补强，独立成篇可单独读。</span></div>
   </div>
   <div class="article-layout">
@@ -139,17 +139,17 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/retry/status
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 37/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测B4：SQL 注入与安全治理</span></a><a class="pn-next" href="../../deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html"><span class="pn-dir">下一站 →</span><span class="pn-title">数据同步工具对比：mysqldump / DataX / Flink CDC</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 37/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB4-SQL%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%AE%89%E5%85%A8%E6%B2%BB%E7%90%86.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测 B4 · SQL 注入与安全治理</span></a><a class="pn-next" href="../../deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html"><span class="pn-dir">下一站 →</span><span class="pn-title">数据同步工具对比：mysqldump / DataX / Flink CDC</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/mysql/补测B3-热点行锁治理.html"><span class="rel-title">补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景4-间隙锁与Next-KeyLock.html"><span class="rel-title">场景4：间隙锁 / Next-Key Lock</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景4-锁的工程实践与选型.html"><span class="rel-title">场景4：锁的工程实践、选型与规避（开发视角）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景4-补强-InnoDB锁完整体系.html"><span class="rel-title">场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景3-悲观锁vs乐观锁.html"><span class="rel-title">场景3：悲观锁 vs 乐观锁</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B3-热点行锁治理.html"><span class="rel-title">补测 B3 · 热点行锁治理（Redis 缓存前置 / 分段锁）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-间隙锁与Next-KeyLock.html"><span class="rel-title">场景 4 · 间隙锁 / Next-Key Lock</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-锁的工程实践与选型.html"><span class="rel-title">场景 4 · 锁的工程实践、选型与规避（开发视角）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-补强-InnoDB锁完整体系.html"><span class="rel-title">场景 4 补强 · InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景3-悲观锁vs乐观锁.html"><span class="rel-title">场景 3 · 悲观锁 vs 乐观锁</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

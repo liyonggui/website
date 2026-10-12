@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>场景13：InnoDB 参数调优对吞吐的影响 · 小番茄程序猿</title>
+<title>场景 13 · InnoDB 参数调优对吞吐的影响 · 小番茄程序猿</title>
 <meta name="description" content="InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用&quot;强持久性&quot;配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…"/>
 <meta name="keywords" content="MySQL, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="场景13：InnoDB 参数调优对吞吐的影响 · 小番茄程序猿" />
+<meta property="og:title" content="场景 13 · InnoDB 参数调优对吞吐的影响 · 小番茄程序猿" />
 <meta property="og:description" content="InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用&quot;强持久性&quot;配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景13：InnoDB 参数调优对吞吐的影响", "description": "InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用\"强持久性\"配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…", "url": "https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-27", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 13 · InnoDB 参数调优对吞吐的影响", "description": "InnoDB 的关键参数直接影响写入/读取吞吐。数据库默认采用\"强持久性\"配置：每次事务提交都执行 fsync 刷盘，保证崩溃不丢数据，但牺牲写入性能。调优的本质是「性能 vs 持…", "url": "https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景13-InnoDB参数调优.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-27", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>场景13：InnoDB 参数调优对吞吐的影响</h1>
+    <h1>场景 13 · InnoDB 参数调优对吞吐的影响</h1>
 <div class="meta-row"><span class="m-item">2026-03-27</span><span class="m-item">mysql 系列</span><span class="m-item">约 7 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div><div class="doc-role"><span class="role-badge r-main">场景实测 · 主文</span><span class="role-note">单场景完整链路：问题 → 排查 → 修复 → 实测数据。</span></div>
   </div>
   <div class="article-layout">
@@ -184,17 +184,17 @@ curl<span class="w"> </span><span class="s2">"http://localhost:8080/innodb-tunin
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 19/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测B9：连接泄漏与长连接治理</span></a><a class="pn-next" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html"><span class="pn-dir">下一站 →</span><span class="pn-title">补测B8：容量规划与压测上限评估</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 19/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测 B9 · 连接泄漏与长连接治理</span></a><a class="pn-next" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB8-%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92%E4%B8%8E%E5%8E%8B%E6%B5%8B%E4%B8%8A%E9%99%90%E8%AF%84%E4%BC%B0.html"><span class="pn-dir">下一站 →</span><span class="pn-title">补测 B8 · 容量规划与压测上限评估</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/mysql/连接层参数详细辨析.html"><span class="rel-title">MySQL 连接层参数详细辨析</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测B9：连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测B8：容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测B7：统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测 B9 · 连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测 B8 · 容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测 B7 · 统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测 B6 · 深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

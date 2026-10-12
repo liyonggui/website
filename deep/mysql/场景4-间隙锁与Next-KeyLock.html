@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>场景4：间隙锁 / Next-Key Lock · 小番茄程序猿</title>
+<title>场景 4 · 间隙锁 / Next-Key Lock · 小番茄程序猿</title>
 <meta name="description" content="InnoDB 在 REPEATABLE READ 隔离级别下，通过间隙锁（Gap Lock）和 Next-Key Lock 防止幻读，但也因此引入了锁范围扩大与间隙锁死锁等并发问题…"/>
 <meta name="keywords" content="MySQL, 锁, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景4-间隙锁与Next-KeyLock.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="场景4：间隙锁 / Next-Key Lock · 小番茄程序猿" />
+<meta property="og:title" content="场景 4 · 间隙锁 / Next-Key Lock · 小番茄程序猿" />
 <meta property="og:description" content="InnoDB 在 REPEATABLE READ 隔离级别下，通过间隙锁（Gap Lock）和 Next-Key Lock 防止幻读，但也因此引入了锁范围扩大与间隙锁死锁等并发问题…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景4-间隙锁与Next-KeyLock.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景4：间隙锁 / Next-Key Lock", "description": "InnoDB 在 REPEATABLE READ 隔离级别下，通过间隙锁（Gap Lock）和 Next-Key Lock 防止幻读，但也因此引入了锁范围扩大与间隙锁死锁等并发问题…", "url": "https://liyonggui.github.io/website/deep/mysql/场景4-间隙锁与Next-KeyLock.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景4-间隙锁与Next-KeyLock.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-14", "keywords": "MySQL, 锁, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 4 · 间隙锁 / Next-Key Lock", "description": "InnoDB 在 REPEATABLE READ 隔离级别下，通过间隙锁（Gap Lock）和 Next-Key Lock 防止幻读，但也因此引入了锁范围扩大与间隙锁死锁等并发问题…", "url": "https://liyonggui.github.io/website/deep/mysql/场景4-间隙锁与Next-KeyLock.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景4-间隙锁与Next-KeyLock.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-14", "keywords": "MySQL, 锁, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>场景4：间隙锁 / Next-Key Lock</h1>
+    <h1>场景 4 · 间隙锁 / Next-Key Lock</h1>
 <div class="meta-row"><span class="m-item">2026-04-14</span><span class="m-item">mysql 系列</span><span class="m-item">约 5 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=锁">锁</a></span></div><div class="doc-role"><span class="role-badge r-sup">专题辨析</span><span class="role-note">只解决「间隙锁 / Next-Key Lock」这一个边界机制。</span></div>
   </div>
   <div class="article-layout">
@@ -163,17 +163,17 @@ RECORD, X,REC_NOT_GAP   记录锁 ×3（A 的 3 条记录）
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 9/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E5%9C%BA%E6%99%AF4-%E8%A1%A5%E5%BC%BA-InnoDB%E9%94%81%E5%AE%8C%E6%95%B4%E4%BD%93%E7%B3%BB.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF18-%E9%94%81%E7%AD%89%E5%BE%85%E4%B8%8E%E6%AD%BB%E9%94%81%E7%9B%91%E6%8E%A7%E6%B2%BB%E7%90%86.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景18：锁等待与死锁监控治理</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 9/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E5%9C%BA%E6%99%AF4-%E8%A1%A5%E5%BC%BA-InnoDB%E9%94%81%E5%AE%8C%E6%95%B4%E4%BD%93%E7%B3%BB.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景 4 补强 · InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF18-%E9%94%81%E7%AD%89%E5%BE%85%E4%B8%8E%E6%AD%BB%E9%94%81%E7%9B%91%E6%8E%A7%E6%B2%BB%E7%90%86.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景 18 · 锁等待与死锁监控治理</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/mysql/补测B3-热点行锁治理.html"><span class="rel-title">补测B3：热点行锁治理（Redis 缓存前置 / 分段锁）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B12-死锁后的应用重试机制.html"><span class="rel-title">补测B12：死锁后的应用重试机制</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景4-锁的工程实践与选型.html"><span class="rel-title">场景4：锁的工程实践、选型与规避（开发视角）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景4-补强-InnoDB锁完整体系.html"><span class="rel-title">场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/场景3-悲观锁vs乐观锁.html"><span class="rel-title">场景3：悲观锁 vs 乐观锁</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B3-热点行锁治理.html"><span class="rel-title">补测 B3 · 热点行锁治理（Redis 缓存前置 / 分段锁）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B12-死锁后的应用重试机制.html"><span class="rel-title">补测 B12 · 死锁后的应用重试机制</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-锁的工程实践与选型.html"><span class="rel-title">场景 4 · 锁的工程实践、选型与规避（开发视角）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景4-补强-InnoDB锁完整体系.html"><span class="rel-title">场景 4 补强 · InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/场景3-悲观锁vs乐观锁.html"><span class="rel-title">场景 3 · 悲观锁 vs 乐观锁</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

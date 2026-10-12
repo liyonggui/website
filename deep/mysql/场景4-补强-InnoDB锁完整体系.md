@@ -1,5 +1,5 @@
 ---
-title: "场景4 补强：InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）"
+title: "场景 4 补强 · InnoDB 锁完整体系（S/X锁、意向锁、插入意向锁等）"
 summary: "在\"间隙锁 / Next-Key Lock\"基础上，补齐 InnoDB 锁体系的其余核心技术点。所有演示基于 tgaplock 表。"
 date: 2026-04-08
 author: "小番茄程序猿"

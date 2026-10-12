@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化 · 小番茄程序猿</title>
+<title>场景 8.15 · Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化 · 小番茄程序猿</title>
 <meta name="description" content="场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT &lt; 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…"/>
 <meta name="keywords" content="Redis, 缓存, redis"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化 · 小番茄程序猿" />
+<meta property="og:title" content="场景 8.15 · Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化 · 小番茄程序猿" />
 <meta property="og:description" content="场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT &lt; 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化", "description": "场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT \u003c 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…", "url": "https://liyonggui.github.io/website/deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-09", "keywords": "Redis, 缓存, redis"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 8.15 · Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化", "description": "场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT \u003c 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…", "url": "https://liyonggui.github.io/website/deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景8-2-Pipeline RTT敏感度与WAIT.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-09", "keywords": "Redis, 缓存, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化</h1>
+    <h1>场景 8.15 · Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化</h1>
 <div class="meta-row"><span class="m-item">2026-07-09</span><span class="m-item">redis 系列</span><span class="m-item">约 117 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Redis">Redis</a><a class="m-tag" href="../../tags.html?t=缓存">缓存</a></span></div>
   </div>
   <div class="article-layout">
@@ -2724,16 +2724,16 @@ RAW:    Pipeline 中 batchSize 个独立 INCRBY（零脚本，基线对比）
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">Redis 学习线路 · 第 9/15 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/redis/%E5%9C%BA%E6%99%AF8-1-%E7%83%AD%E7%82%B9Key%20Pipeline%E8%87%AA%E5%A2%9E.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景 8: 热点 Key Pipeline INCR 自增</span></a><a class="pn-next" href="../../deep/redis/%E5%9C%BA%E6%99%AF11-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81int-embstr-raw%E5%8E%8B%E6%B5%8B.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景 11：Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">Redis 学习线路 · 第 9/15 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/redis/%E5%9C%BA%E6%99%AF8-1-%E7%83%AD%E7%82%B9Key%20Pipeline%E8%87%AA%E5%A2%9E.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景 8 · 热点 Key Pipeline INCR 自增</span></a><a class="pn-next" href="../../deep/redis/%E5%9C%BA%E6%99%AF11-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81int-embstr-raw%E5%8E%8B%E6%B5%8B.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景 11 · Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/redis/场景8-1-热点Key Pipeline自增.html"><span class="rel-title">场景 8: 热点 Key Pipeline INCR 自增</span><span class="rel-meta">redis 系列</span></a></li>
-        <li><a href="../../deep/redis/场景7-Cluster跨槽Pipeline错误轰炸.html"><span class="rel-title">场景 7: Cluster 跨槽 Pipeline 错误轰炸</span><span class="rel-meta">redis 系列</span></a></li>
-        <li><a href="../../deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html"><span class="rel-title">场景 6: 高并发多连接 Pipeline — maxclients 边界探测</span><span class="rel-meta">redis 系列</span></a></li>
-        <li><a href="../../deep/redis/场景4-分布式信号量多Writer竞争Pipeline槽位.html"><span class="rel-title">场景 4: 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景8-1-热点Key Pipeline自增.html"><span class="rel-title">场景 8 · 热点 Key Pipeline INCR 自增</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景7-Cluster跨槽Pipeline错误轰炸.html"><span class="rel-title">场景 7 · Cluster 跨槽 Pipeline 错误轰炸</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html"><span class="rel-title">场景 6 · 高并发多连接 Pipeline — maxclients 边界探测</span><span class="rel-meta">redis 系列</span></a></li>
+        <li><a href="../../deep/redis/场景4-分布式信号量多Writer竞争Pipeline槽位.html"><span class="rel-title">场景 4 · 分布式信号量 — 多 Writer 竞争全局 Pipeline 槽位最优值探测</span><span class="rel-meta">redis 系列</span></a></li>
         <li><a href="../../deep/redis/场景1-Lettuce-Pipeline压测问题排查与优化.html"><span class="rel-title">场景 1 — Lettuce Pipeline 压测问题排查与优化</span><span class="rel-meta">redis 系列</span></a></li>
       </ul>
     </div>

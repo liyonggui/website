@@ -1,5 +1,5 @@
 ---
-title: "Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档"
+title: "ES 路由 · 分片 · ILM · Reindex · 别名 · Rollover · 反向回流（终版汇总）"
 summary: "（生产即用）"
 date: 2026-07-27
 author: "小番茄程序猿"

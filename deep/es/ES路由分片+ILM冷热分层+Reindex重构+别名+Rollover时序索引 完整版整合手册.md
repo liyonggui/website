@@ -1,5 +1,5 @@
 ---
-title: "ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册"
+title: "ES 路由分片 · ILM 冷热分层 · Reindex 重构 · 别名 · Rollover 时序索引（整合手册）"
 summary: "1. 索引/分片/节点层级基础关系"
 date: 2026-07-31
 author: "小番茄程序猿"

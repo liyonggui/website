@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Elasticsearch 分片节点分配算法 超详细详解 · 小番茄程序猿</title>
+<title>Elasticsearch 分片节点分配算法详解 · 小番茄程序猿</title>
 <meta name="description" content="覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。"/>
 <meta name="keywords" content="Elasticsearch, 分库分表, es"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="Elasticsearch 分片节点分配算法 超详细详解 · 小番茄程序猿" />
+<meta property="og:title" content="Elasticsearch 分片节点分配算法详解 · 小番茄程序猿" />
 <meta property="og:description" content="覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Elasticsearch 分片节点分配算法 超详细详解", "description": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。", "url": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-13", "keywords": "Elasticsearch, 分库分表, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Elasticsearch 分片节点分配算法详解", "description": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。", "url": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-13", "keywords": "Elasticsearch, 分库分表, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>Elasticsearch 分片节点分配算法 超详细详解</h1>
+    <h1>Elasticsearch 分片节点分配算法详解</h1>
 <div class="meta-row"><span class="m-item">2026-07-13</span><span class="m-item">es 系列</span><span class="m-item">约 23 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a></span></div><div class="doc-role"><span class="role-badge r-main">原理主文</span><span class="role-note">系统讲解分片分配决策链与磁盘水位的完整机制。</span></div>
   </div>
   <div class="article-layout">
@@ -551,17 +551,17 @@ GET _cluster/settings?include_defaults=true&amp;filter_path=awareness</code>
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">ES 学习线路 · 第 3/9 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2BMurmurHash3%E7%AE%97%E6%B3%95%2B%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E5%85%A8%E5%A5%97%E5%AE%8C%E6%95%B4%E7%89%88%E6%96%87%E6%A1%A3%EF%BC%88%E7%94%9F%E4%BA%A7%E8%90%BD%E5%9C%B0%EF%BC%89.html"><span class="pn-dir">← 上一站</span><span class="pn-title">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</span></a><a class="pn-next" href="../../deep/es/%E4%B8%80%E3%80%81ES%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E7%BA%BF%E4%B8%8A%E5%BA%94%E6%80%A5%E5%A4%84%E7%90%86%E6%AD%A5%E9%AA%A4%EF%BC%88%E5%8F%AF%E7%9B%B4%E6%8E%A5%E7%85%A7%E7%9D%80%E6%93%8D%E4%BD%9C%EF%BC%89.html"><span class="pn-dir">下一站 →</span><span class="pn-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">ES 学习线路 · 第 3/9 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2BMurmurHash3%E7%AE%97%E6%B3%95%2B%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E5%85%A8%E5%A5%97%E5%AE%8C%E6%95%B4%E7%89%88%E6%96%87%E6%A1%A3%EF%BC%88%E7%94%9F%E4%BA%A7%E8%90%BD%E5%9C%B0%EF%BC%89.html"><span class="pn-dir">← 上一站</span><span class="pn-title">ES 路由机制与 MurmurHash3 · 分片倾斜全套（生产落地）</span></a><a class="pn-next" href="../../deep/es/%E4%B8%80%E3%80%81ES%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E7%BA%BF%E4%B8%8A%E5%BA%94%E6%80%A5%E5%A4%84%E7%90%86%E6%AD%A5%E9%AA%A4%EF%BC%88%E5%8F%AF%E7%9B%B4%E6%8E%A5%E7%85%A7%E7%9D%80%E6%93%8D%E4%BD%9C%EF%BC%89.html"><span class="pn-dir">下一站 →</span><span class="pn-title">ES 分片倾斜线上应急处理步骤（可直接照着操作）</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
-        <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">一、ES分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html"><span class="rel-title">ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html"><span class="rel-title">ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
-        <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/一、ES分片倾斜线上应急处理步骤（可直接照着操作）.html"><span class="rel-title">ES 分片倾斜线上应急处理步骤（可直接照着操作）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）.html"><span class="rel-title">ES 路由机制 · 分片分配 · 冷热分层 · 故障排障（整合手册 · 生产通用）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）.html"><span class="rel-title">ES 路由机制与 MurmurHash3 · 分片倾斜全套（生产落地）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由分片ILM&Reindex别名完整手册.html"><span class="rel-title">ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册）</span><span class="rel-meta">es 系列</span></a></li>
+        <li><a href="../../deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html"><span class="rel-title">ES 路由分片 · ILM 冷热分层 · Reindex 重构 · 别名 · Rollover 时序索引（整合手册）</span><span class="rel-meta">es 系列</span></a></li>
       </ul>
     </div>
   </section>

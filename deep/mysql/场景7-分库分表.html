@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>场景7：分库分表（应用层水平分表） · 小番茄程序猿</title>
+<title>场景 7 · 分库分表（应用层水平分表） · 小番茄程序猿</title>
 <meta name="description" content="当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，单表 IO、索引深度、锁竞争仍是瓶颈。分库分表是终极方案：把单表数据物理拆分到多个…"/>
 <meta name="keywords" content="MySQL, 分库分表, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景7-分库分表.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="场景7：分库分表（应用层水平分表） · 小番茄程序猿" />
+<meta property="og:title" content="场景 7 · 分库分表（应用层水平分表） · 小番茄程序猿" />
 <meta property="og:description" content="当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，单表 IO、索引深度、锁竞争仍是瓶颈。分库分表是终极方案：把单表数据物理拆分到多个…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景7-分库分表.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景7：分库分表（应用层水平分表）", "description": "当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，单表 IO、索引深度、锁竞争仍是瓶颈。分库分表是终极方案：把单表数据物理拆分到多个…", "url": "https://liyonggui.github.io/website/deep/mysql/场景7-分库分表.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景7-分库分表.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-20", "keywords": "MySQL, 分库分表, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 7 · 分库分表（应用层水平分表）", "description": "当单表数据量达到千万级以上，B+ 树层级变高、索引遍历变慢、锁范围扩大，即使索引/锁机制优化到位，单表 IO、索引深度、锁竞争仍是瓶颈。分库分表是终极方案：把单表数据物理拆分到多个…", "url": "https://liyonggui.github.io/website/deep/mysql/场景7-分库分表.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景7-分库分表.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-20", "keywords": "MySQL, 分库分表, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>场景7：分库分表（应用层水平分表）</h1>
+    <h1>场景 7 · 分库分表（应用层水平分表）</h1>
 <div class="meta-row"><span class="m-item">2026-04-20</span><span class="m-item">mysql 系列</span><span class="m-item">约 10 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a></span></div><div class="doc-role"><span class="role-badge r-main">场景实测 · 主文</span><span class="role-note">单场景完整链路：问题 → 排查 → 修复 → 实测数据。</span></div>
   </div>
   <div class="article-layout">
@@ -377,17 +377,17 @@
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 26/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测B10：主从延迟告警与从库自动摘除</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF15-MySQL%E9%AB%98%E5%8F%AF%E7%94%A8.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景15：MySQL 高可用（主从切换 / 故障演练）</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 26/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E8%A1%A5%E6%B5%8BB10-%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F%E5%91%8A%E8%AD%A6%E4%B8%8E%E4%BB%8E%E5%BA%93%E8%87%AA%E5%8A%A8%E6%91%98%E9%99%A4.html"><span class="pn-dir">← 上一站</span><span class="pn-title">补测 B10 · 主从延迟告警与从库自动摘除</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF15-MySQL%E9%AB%98%E5%8F%AF%E7%94%A8.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景 15 · MySQL 高可用（主从切换 / 故障演练）</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/mysql/连接层参数详细辨析.html"><span class="rel-title">MySQL 连接层参数详细辨析</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测B9：连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测B8：容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测B7：统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测 B9 · 连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测 B8 · 容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测 B7 · 统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测 B6 · 深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

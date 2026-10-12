@@ -1,5 +1,5 @@
 ---
-title: "RAG 代码与原理详解（phase2 深读 · 新手向）"
+title: "RAG 代码与原理详解（Phase 2 深读 · 新手向）"
 summary: "配套 AI-Agent新手教学.md 第 3 课的深挖版。对照 phase2-rag 模块的代码读。 > 目录：① LinkedHashMap …"
 date: 2026-10-02
 author: "小番茄程序猿"

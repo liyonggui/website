@@ -53,42 +53,42 @@
       <pubDate>Wed, 07 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>phase1-minimal-agent</title>
+      <title>AI Agent 项目总览：六个 Phase 的全景地图</title>
       <link>https://liyonggui.github.io/website/deep/agent/README.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/README.html</guid>
       <description>阶段 1 骨架：Spring Boot + Spring AI Alibaba（DashScope / 通义千问）最小 Agent 循环。 目的不是做产品，是亲手把「模型 → 选工…</description>
       <pubDate>Mon, 05 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>自研 agent 应用 工程化落地纪要</title>
+      <title>自研 Agent 应用工程化落地纪要</title>
       <link>https://liyonggui.github.io/website/deep/agent/agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/agent-%E5%B7%A5%E7%A8%8B%E5%8C%96%E8%90%BD%E5%9C%B0%E7%BA%AA%E8%A6%81.html</guid>
       <description>项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） &gt; 定…</description>
       <pubDate>Sun, 04 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>RAG 代码与原理详解（phase2 深读 · 新手向）</title>
+      <title>RAG 代码与原理详解（Phase 2 深读 · 新手向）</title>
       <link>https://liyonggui.github.io/website/deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/RAG%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
       <description>配套 AI-Agent新手教学.md 第 3 课的深挖版。对照 phase2-rag 模块的代码读。 &gt; 目录：① LinkedHashMap …</description>
       <pubDate>Fri, 02 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>phase6 评测代码与原理详解（三路判分·中位数·CI门禁）</title>
+      <title>Phase 6 · 评测代码与原理详解（三路判分·中位数·CI门禁）</title>
       <link>https://liyonggui.github.io/website/deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/phase6-%E8%AF%84%E6%B5%8B%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
       <description>配套：AI-Agent新手教学.md 第 8 课、phase5-MCP代码与原理详解.md（trajectory 数据来源）。代码在 phase6-eval 模块。</description>
       <pubDate>Thu, 01 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>phase5 MCP 代码与原理详解（server + client · 含失控案例）</title>
+      <title>Phase 5 · MCP 代码与原理详解（server + client · 含失控案例）</title>
       <link>https://liyonggui.github.io/website/deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/phase5-MCP%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
       <description>配套：AI-Agent新手教学.md 第 6 课、全链路.md。代码在 phase5-mcp-server 与 phase5-mcp-cli…</description>
       <pubDate>Wed, 23 Sep 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
-      <title>phase4 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</title>
+      <title>Phase 4 · 护栏代码与原理详解（可观测·降级·舱壁·熔断·缓存）</title>
       <link>https://liyonggui.github.io/website/deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</link>
       <guid>https://liyonggui.github.io/website/deep/agent/phase4-%E6%8A%A4%E6%A0%8F%E4%BB%A3%E7%A0%81%E4%B8%8E%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.html</guid>
       <description>配套：AI-Agent新手教学.md 第 7 课。代码在 phase4-agent-ops 模块。 &gt; 一句话：把 LLM 当不靠谱下游服务，用后…</description>

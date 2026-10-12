@@ -1,5 +1,5 @@
 ---
-title: "自研 agent 应用 工程化落地纪要"
+title: "自研 Agent 应用工程化落地纪要"
 summary: "项目根：Agent 服务代码目录（Spring Boot 3.5.3 / Spring AI 1.1.8 / JDK17，端口 8090） > 定…"
 date: 2026-10-04
 author: "小番茄程序猿"

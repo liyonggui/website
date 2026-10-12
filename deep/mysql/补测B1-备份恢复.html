@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>补测B1：备份恢复（binlog PITR / 误删误更新恢复） · 小番茄程序猿</title>
+<title>补测 B1 · 备份恢复（binlog PITR / 误删误更新恢复） · 小番茄程序猿</title>
 <meta name="description" content="高并发治理除了&quot;读写/一致性&quot;，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。"/>
 <meta name="keywords" content="MySQL, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="补测B1：备份恢复（binlog PITR / 误删误更新恢复） · 小番茄程序猿" />
+<meta property="og:title" content="补测 B1 · 备份恢复（binlog PITR / 误删误更新恢复） · 小番茄程序猿" />
 <meta property="og:description" content="高并发治理除了&quot;读写/一致性&quot;，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测B1：备份恢复（binlog PITR / 误删误更新恢复）", "description": "高并发治理除了\"读写/一致性\"，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。", "url": "https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-30", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测 B1 · 备份恢复（binlog PITR / 误删误更新恢复）", "description": "高并发治理除了\"读写/一致性\"，还需数据保底：线上误删/误更新、硬件故障时的数据恢复能力。基于 MySQL binlog 的时间点恢复（PITR）是核心兜底方案。", "url": "https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B1-备份恢复.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-30", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -46,7 +46,7 @@
 <main>
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
-    <h1>补测B1：备份恢复（binlog PITR / 误删误更新恢复）</h1>
+    <h1>补测 B1 · 备份恢复（binlog PITR / 误删误更新恢复）</h1>
 <div class="meta-row"><span class="m-item">2026-04-30</span><span class="m-item">mysql 系列</span><span class="m-item">约 11 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div><div class="doc-role"><span class="role-badge r-sup">补充实测</span><span class="role-note">对主线场景的边界补强，独立成篇可单独读。</span></div>
   </div>
   <div class="article-layout">
@@ -242,17 +242,17 @@ PITR恢复: 10000（数据全部找回）
   </nav>
 </details></aside>
   </div>
-  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 28/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E5%9C%BA%E6%99%AF15-MySQL%E9%AB%98%E5%8F%AF%E7%94%A8.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景15：MySQL 高可用（主从切换 / 故障演练）</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF10-Redis%E7%BC%93%E5%AD%98%E4%B8%8EMySQL%E5%8F%8C%E5%86%99%E4%B8%80%E8%87%B4%E6%80%A7.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景10：Redis 缓存 + MySQL 双写一致性</span></a></div></div></nav>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">MySQL 学习线路 · 第 28/38 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/mysql/%E5%9C%BA%E6%99%AF15-MySQL%E9%AB%98%E5%8F%AF%E7%94%A8.html"><span class="pn-dir">← 上一站</span><span class="pn-title">场景 15 · MySQL 高可用（主从切换 / 故障演练）</span></a><a class="pn-next" href="../../deep/mysql/%E5%9C%BA%E6%99%AF10-Redis%E7%BC%93%E5%AD%98%E4%B8%8EMySQL%E5%8F%8C%E5%86%99%E4%B8%80%E8%87%B4%E6%80%A7.html"><span class="pn-dir">下一站 →</span><span class="pn-title">场景 10 · Redis 缓存 + MySQL 双写一致性</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">
       <h3>相关文章</h3>
       <ul class="related-list">
         <li><a href="../../deep/mysql/连接层参数详细辨析.html"><span class="rel-title">MySQL 连接层参数详细辨析</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测B9：连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测B8：容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测B7：统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测B6：深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B9-连接泄漏与长连接治理.html"><span class="rel-title">补测 B9 · 连接泄漏与长连接治理</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B8-容量规划与压测上限评估.html"><span class="rel-title">补测 B8 · 容量规划与压测上限评估</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B7-统计信息过期与执行计划优化.html"><span class="rel-title">补测 B7 · 统计信息过期与执行计划优化</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B6-深分页查询优化.html"><span class="rel-title">补测 B6 · 深分页查询优化（LIMIT 深翻页 / 游标分页）</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

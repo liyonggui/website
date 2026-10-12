@@ -1,5 +1,5 @@
 ---
-title: "场景 8.15: Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化"
+title: "场景 8.15 · Pipeline × RTT 敏感度 — 网络延迟对五种模式的退化量化"
 summary: "场景 8 所有实测数据均基于 Docker bridge 单机环境（RTT < 0.1ms），而真实生产环境跨机 RTT 通常在 1~5ms（同 AZ）、5~10ms（跨 AZ）、…"
 date: 2026-07-09
 author: "小番茄程序猿"
