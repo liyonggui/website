@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/k8s/redis-replication.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Redis 1主1从（StatefulSet 主从复制）", "description": "在「单实例」基础上加主从，目的不是高可用（没有哨兵就不自动故障转移），而是理解 StatefulSet + Headless Service 如何给每个 Pod 固定身份和稳定 D…", "url": "https://liyonggui.github.io/website/deep/k8s/redis-replication.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/k8s/redis-replication.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-09-09", "keywords": "K8s, 云原生, Redis, k8s"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=8"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=9"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -144,6 +144,7 @@ kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </sp
   </nav>
 </details></aside>
   </div>
+  <nav class="path-nav"><div class="wrap"><span class="pn-label">K8s 学习线路 · 第 4/7 站</span><div class="pn-links"><a class="pn-prev" href="../../deep/k8s/redis-README.html"><span class="pn-dir">← 上一站</span><span class="pn-title">单实例 Redis on K3s（学习用）</span></a><a class="pn-next" href="../../deep/k8s/redis-sentinel.html"><span class="pn-dir">下一站 →</span><span class="pn-title">Redis 1主1从3哨兵（自动故障转移）</span></a></div></div></nav>
 
   <section class="related">
     <div class="wrap">

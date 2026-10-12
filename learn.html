@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>学习线路 · 小番茄程序猿</title>
-  <meta name="description" content="学习线路总览：把零散的技术文章按认知顺序串成线路，每一站回答「读完它能解决什么」。MySQL 线路 38 站、Redis 线路 15 站已上线，ES / K8s 线路整理中。" />
+  <meta name="description" content="学习线路总览：把零散的技术文章按认知顺序串成线路，每一站回答「读完它能解决什么」。MySQL 38 站、Redis 15 站、ES 9 站、K8s 7 站四条线路已全部上线。" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="学习线路 · 小番茄程序猿" />
   <meta property="og:description" content="把技术文章按认知顺序串成学习线路，每一站回答「读完它能解决什么」。" />
   <meta property="og:url" content="https://liyonggui.github.io/website/learn.html" />
   <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-  <link rel="stylesheet" href="assets/css/style.css?v=8" />
+  <link rel="stylesheet" href="assets/css/style.css?v=9" />
   <script>
     (function () {
       try {
@@ -92,15 +92,42 @@
               <a class="btn btn-primary" href="redis-path.html">进入线路 <span class="arr">→</span></a>
             </div>
           </div>
-          <div class="card" style="opacity:.65">
-            <h3>Elasticsearch 线路</h3>
-            <p>写入全流程、分片与路由、ILM 冷热分层、运维命令速查——手册已就绪，线路编排中。</p>
-            <div class="more"><span class="tag gray">整理中</span></div>
+          <div class="card">
+            <div class="proj-top">
+              <h3>Elasticsearch 线路</h3>
+              <span class="metric">9 站 + 4 篇随查手册</span>
+            </div>
+            <p>
+              从写入链路到生产运维：路由与 MurmurHash3、分片分配与倾斜应急、ILM 生命周期、
+              Reindex + 别名 + Rollover 的重建迁移与冷热分层——全部 13 篇 ES 文章串成一条线。
+            </p>
+            <div class="tag-row">
+              <span class="tag gray">写入链路 1 站</span>
+              <span class="tag gray">路由与分片分布 3 站</span>
+              <span class="tag gray">索引生命周期 ILM 3 站</span>
+              <span class="tag gray">重建迁移与冷热分层 2 站</span>
+            </div>
+            <div class="more" style="margin-top:var(--s3)">
+              <a class="btn btn-primary" href="es-path.html">进入线路 <span class="arr">→</span></a>
+            </div>
           </div>
-          <div class="card" style="opacity:.65">
-            <h3>K8s 实践线路</h3>
-            <p>从 Compose 到集群：副本、探针、Ingress、HPA 与滚动更新，按部署演进顺序编排。</p>
-            <div class="more"><span class="tag gray">整理中</span></div>
+          <div class="card">
+            <div class="proj-top">
+              <h3>K8s 实践线路</h3>
+              <span class="metric">7 站 + 2 篇手册</span>
+            </div>
+            <p>
+              从 docker-compose 到 K3s 集群：StatefulSet 部署 Redis 主从与哨兵、Ingress + HPA
+              弹性、滚动更新零失败——按部署演进顺序编排，全部 9 篇 K8s 文章串成一条线。
+            </p>
+            <div class="tag-row">
+              <span class="tag gray">起步：从 Compose 到 K3s 2 站</span>
+              <span class="tag gray">有状态服务部署 3 站</span>
+              <span class="tag gray">流量入口与弹性 2 站</span>
+            </div>
+            <div class="more" style="margin-top:var(--s3)">
+              <a class="btn btn-primary" href="k8s-path.html">进入线路 <span class="arr">→</span></a>
+            </div>
           </div>
         </div>
 

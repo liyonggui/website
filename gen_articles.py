@@ -15,7 +15,7 @@ import urllib.parse
 import markdown
 from pygments.formatters import HtmlFormatter
 
-from path_data import MYSQL_ORDER, REDIS_ORDER
+from path_data import MYSQL_ORDER, REDIS_ORDER, ES_ORDER, K8S_ORDER
 
 try:
     import yaml
@@ -44,7 +44,7 @@ TEMPLATE = """<!DOCTYPE html>
 <meta property="og:url" content="__CANONICAL__" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">__JSONLD__</script>
-<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=8"/>
+<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=9"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
 <script>
@@ -405,6 +405,8 @@ def build_related_html(related, prefix):
 PATH_NAV_CONF = {
     "deep/mysql": (MYSQL_ORDER, "mysql-path.html", "MySQL 学习线路"),
     "deep/redis": (REDIS_ORDER, "redis-path.html", "Redis 学习线路"),
+    "deep/es": (ES_ORDER, "es-path.html", "ES 学习线路"),
+    "deep/k8s": (K8S_ORDER, "k8s-path.html", "K8s 学习线路"),
 }
 
 

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Elasticsearch 学习线路：从原理到生产实战的 9 站 · 小番茄程序猿</title>
+<meta name="description" content="把本站全部 Elasticsearch 文章按认知顺序组织成 9 站学习线路：写入链路、路由与分片分布、索引生命周期 ILM、重建迁移与冷热分层，另附随查手册。"/>
+<meta name="keywords" content="Elasticsearch, ES, 学习路线, 学习线路, 分片, 路由, ILM, Reindex, 冷热分层"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/es-path.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml" />
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Elasticsearch 学习线路：从原理到生产实战的 9 站 · 小番茄程序猿" />
+<meta property="og:description" content="把本站全部 Elasticsearch 文章按认知顺序组织成 9 站学习线路：写入链路、路由与分片分布、索引生命周期 ILM、重建迁移与冷热分层，另附随查手册。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/es-path.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Elasticsearch 学习线路","author":{"@type":"Person","name":"小番茄程序猿"},"url":"https://liyonggui.github.io/website/es-path.html","inLanguage":"zh-CN"}</script>
+<link rel="stylesheet" href="assets/css/style.css?v=9"/>
+<link rel="stylesheet" href="assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img class="logo" src="assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="" data-active="learn.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="learn.html">← 返回学习线路</a>
+    <h1>Elasticsearch 学习线路：从原理到生产实战的 9 站</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">学习线路 · Elasticsearch</div><h1>Elasticsearch 学习线路：<br/>从原理到生产实战的 9 站。</h1><p class="lead">这条线路把本站全部 13 篇 Elasticsearch 文章按「认知顺序」重新组织：9 站主线路建议按顺序读——每一站回答一个问题：<b>读完它你能解决什么</b>；另有 4 篇随查手册放在最后，工作中直接翻，不必按顺序。</p><div class="path-progressbar"><i style="width:0"></i></div></div>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">1</span><div class="stage-tt"><h2>写入链路</h2><p>一条数据从 index buffer 到可检索、再到可靠落盘，中间每个环节各管什么。</p></div><span class="stage-cnt">1 站</span></div><ol class="path-list"><li><a href="deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html"><span class="step-no">01</span><span class="step-body"><strong>ES7.17 写入全流程+底层存储算法精准拆解（完整版文档）</strong><em>沿 ES 7.17 写入全流程逐段梳理：refresh / translog / flush 的分工，讲清「可见 ≠ 可靠」</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">2</span><div class="stage-tt"><h2>路由与分片分布</h2><p>文档落在哪个分片不是玄学：路由公式、分配算法、倾斜了怎么应急。</p></div><span class="stage-cnt">3 站</span></div><ol class="path-list"><li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2BMurmurHash3%E7%AE%97%E6%B3%95%2B%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E5%85%A8%E5%A5%97%E5%AE%8C%E6%95%B4%E7%89%88%E6%96%87%E6%A1%A3%EF%BC%88%E7%94%9F%E4%BA%A7%E8%90%BD%E5%9C%B0%EF%BC%89.html"><span class="step-no">02</span><span class="step-body"><strong>ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）</strong><em>默认路由 MurmurHash3(_id) % primary_count 的源码级拆解，倾斜案例的根因定位</em></span><span class="arr">→</span></a></li><li><a href="deep/es/Elasticsearch%20%E5%88%86%E7%89%87%E8%8A%82%E7%82%B9%E5%88%86%E9%85%8D%E7%AE%97%E6%B3%95%20%E8%B6%85%E8%AF%A6%E7%BB%86%E8%AF%A6%E8%A7%A3.html"><span class="step-no">03</span><span class="step-body"><strong>Elasticsearch 分片节点分配算法 超详细详解</strong><em>分片怎么分配到节点：allocation 决策链与磁盘水位</em></span><span class="arr">→</span></a></li><li><a href="deep/es/%E4%B8%80%E3%80%81ES%E5%88%86%E7%89%87%E5%80%BE%E6%96%9C%E7%BA%BF%E4%B8%8A%E5%BA%94%E6%80%A5%E5%A4%84%E7%90%86%E6%AD%A5%E9%AA%A4%EF%BC%88%E5%8F%AF%E7%9B%B4%E6%8E%A5%E7%85%A7%E7%9D%80%E6%93%8D%E4%BD%9C%EF%BC%89.html"><span class="step-no">04</span><span class="step-body"><strong>一、ES分片倾斜线上应急处理步骤（可直接照着操作）</strong><em>倾斜现场的应急 checklist：move 分片 / reroute / 水位调整的顺序与风险</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">3</span><div class="stage-tt"><h2>索引生命周期 ILM</h2><p>时序索引不能只进不出：ILM 的阶段语义、参数与生产配置。</p></div><span class="stage-cnt">3 站</span></div><ol class="path-list"><li><a href="deep/es/ES%20ILM%E7%B4%A2%E5%BC%95%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E7%AE%A1%E7%90%86%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%89%8B%E5%86%8C%EF%BC%88%E5%8E%9F%E7%90%86%2B%E5%8F%82%E6%95%B0%2B%E7%94%9F%E4%BA%A7%E9%85%8D%E7%BD%AE%2B%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%EF%BC%89.html"><span class="step-no">05</span><span class="step-body"><strong>ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）</strong><em>ILM 原理 + 参数 + 生产配置 + 故障排查的一条龙手册</em></span><span class="arr">→</span></a></li><li><a href="deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html"><span class="step-no">06</span><span class="step-body"><strong>ILM 全面实操手册（修订版）</strong><em>ILM 各阶段（hot/warm/cold/delete）的实操验证</em></span><span class="arr">→</span></a></li><li><a href="deep/es/ILM%20%E5%85%A8%E9%9D%A2%E5%AE%9E%E6%93%8D%E6%89%8B%E5%86%8C%EF%BC%88%E9%92%88%E5%AF%B9%20ES%207.2%20%E7%9A%84%E5%90%88%E5%B9%B6%E4%BF%AE%E8%AE%A2%E7%89%88%EF%BC%89.html"><span class="step-no">07</span><span class="step-body"><strong>ILM 全面实操手册（针对 ES 7.2 的合并修订版）</strong><em>ES 7.2 版本下的 ILM 合并修订，版本差异对照</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">4</span><div class="stage-tt"><h2>重建迁移与冷热分层</h2><p>mapping 要改、数据要迁：Reindex、别名、Rollover 的组合用法。</p></div><span class="stage-cnt">2 站</span></div><ol class="path-list"><li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87ILM%26Reindex%E5%88%AB%E5%90%8D%E5%AE%8C%E6%95%B4%E6%89%8B%E5%86%8C.html"><span class="step-no">08</span><span class="step-body"><strong>Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构 完整版整合手册</strong><em>Reindex + 别名的双写与原子切换，停服窗口趋近于零</em></span><span class="arr">→</span></a></li><li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87%2BILM%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2BReindex%E9%87%8D%E6%9E%84%2B%E5%88%AB%E5%90%8D%2BRollover%E6%97%B6%E5%BA%8F%E7%B4%A2%E5%BC%95%20%E5%AE%8C%E6%95%B4%E7%89%88%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C.html"><span class="step-no">09</span><span class="step-body"><strong>ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册</strong><em>路由 / ILM / Reindex / 别名 / Rollover 的全景整合，时序索引完整方案</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-ref"><h2>附 · 随查手册（4 篇）</h2><p>不按顺序读：线上出问题时，这些是直接照着操作的手册。</p><ul class="ref-list"><li><a href="deep/es/ES_%E8%BF%90%E7%BB%B4%E5%91%BD%E4%BB%A4%E9%80%9F%E6%9F%A5%E6%89%8B%E5%86%8C.html"><strong>ES 运维常用命令速查手册（独立文档，可直接复制使用）</strong><em>日常运维命令速查：集群健康、分片、慢查询一条条列好</em></a></li><li><a href="deep/es/ES_%E9%9B%86%E7%BE%A4%E6%9E%B6%E6%9E%84%E4%B8%8E%E8%BF%90%E7%BB%B4%E5%91%BD%E4%BB%A4%E9%80%9F%E6%9F%A5%E6%89%8B%E5%86%8C.html"><strong>ES 集群架构与运维命令速查手册</strong><em>集群架构 + 运维命令的组合速查</em></a></li><li><a href="deep/es/ES_%E5%88%86%E7%89%87ILM_%E5%AE%8C%E6%95%B4%E7%BB%88%E7%89%88%E6%89%8B%E5%86%8C-3.html"><strong>Elasticsearch 路由+分片分配+ILM冷热分层+Reindex重构+别名架构+Rollover时序索引+ILM反向回流 完整版完整文档</strong><em>分片 + ILM 的结论汇总终版手册</em></a></li><li><a href="deep/es/ES%E8%B7%AF%E7%94%B1%E6%9C%BA%E5%88%B6%2B%E5%88%86%E7%89%87%E5%88%86%E9%85%8D%2B%E5%86%B7%E7%83%AD%E5%88%86%E5%B1%82%2B%E6%95%85%E9%9A%9C%E6%8E%92%E9%9A%9C%20%E5%85%A8%E5%A5%97%E6%95%B4%E5%90%88%E6%89%8B%E5%86%8C%EF%BC%88%E7%94%9F%E4%BA%A7%E9%80%9A%E7%94%A8%EF%BC%89.html"><strong>ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）</strong><em>路由 / 分配 / 冷热分层 / 排障的全套生产通用手册</em></a></li></ul></section>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="assets/js/nav.js?v=2"></script>
+  <script src="assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="about.html">关于</a> · <a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

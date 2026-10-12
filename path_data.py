@@ -121,3 +121,72 @@ REDIS_REFERENCE = [
     ("场景1-11压测总结汇总", "全部 11 个压测场景的结论汇总，一页速查"),
     ("Redis单体工具类使用文档", "单体 Redis 工具类的使用说明与注意事项"),
 ]
+
+
+# ============ Elasticsearch 学习线路 ============
+# 与 MySQL/Redis 线路同构：ES_STAGES 供线路页渲染，ES_ORDER 供文章页上一站/下一站导航。
+
+ES_STAGES = [
+    ("写入链路", "一条数据从 index buffer 到可检索、再到可靠落盘，中间每个环节各管什么。",
+     [
+         ("ES7.17 写入全流程-2", "沿 ES 7.17 写入全流程逐段梳理：refresh / translog / flush 的分工，讲清「可见 ≠ 可靠」"),
+     ]),
+    ("路由与分片分布", "文档落在哪个分片不是玄学：路由公式、分配算法、倾斜了怎么应急。",
+     [
+         ("ES路由机制+MurmurHash3算法+分片倾斜全套完整版文档（生产落地）", "默认路由 MurmurHash3(_id) % primary_count 的源码级拆解，倾斜案例的根因定位"),
+         ("Elasticsearch 分片节点分配算法 超详细详解", "分片怎么分配到节点：allocation 决策链与磁盘水位"),
+         ("一、ES分片倾斜线上应急处理步骤（可直接照着操作）", "倾斜现场的应急 checklist：move 分片 / reroute / 水位调整的顺序与风险"),
+     ]),
+    ("索引生命周期 ILM", "时序索引不能只进不出：ILM 的阶段语义、参数与生产配置。",
+     [
+         ("ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）", "ILM 原理 + 参数 + 生产配置 + 故障排查的一条龙手册"),
+         ("ILM 全面实操手册（修订版）", "ILM 各阶段（hot/warm/cold/delete）的实操验证"),
+         ("ILM 全面实操手册（针对 ES 7.2 的合并修订版）", "ES 7.2 版本下的 ILM 合并修订，版本差异对照"),
+     ]),
+    ("重建迁移与冷热分层", "mapping 要改、数据要迁：Reindex、别名、Rollover 的组合用法。",
+     [
+         ("ES路由分片ILM&Reindex别名完整手册", "Reindex + 别名的双写与原子切换，停服窗口趋近于零"),
+         ("ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册", "路由 / ILM / Reindex / 别名 / Rollover 的全景整合，时序索引完整方案"),
+     ]),
+]
+
+ES_ORDER = [stem for _, _, items in ES_STAGES for stem, _ in items]
+
+# 随查手册：不按顺序读，工作中直接翻
+ES_REFERENCE = [
+    ("ES_运维命令速查手册", "日常运维命令速查：集群健康、分片、慢查询一条条列好"),
+    ("ES_集群架构与运维命令速查手册", "集群架构 + 运维命令的组合速查"),
+    ("ES_分片ILM_完整终版手册-3", "分片 + ILM 的结论汇总终版手册"),
+    ("ES路由机制+分片分配+冷热分层+故障排障 全套整合手册（生产通用）", "路由 / 分配 / 冷热分层 / 排障的全套生产通用手册"),
+]
+
+
+# ============ K8s 学习线路 ============
+# 与 MySQL/Redis/ES 线路同构：K8S_STAGES 供线路页渲染，K8S_ORDER 供文章页上一站/下一站导航。
+
+K8S_STAGES = [
+    ("起步：从 Compose 到 K3s", "先想清楚为什么要上 K8s：单机编排与集群编排差在哪，K3s 环境怎么搭。",
+     [
+         ("compose-vs-k8s", "从 docker-compose 到 K3s：两种编排模型的差异、迁移动机与迁移内容"),
+         ("README", "K3s 项目总览：环境搭建、目录结构与整套实践的入口"),
+     ]),
+    ("有状态服务部署", "数据库类服务上 K8s 的核心难点：稳定身份与独立存储，用 Redis 落地示范。",
+     [
+         ("redis-README", "Redis 上 K8s 的部署总览：StatefulSet + PVC 的设计取舍"),
+         ("redis-replication", "StatefulSet + PVC 部署 Redis 主从：稳定网络标识与独立存储的落地"),
+         ("redis-sentinel", "哨兵拓扑的部署与运维：和主从的差异、故障切换实测"),
+     ]),
+    ("流量入口与弹性", "服务跑起来之后：流量怎么进、实例怎么扩、更新怎么不停服。",
+     [
+         ("ingress-hpa", "Ingress 流量入口 + HPA 自动扩缩容：从固定端口到集群级路由与弹性"),
+         ("ROLLING-UPDATE", "滚动更新实测：探针与 maxSurge/maxUnavailable 联动调优，更新全程零失败"),
+     ]),
+]
+
+K8S_ORDER = [stem for _, _, items in K8S_STAGES for stem, _ in items]
+
+# 随查手册：不按顺序读，工作中直接翻
+K8S_REFERENCE = [
+    ("K8S-LEARNING-ROADMAP", "K8s 学习路线图总览：知识点全景与自测清单"),
+    ("spring-cloud-plan", "Spring Cloud 微服务上 K8s 的部署规划：服务拆分与迁移顺序"),
+]

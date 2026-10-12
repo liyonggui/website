@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>K8s 学习线路：从原理到生产实战的 7 站 · 小番茄程序猿</title>
+<meta name="description" content="把本站全部 K8s 文章按认知顺序组织成 7 站学习线路：从 Compose 到 K3s、有状态服务部署、流量入口与弹性，另附随查手册。"/>
+<meta name="keywords" content="K8s, K3s, 学习路线, 学习线路, StatefulSet, 哨兵, Ingress, HPA, 滚动更新"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/k8s-path.html"/>
+<link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml" />
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="K8s 学习线路：从原理到生产实战的 7 站 · 小番茄程序猿" />
+<meta property="og:description" content="把本站全部 K8s 文章按认知顺序组织成 7 站学习线路：从 Compose 到 K3s、有状态服务部署、流量入口与弹性，另附随查手册。" />
+<meta property="og:url" content="https://liyonggui.github.io/website/k8s-path.html" />
+<meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"K8s 学习线路","author":{"@type":"Person","name":"小番茄程序猿"},"url":"https://liyonggui.github.io/website/k8s-path.html","inLanguage":"zh-CN"}</script>
+<link rel="stylesheet" href="assets/css/style.css?v=9"/>
+<link rel="stylesheet" href="assets/css/article.css?v=2"/>
+<link rel="stylesheet" href="assets/css/pygments.css"/>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img class="logo" src="assets/logo.svg" alt="logo" />
+      <span>小番茄程序猿<span class="dot">.</span>dev</span>
+    </a>
+    <div class="nav-right">
+      <nav class="nav-links" id="navLinks" data-prefix="" data-active="learn.html"></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+      <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+    </div>
+  </div>
+</header>
+<div class="reading-bar"><i></i></div>
+<main>
+  <div class="article-head">
+    <a class="back" href="learn.html">← 返回学习线路</a>
+    <h1>K8s 学习线路：从原理到生产实战的 7 站</h1>
+
+  </div>
+  <div class="article-layout">
+    <article class="prose">
+<div class="path-hero"><div class="eyebrow">学习线路 · K8s</div><h1>K8s 学习线路：<br/>从原理到生产实战的 7 站。</h1><p class="lead">这条线路把本站全部 9 篇 K8s 文章按「认知顺序」重新组织：7 站主线路建议按顺序读——每一站回答一个问题：<b>读完它你能解决什么</b>；另有 2 篇随查手册放在最后，工作中直接翻，不必按顺序。</p><div class="path-progressbar"><i style="width:0"></i></div></div>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">1</span><div class="stage-tt"><h2>起步：从 Compose 到 K3s</h2><p>先想清楚为什么要上 K8s：单机编排与集群编排差在哪，K3s 环境怎么搭。</p></div><span class="stage-cnt">2 站</span></div><ol class="path-list"><li><a href="deep/k8s/compose-vs-k8s.html"><span class="step-no">01</span><span class="step-body"><strong>Compose → K8s 概念对照（给已经会 docker-compose 的人）</strong><em>从 docker-compose 到 K3s：两种编排模型的差异、迁移动机与迁移内容</em></span><span class="arr">→</span></a></li><li><a href="deep/k8s/README.html"><span class="step-no">02</span><span class="step-body"><strong>k3s 实战：一个可跑通、可炸给你看的单机集群</strong><em>K3s 项目总览：环境搭建、目录结构与整套实践的入口</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">2</span><div class="stage-tt"><h2>有状态服务部署</h2><p>数据库类服务上 K8s 的核心难点：稳定身份与独立存储，用 Redis 落地示范。</p></div><span class="stage-cnt">3 站</span></div><ol class="path-list"><li><a href="deep/k8s/redis-README.html"><span class="step-no">03</span><span class="step-body"><strong>单实例 Redis on K3s（学习用）</strong><em>Redis 上 K8s 的部署总览：StatefulSet + PVC 的设计取舍</em></span><span class="arr">→</span></a></li><li><a href="deep/k8s/redis-replication.html"><span class="step-no">04</span><span class="step-body"><strong>Redis 1主1从（StatefulSet 主从复制）</strong><em>StatefulSet + PVC 部署 Redis 主从：稳定网络标识与独立存储的落地</em></span><span class="arr">→</span></a></li><li><a href="deep/k8s/redis-sentinel.html"><span class="step-no">05</span><span class="step-body"><strong>Redis 1主1从3哨兵（自动故障转移）</strong><em>哨兵拓扑的部署与运维：和主从的差异、故障切换实测</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-stage"><div class="stage-head"><span class="stage-no">3</span><div class="stage-tt"><h2>流量入口与弹性</h2><p>服务跑起来之后：流量怎么进、实例怎么扩、更新怎么不停服。</p></div><span class="stage-cnt">2 站</span></div><ol class="path-list"><li><a href="deep/k8s/ingress-hpa.html"><span class="step-no">06</span><span class="step-body"><strong>Ingress + HPA 实践清单（sc-user）</strong><em>Ingress 流量入口 + HPA 自动扩缩容：从固定端口到集群级路由与弹性</em></span><span class="arr">→</span></a></li><li><a href="deep/k8s/ROLLING-UPDATE.html"><span class="step-no">07</span><span class="step-body"><strong>service-user 滚动更新练习（K8s 核心概念 · B）</strong><em>滚动更新实测：探针与 maxSurge/maxUnavailable 联动调优，更新全程零失败</em></span><span class="arr">→</span></a></li></ol></section>
+<section class="path-ref"><h2>附 · 随查手册（2 篇）</h2><p>不按顺序读：线上出问题时，这些是直接照着操作的手册。</p><ul class="ref-list"><li><a href="deep/k8s/K8S-LEARNING-ROADMAP.html"><strong>K8s 实战学习路线图（已学 + 待学）</strong><em>K8s 学习路线图总览：知识点全景与自测清单</em></a></li><li><a href="deep/k8s/spring-cloud-plan.html"><strong>Spring Cloud → K3s 极简落地：用最小子集认识 K8s</strong><em>Spring Cloud 微服务上 K8s 的部署规划：服务拆分与迁移顺序</em></a></li></ul></section>
+    </article>
+    <aside class="toc-side"></aside>
+  </div>
+
+
+  <section class="giscus-wrap">
+    <div class="wrap">
+      <h2>交流区</h2>
+      <p class="sub">用 GitHub 账号即可留言、互相回复；评论托管在仓库 Discussions，无广告、无追踪。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+  <script src="assets/js/nav.js?v=2"></script>
+  <script src="assets/js/comments.js?v=2"></script>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span class="foot-links"><a href="about.html">关于</a> · <a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
+  </div>
+</footer>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  var th = document.getElementById("themeToggle");
+  function syncThemeIcon(){ th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+  syncThemeIcon();
+  th.addEventListener("click", function(){
+    var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nxt);
+    try { localStorage.setItem("theme", nxt); } catch(e){}
+    syncThemeIcon();
+  });
+  var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+  t.addEventListener("click", function(){ l.classList.toggle("open"); });
+  l.querySelectorAll("a").forEach(function(a){ a.addEventListener("click", function(){ l.classList.remove("open"); }); });
+  var rb = document.querySelector(".reading-bar i");
+  function updProg(){
+    var h = document.documentElement;
+    var sc = h.scrollTop || document.body.scrollTop;
+    var max = h.scrollHeight - h.clientHeight;
+    rb.style.width = (max > 0 ? (sc / max * 100) : 0) + "%";
+  }
+  document.addEventListener("scroll", updProg, { passive: true });
+  updProg();
+</script>
+</body>
+</html>

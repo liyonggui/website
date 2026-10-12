@@ -11,6 +11,8 @@ from gen_articles import ROOT, SITE_BASE, build_html, scan_catalog
 from path_data import (
     MYSQL_STAGES, MYSQL_REFERENCE, MYSQL_ORDER,
     REDIS_STAGES, REDIS_REFERENCE, REDIS_ORDER,
+    ES_STAGES, ES_REFERENCE, ES_ORDER,
+    K8S_STAGES, K8S_REFERENCE, K8S_ORDER,
 )
 
 
@@ -88,6 +90,24 @@ PATHS = [
         "keywords": "Redis, 学习路线, 学习线路, Pipeline, 缓存, Cluster, 哨兵, 高并发",
         "desc_t": "把本站全部 Redis 文章按认知顺序组织成 %d 站学习线路：打底、Pipeline 与网络往返、"
                   "数据结构与访问模式、过期与淘汰、集群与高可用，另附随查手册。",
+    },
+    {
+        "slug": "es-path",
+        "name": "Elasticsearch",
+        "stages": ES_STAGES, "refs": ES_REFERENCE, "order": ES_ORDER,
+        "dir": "deep/es",
+        "keywords": "Elasticsearch, ES, 学习路线, 学习线路, 分片, 路由, ILM, Reindex, 冷热分层",
+        "desc_t": "把本站全部 Elasticsearch 文章按认知顺序组织成 %d 站学习线路：写入链路、路由与分片分布、"
+                  "索引生命周期 ILM、重建迁移与冷热分层，另附随查手册。",
+    },
+    {
+        "slug": "k8s-path",
+        "name": "K8s",
+        "stages": K8S_STAGES, "refs": K8S_REFERENCE, "order": K8S_ORDER,
+        "dir": "deep/k8s",
+        "keywords": "K8s, K3s, 学习路线, 学习线路, StatefulSet, 哨兵, Ingress, HPA, 滚动更新",
+        "desc_t": "把本站全部 K8s 文章按认知顺序组织成 %d 站学习线路：从 Compose 到 K3s、有状态服务部署、"
+                  "流量入口与弹性，另附随查手册。",
     },
 ]
 

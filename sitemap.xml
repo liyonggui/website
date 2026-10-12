@@ -8,6 +8,8 @@
   <url><loc>https://liyonggui.github.io/website/learn.html</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://liyonggui.github.io/website/mysql-path.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://liyonggui.github.io/website/redis-path.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://liyonggui.github.io/website/es-path.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://liyonggui.github.io/website/k8s-path.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://liyonggui.github.io/website/tags.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
   <url><loc>https://liyonggui.github.io/website/archives.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
   <url><loc>https://liyonggui.github.io/website/search.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>

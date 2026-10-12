@@ -52,7 +52,7 @@ HEAD = """<!DOCTYPE html>
   <meta property="og:description" content="数据库内核、压测方法论、云原生、AI Agent 原理——项目背后的硬核底层知识库。" />
   <meta property="og:url" content="https://liyonggui.github.io/website/deep.html" />
   <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-  <link rel="stylesheet" href="assets/css/style.css?v=8" />
+  <link rel="stylesheet" href="assets/css/style.css?v=9" />
   <script>
     (function () {
       try {
@@ -203,8 +203,9 @@ for key, title, desc, ic in SERIES:
         '          </div>\n'
         % (key, ic, title,
            ('<a class="group-link" href="%s">学习路线 →</a>'
-            % ("mysql-path.html" if key == "mysql" else "redis-path.html")
-            if key in ("mysql", "redis") else ""),
+            % {"mysql": "mysql-path.html", "redis": "redis-path.html",
+               "es": "es-path.html", "k8s": "k8s-path.html"}[key]
+            if key in ("mysql", "redis", "es", "k8s") else ""),
            "".join(items)))
 
 html = HEAD + "".join(nav_html) + TAIL.replace(GROUPS_PLACEHOLDER, "".join(groups_html))
