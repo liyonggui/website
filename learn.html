@@ -131,6 +131,34 @@
           </div>
         </div>
 
+        <div class="section-head" style="margin-top:var(--s6)">
+          <div class="kicker">心得</div>
+          <h2>作者的学习心得</h2>
+          <p>不是从教材背来的——这一百多篇文章写出来之前，都是先撞上问题。方法、坑、节奏，沉淀在这里。</p>
+        </div>
+
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>学习方法</h3>
+            <p style="margin:0 0 10px"><b>场景驱动，不背八股。</b>先撞上问题（连接池超卖、跨槽报错），再回头学原理，学完顺手写手册——知识挂在自己踩过的坑上，最难忘。</p>
+            <p style="margin:0 0 10px"><b>实测优先。</b>结论必须是跑出来的：p95 836→12ms、召回率 83% 这些数字都来自可复现的压测与 A/B，不轻信「网上说」。</p>
+            <p style="margin:0"><b>写文档倒逼理解。</b>每篇手册都是排查完写的复盘；哪里讲不清，就是哪里没懂。</p>
+          </div>
+          <div class="card">
+            <h3>踩过的坑</h3>
+            <p style="margin:0 0 10px">Pipeline 不是万能的：跨槽 key 直接报错轰炸，批次过大反而更慢——<a href="deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html">场景 1</a> · <a href="deep/redis/%E5%9C%BA%E6%99%AF7-Cluster%E8%B7%A8%E6%A7%BDPipeline%E9%94%99%E8%AF%AF%E8%BD%B0%E7%82%B8.html">场景 7</a></p>
+            <p style="margin:0 0 10px">默认值不能照抄：编码阈值、连接池参数都得算出来——<a href="deep/redis/%E5%9C%BA%E6%99%AF11-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81int-embstr-raw%E5%8E%8B%E6%B5%8B.html">场景 11</a> · <a href="deep/mysql/%E5%9C%BA%E6%99%AF16-%E8%BF%9E%E6%8E%A5%E6%B1%A0%E5%8F%82%E6%95%B0%E8%B0%83%E4%BC%98.html">场景 16</a></p>
+            <p style="margin:0 0 10px">RR 下幻读「时有时无」，是混用了快照读与当前读，不是玄学——<a href="deep/mysql/%E5%9C%BA%E6%99%AF2-%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E7%BA%A7%E5%88%AB.html">场景 2</a></p>
+            <p style="margin:0">压测报告好看 ≠ 线上不炸：协同遗漏会系统性低估 p99——<a href="deep/bench/%E5%8D%8F%E5%90%8C%E9%81%97%E6%BC%8F-Coordinated-Omission.html">协同遗漏</a></p>
+          </div>
+          <div class="card">
+            <h3>节奏建议</h3>
+            <p style="margin:0 0 10px"><b>先跑通最小场景，再啃源码</b>——世界观先于细节，跑不起来说明还差前置知识。</p>
+            <p style="margin:0 0 10px"><b>每站读完自问一句</b>：它让我能解决什么？答不上来就重读，别急着翻下一站。</p>
+            <p style="margin:0"><b>手册当工具、线路当地图</b>：线上救火直接翻随查手册，系统提升按线路走。</p>
+          </div>
+        </div>
+
         <p style="margin-top:var(--s4);opacity:.75">
           不想按线路读？直接去 <a href="deep.html">深度</a> 按系列翻手册，或用 <a href="search.html">搜索</a> 定位具体问题。
         </p>
