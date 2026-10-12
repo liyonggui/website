@@ -44,7 +44,7 @@ TEMPLATE = """<!DOCTYPE html>
 <meta property="og:url" content="__CANONICAL__" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">__JSONLD__</script>
-<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=9"/>
+<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=10"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
 <script>

@@ -22,7 +22,7 @@ def build_body(name, stages, refs, order, titles, base_dir):
     parts.append(
         '<div class="path-hero">'
         '<div class="eyebrow">学习线路 · %s</div>'
-        '<h1>%s 学习线路：<br/>从原理到生产实战的 %d 站。</h1>'
+        '<h2>%s 学习线路：<br/>从原理到生产实战的 %d 站。</h2>'
         '<p class="lead">这条线路把本站全部 %d 篇 %s 文章按「认知顺序」重新组织：'
         '%d 站主线路建议按顺序读——每一站回答一个问题：<b>读完它你能解决什么</b>；'
         '另有 %d 篇随查手册放在最后，工作中直接翻，不必按顺序。</p>'
@@ -47,7 +47,7 @@ def build_body(name, stages, refs, order, titles, base_dir):
         parts.append(
             '<section class="path-stage">'
             '<div class="stage-head"><span class="stage-no">%d</span>'
-            '<div class="stage-tt"><h2>%s</h2><p>%s</p></div>'
+            '<div class="stage-tt"><h3>%s</h3><p>%s</p></div>'
             '<span class="stage-cnt">%d 站</span></div>'
             '<ol class="path-list">%s</ol>'
             '</section>'
@@ -64,7 +64,7 @@ def build_body(name, stages, refs, order, titles, base_dir):
         )
     parts.append(
         '<section class="path-ref">'
-        '<h2>附 · 随查手册（%d 篇）</h2>'
+        '<h3>附 · 随查手册（%d 篇）</h3>'
         '<p>不按顺序读：线上出问题时，这些是直接照着操作的手册。</p>'
         '<ul class="ref-list">%s</ul>'
         '</section>' % (len(refs), "".join(refs_html))

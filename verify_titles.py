@@ -10,6 +10,7 @@
 import glob
 import io
 import json
+import pathlib
 import re
 import sys
 from pathlib import Path
@@ -130,10 +131,28 @@ def check_xml():
     return errors
 
 
+def check_static_h1():
+    """顶层静态页与线路页：h1 恰好 1 个（标题层级统一）。"""
+    pages = ["index.html", "projects.html", "blog.html", "deep.html", "learn.html",
+             "about.html", "tags.html", "archives.html", "search.html",
+             "mysql-path.html", "redis-path.html", "es-path.html", "k8s-path.html"]
+    errors = []
+    for p in pages:
+        f = pathlib.Path(p)
+        if not f.exists():
+            errors.append(f"{p}: 静态页不存在")
+            continue
+        n = len(re.findall(r"<h1[\s>]", f.read_text(encoding="utf-8")))
+        if n != 1:
+            errors.append(f"{p}: h1 数={n}（应恰好 1 个）")
+    return errors
+
+
 def main():
     errors = []
     errors += check_md_quality()
     errors += check_html_quality()
+    errors += check_static_h1()
     errors += check_missing_html()
     errors += check_data_files()
     errors += check_index_urls()

@@ -7,13 +7,26 @@
 | 页面 | 文件 | 内容 |
 | --- | --- | --- |
 | 首页 | `index.html` | 技术画像、精选项目、**最近更新**（自动索引）、联系方式 |
-| 项目 | `projects.html` | 高并发后端家族 + AI Agent 工程化家族（含实测指标可视化） |
+| 项目 | `projects.html` | 高并发后端家族 + AI Agent 工程化家族（含实测指标可视化）+ 工程实战复盘 |
 | 博客 | `blog.html` | 多平台连载文章（CSDN / 掘金 / 知乎），渲染后的文章页 |
-| 深度 | `deep.html` | 底层原理专栏 104+ 篇，分 MySQL / Redis / ES / 压测 / K8s / Agent 六系列 |
+| 深度 | `deep.html` | 底层原理专栏，分 MySQL / Redis / ES / 压测 / K8s / Agent 六系列 |
+| 学习 | `learn.html` | 学习线路总览 + 作者学习心得（方法 / 踩坑 / 节奏） |
+| 关于 | `about.html` | 作者介绍、承接合作、联系方式（邮箱 Base64 反爬展示） |
 | 标签 | `tags.html` | 按标签筛选全部文章（数据驱动） |
 | 归档 | `archives.html` | 按年份时间线浏览 |
 | 搜索 | `search.html` | 纯客户端检索：标题/摘要/标签/系列（不含正文全文） |
 | RSS | `rss.xml` | 最新 20 篇订阅源 |
+
+学习线路页（数据驱动生成，从 `learn.html` 进入）：
+
+| 线路 | 文件 | 规模 |
+| --- | --- | --- |
+| MySQL | `mysql-path.html` | 38 站 + 6 篇随查手册 |
+| Redis | `redis-path.html` | 15 站 + 3 篇随查手册 |
+| Elasticsearch | `es-path.html` | 9 站 + 4 篇随查手册 |
+| K8s | `k8s-path.html` | 7 站 + 2 篇随查手册 |
+
+文章数量以 `verify_titles.py` 校验结果与 `data/articles.json` 为准（随内容持续增长，README 不写死具体数值）。
 
 ## 内容工程化管线
 
@@ -24,27 +37,34 @@
   │  title / summary / date / tags / category / series / reading_time / draft
   ▼
 add_front_matter.py   # 给新文章注入元数据（幂等）
-gen_articles.py       # 渲染 109 篇带排版/TOC/评论区/暗色模式的文章页
+gen_articles.py       # 渲染全部文章页（排版/TOC/线路导航/评论区/暗色模式）
+gen_path.py           # 生成 mysql/redis/es/k8s-path.html 学习线路页
+gen_projects.py       # 生成 project/*.html 项目详情页
 gen_deep.py           # 生成 deep.html 深度专栏索引
-generate_index.py     # 生成 data/*.json（文章/标签/归档/搜索索引）+ rss.xml
-verify_titles.py      # 全站校验：元数据完整性 + HTML 结构 + 产物对应 + JSON 可解析
+generate_index.py     # 生成 data/*.json（文章/标签/归档/搜索索引）+ rss.xml + sitemap.xml
+verify_titles.py      # 全站校验：元数据 + HTML 结构 + 静态页 h1 唯一 + 产物对应 + JSON 可解析
 ```
 
-**新增一篇文章的标准流程**：把 `.md` 放进 `blog/` 或 `deep/<系列>/` → 依次运行 `add_front_matter.py`、`gen_articles.py`、`gen_deep.py`、`generate_index.py`、`verify_titles.py` → 首页最近更新、标签、归档、搜索、RSS 全部自动刷新，无需手改任何索引页。
+**新增一篇文章的标准流程**：把 `.md` 放进 `blog/` 或 `deep/<系列>/` → 依次运行 `add_front_matter.py`、`gen_articles.py`、`gen_deep.py`、`gen_path.py`、`gen_projects.py`、`generate_index.py`、`verify_titles.py` → 首页最近更新、标签、归档、搜索、RSS 全部自动刷新，无需手改任何索引页。
+
+**新增一条学习线路**：在 `path_data.py` 定义 `*_STAGES / *_REFERENCE / *_ORDER`，往 `gen_path.py` 的 `PATHS` 加一条、`gen_articles.py` 的 `PATH_NAV_CONF` 加一条、`gen_deep.py` 的 group-link 映射加一个 key 即可，渲染代码零改动。
 
 ## 目录结构
 
 ```
 .
 ├── index.html / projects.html / blog.html   # 手写页面
+├── learn.html / about.html                  # 学习总览与关于页
 ├── tags.html / archives.html / search.html  # 数据驱动的发现页
 ├── deep.html                                # 深度专栏索引（生成）
+├── *-path.html                              # 学习线路页（gen_path.py 生成）
+├── project/                                 # 项目详情页（gen_projects.py 生成）
 ├── rss.xml / sitemap.xml
 ├── data/                                    # articles/tags/archives/search_index.json
 ├── blog/ deep/                              # 文章源（.md 带 front matter）+ 渲染产物（.html）
 ├── assets/                                  # css（含暗色模式）/ js / img / logo.svg
-├── add_front_matter.py gen_articles.py gen_deep.py generate_index.py
-├── verify_titles.py                         # 站点校验（CI 同款）
+├── add_front_matter.py gen_articles.py gen_deep.py gen_path.py gen_projects.py
+├── generate_index.py verify_titles.py       # 索引生成 / 站点校验（CI 同款）
 └── .github/workflows/site-check.yml         # push 时自动：生成 → 校验
 ```
 

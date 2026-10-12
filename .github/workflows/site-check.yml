@@ -27,6 +27,8 @@ jobs:
         run: |
           python gen_articles.py
           python gen_deep.py
+          python gen_path.py
+          python gen_projects.py
           python generate_index.py
 
       - name: Check generated artifacts are committed
