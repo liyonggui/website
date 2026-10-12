@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景4-锁的工程实践与选型.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景4：锁的工程实践、选型与规避（开发视角）", "description": "在掌握 InnoDB 锁机制（S/X、意向锁、间隙锁、Next-Key）后，补充工程落地经验：锁的降级、开发注意事项、高并发下如何选锁、如何规避锁。", "url": "https://liyonggui.github.io/website/deep/mysql/场景4-锁的工程实践与选型.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景4-锁的工程实践与选型.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-10", "keywords": "MySQL, 锁, mysql"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>场景4：锁的工程实践、选型与规避（开发视角）</h1>
-<div class="meta-row"><span class="m-item">2026-04-10</span><span class="m-item">mysql 系列</span><span class="m-item">约 6 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=锁">锁</a></span></div>
+<div class="meta-row"><span class="m-item">2026-04-10</span><span class="m-item">mysql 系列</span><span class="m-item">约 6 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a><a class="m-tag" href="../../tags.html?t=锁">锁</a></span></div><div class="doc-role"><span class="role-badge r-main">场景实测 · 主文</span><span class="role-note">单场景完整链路：问题 → 排查 → 修复 → 实测数据。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">

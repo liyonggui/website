@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/prj/01-外部数据核验批处理引擎.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "外部数据核验批处理引擎：失败分类、分级重试与两轮校对的完整设计", "description": "一个不监听任何端口的 Spring Boot 命令行批处理：把本地名册逐条送查外部数据共享网关的 5 个查询接口，全量留痕并产出比对结论。核心设计：失败分类学、按类分级重试、后置集中补打、熔断停机、断点续传与隔天两轮校对。", "url": "https://liyonggui.github.io/website/deep/prj/01-外部数据核验批处理引擎.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/prj/01-外部数据核验批处理引擎.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-09", "keywords": "架构设计, Spring Boot, 批处理, 工程实践, 工程实战"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -51,8 +51,12 @@
   </div>
   <div class="article-layout">
     <article class="prose">
+<blockquote>
+<p><strong>脱敏口径</strong>：失败分类体系、重试策略与两轮校对的流程结论来自真实生产运行；代码片段、接口名与数据样例做了通用化示意处理，不含任何真实业务数据。</p>
+</blockquote>
+<h2 id="_1">外部数据核验批处理引擎</h2>
 <p>这是一个真实生产项目（已脱敏）的架构复盘。它解决的问题很典型：<strong>本地有一份业务名册，需要逐条到外部数据共享网关核验信息，并把每次调用的完整证据链留痕落库，最终产出可比对、可审计的结论表</strong>。</p>
-<h2 id="_1">一、整体思路</h2>
+<h2 id="_2">一、整体思路</h2>
 <p>先说几个决定整个架构形态的前提：</p>
 <ol>
 <li><strong>不是 Web 服务</strong>。它不监听任何端口、不提供 HTTP 接口，而是一个<strong>一次性命令行批处理作业</strong>——进程生命周期 = 作业生命周期，跑完以语义化退出码结束，由外部调度器判断成败。</li>
@@ -85,7 +89,7 @@
 </code></pre></div>
 
 <p>技术栈同样克制：JDK 8 + Spring Boot 2.7.18（<strong>刻意不引 web starter</strong>）、JdbcTemplate + HikariCP（不用 ORM，SQL 全手写）、HttpClient 4 连接池、国产数据库 KingbaseES。没有 MQ、没有 Redis、没有定时框架——<strong>队列就是内存 List + 数据库表</strong>。</p>
-<h2 id="_2">二、代码逻辑：五个关键设计</h2>
+<h2 id="_3">二、代码逻辑：五个关键设计</h2>
 <h3 id="1">1. 失败分类学：先回答「该找谁」</h3>
 <p>失败不是一个布尔值。系统把失败分成六类，每类对应完全不同的处置策略：</p>
 <table>
@@ -156,7 +160,7 @@
 <h3 id="5">5. 不变量哨兵：宁可无法判定，不要假结论</h3>
 <p>有一条用真实事故换来的防线：某次网关超时，响应解析的兜底逻辑把空结果写成了「查无此人」——这是一个<strong>错误的确定性结论</strong>，比报失败严重得多。</p>
 <p>修复方式是加一条不变量：<code>失败类型为空 但 命中数非法</code> 的响应，强制降级为 UNKNOWN。此后任何解析兜底都只能产生「无法判定」，永远不能产生假结论。</p>
-<h2 id="_3">三、数据模型：四张表的证据链</h2>
+<h2 id="_4">三、数据模型：四张表的证据链</h2>
 <table>
 <thead>
 <tr>
@@ -189,7 +193,7 @@
 </tbody>
 </table>
 <p>留痕的存储策略也很讲究：失败和命中存<strong>全文</strong>，成功但空结果只存 200 字符摘要——省 30% 存储，且空响应可逐字覆盖、不损证据。留痕里的认证头一律脱敏（前 6 位 + 长度）。</p>
-<h2 id="_4">四、其他工程实践</h2>
+<h2 id="_5">四、其他工程实践</h2>
 <ul>
 <li><strong>熔断</strong>：基准接口连续 10 条网络/限流失败即停机；各 C 系列接口独立熔断计数，基准接口正常不会掩盖其他接口的故障。</li>
 <li><strong>令牌治理</strong>：OAuth2 令牌提前 300 秒刷新；收到 401 强刷一次并重打（每作业只允许刷一次，防止 401 风暴把 28 万次调用翻倍）；刷新失败进 30 秒冷却。</li>
@@ -197,23 +201,31 @@
 <li><strong>防误触</strong>：不带模式参数启动只打印用法、退出码 2，一发请求都不会发。脚本层还有空环境变量护栏（空值会顶掉配置默认值 → 拦截）。</li>
 <li><strong>交付工程</strong>：打包脚本做 CRLF 断言、MD5 清单、jar 内容断言（防止把没填凭据的包发出去）；目标机无 Maven/Docker，全部本机打包 + scp + 校验交付。</li>
 </ul>
-<h2 id="_5">五、复盘</h2>
+<h2 id="_6">五、复盘</h2>
 <p>这个项目的价值不在技术栈多新，而在<strong>把「不可靠外部依赖」的应对做成了体系</strong>：失败分类是语言、分级重试是策略、留痕是证据链、熔断是保险丝、不变量哨兵是底线。跑批系统最怕的不是慢，而是<strong>悄悄给出错误结论</strong>——所有设计最终都服务于此。</p>
+<hr />
+<h2 id="_7">系列导航 · 工程实战</h2>
+<ul>
+<li>下一篇：<a href="02-多端业务后台架构.html">多端业务后台架构：双存储、缓存工程化与影子表同步</a></li>
+<li>上一篇方向：<a href="03-AI-Agent质量门禁.html">AI Agent 质量门禁：CI 之外的智能分析链与代码生成链</a></li>
+</ul>
     </article>
     <aside class="toc-side"><details class="toc" open>
   <summary>目录</summary>
   <nav>
     <ul>
-      <li class="lv2"><a href="#_1">一、整体思路</a></li>
-      <li class="lv2"><a href="#_2">二、代码逻辑：五个关键设计</a></li>
+      <li class="lv2"><a href="#_1">外部数据核验批处理引擎</a></li>
+      <li class="lv2"><a href="#_2">一、整体思路</a></li>
+      <li class="lv2"><a href="#_3">二、代码逻辑：五个关键设计</a></li>
       <li class="lv3"><a href="#1">1. 失败分类学：先回答「该找谁」</a></li>
       <li class="lv3"><a href="#2">2. 后置集中重试：主扫失败不干等</a></li>
       <li class="lv3"><a href="#3">3. 两轮校对：跨天的一致性设计</a></li>
       <li class="lv3"><a href="#4">4. 幂等与断点续传</a></li>
       <li class="lv3"><a href="#5">5. 不变量哨兵：宁可无法判定，不要假结论</a></li>
-      <li class="lv2"><a href="#_3">三、数据模型：四张表的证据链</a></li>
-      <li class="lv2"><a href="#_4">四、其他工程实践</a></li>
-      <li class="lv2"><a href="#_5">五、复盘</a></li>
+      <li class="lv2"><a href="#_4">三、数据模型：四张表的证据链</a></li>
+      <li class="lv2"><a href="#_5">四、其他工程实践</a></li>
+      <li class="lv2"><a href="#_6">五、复盘</a></li>
+      <li class="lv2"><a href="#_7">系列导航 · 工程实战</a></li>
     </ul>
   </nav>
 </details></aside>

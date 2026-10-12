@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/prj/02-多端业务后台架构.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "一个后端服务三个前端：多端业务后台的双存储、缓存工程化与影子表同步", "description": "一套教育升学服务后台的真实架构（已脱敏）：单体后端同时服务管理端、考生端 Web 与微信小程序。核心设计：MySQL + MongoDB 双存储分工、三级缓存与质数 TTL 防雪崩、EasyExcel SAX 流式解析 + 影子表原子切换的大文件同步、双轨认证与考试安全体系。", "url": "https://liyonggui.github.io/website/deep/prj/02-多端业务后台架构.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/prj/02-多端业务后台架构.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-10", "keywords": "架构设计, Spring Boot, MySQL, MongoDB, 工程实践, 工程实战"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -51,8 +51,12 @@
   </div>
   <div class="article-layout">
     <article class="prose">
+<blockquote>
+<p><strong>脱敏口径</strong>：架构决策、缓存参数动机与同步方案的设计结论来自真实生产经验；表结构、命名与代码示例做了通用化示意处理，不含任何真实业务数据。</p>
+</blockquote>
+<h2 id="_1">一个后端服务三个前端</h2>
 <p>这是第二个真实项目（已脱敏）的架构复盘。业务形态：<strong>教育升学信息 + 在线考试</strong>。一套单体后端，同时支撑管理后台、考生答题 Web 端、微信小程序和企业官网——四个端、两种业务域、两种数据库。</p>
-<h2 id="_1">一、整体思路：单体，但按域切分</h2>
+<h2 id="_2">一、整体思路：单体，但按域切分</h2>
 <p>没有上微服务。原因很直接：团队规模小、部署目标是一台云主机，拆微服务只会把运维复杂度翻倍。但单体内部<strong>严格按域分包</strong>，并预留了拆分骨架：</p>
 <div class="codehilite"><pre><span></span><code>org.example.app
 ├── common/            横切层：配置、切面、缓存门面
@@ -109,7 +113,7 @@
 <li><strong>索引在构造器中预建</strong>——唯一索引 <code>idx_user_paper_submit</code>（用户×试卷）同时承担<strong>交卷幂等</strong>职责：重复提交直接被数据库拒掉。</li>
 </ol>
 <p>MySQL 域则承担所有关系型查询：院校/院系/专业三级关联、订单、会员、站点配置。</p>
-<h2 id="_2">三、四条核心链路</h2>
+<h2 id="_3">三、四条核心链路</h2>
 <h3 id="1">链路 1：组卷 → 发布（状态机 + 缓存失效）</h3>
 <div class="codehilite"><pre><span></span><code>智能组卷(/paper/smart-generate)
   → 试卷状态机: draft → published ⇄ unpublished → archived（含回收站）
@@ -144,8 +148,8 @@
 <p><strong>第三步：僵尸任务自愈。</strong> 应用启动时监听 <code>ApplicationReadyEvent</code>，清理上次进程崩溃遗留的 RUNNING 状态任务。</p>
 <h3 id="4minio">链路 4：文件上传（MinIO）</h3>
 <p>小程序端与后台共用一套 OSS 抽象：<code>OssBuilder</code> → <code>OssTemplate</code>（S3 协议）→ MinIO。配置里当前激活 MinIO，但抽象层同时兼容 S3/阿里 OSS/腾讯 COS——换存储只改配置。生产环境经过地址转换把内网 endpoint 换成外网域名。</p>
-<h2 id="_3">四、双轨认证与三级缓存</h2>
-<h3 id="_4">双轨认证</h3>
+<h2 id="_4">四、双轨认证与三级缓存</h2>
+<h3 id="_5">双轨认证</h3>
 <table>
 <thead>
 <tr>
@@ -169,7 +173,7 @@
 </tbody>
 </table>
 <p>三套认证互不干扰，每端只拿得到自己域的接口。</p>
-<h3 id="_5">三级缓存（防雪崩是核心命题）</h3>
+<h3 id="_6">三级缓存（防雪崩是核心命题）</h3>
 <div class="codehilite"><pre><span></span><code>Caffeine 本地缓存（分类树等热点，5~15s 记忆化）
    ↓ miss
 Redis（Protostuff 序列化，试卷详情 24h 兜底 TTL）
@@ -183,35 +187,44 @@ DB
 <li><strong>写后 evict + 兜底 TTL 双保险</strong>——主动失效保证一致性，兜底 TTL 保证 evict 失败也不会脏太久；统计类缓存失效再加 10 秒节流。</li>
 </ol>
 <p>分布式事务没有上 Seata，一致性靠组合拳：本地事务 + 影子表 RENAME 原子切换 + 乐观锁 CAS + 幂等唯一索引 + 统计增量/回填双写兜底。<strong>每一条都对应具体场景</strong>，而不是引入一个重框架解决所有问题。</p>
-<h2 id="_6">五、可观测与压测</h2>
+<h2 id="_7">五、可观测与压测</h2>
 <ul>
 <li>Druid 慢 SQL 统计精准圈定业务包（<code>exam*,biz*</code>），配慢方法切面；</li>
 <li>MongoDB 侧自建慢查询监控（CommandListener 采集），管理页面可看；</li>
 <li><strong>k6 压测体系</strong>：脚本自动生成器扫接口清单产出 k6 脚本，dev 全链路压测 + 对账脚本，pre 环境 QPS 专项，HTML 报告输出；</li>
 <li>SQL 迁移用 Flyway 风格编号管理（<code>V1.0.x__*.sql</code>），并备了 7 种数据库的兼容升级脚本。</li>
 </ul>
-<h2 id="_7">六、部署形态</h2>
+<h2 id="_8">六、部署形态</h2>
 <p>单机 Docker Compose 全家桶：应用 fat jar 容器 + nginx（三个前端静态目录 + TLS 反代）+ MySQL 8.4 / Redis 7 / MongoDB 8.0 / MinIO 四中间件，全部带资源限额。<strong>敏感配置全部走环境变量注入</strong>，镜像里只有占位符；发布有 healthcheck + 一键前端部署脚本（备份 → 解压 → reload）。</p>
-<h2 id="_8">七、复盘</h2>
+<h2 id="_9">七、复盘</h2>
 <p>这个项目的主题是「<strong>在单体里做出分布式级别的工程纪律</strong>」：双存储是按数据特征分工而不是追新；影子表切换把「大数据量同步」这个最容易出事故的场景做成了原子操作；三级缓存的每个参数（质数 TTL、节流窗口、兜底时长）都有明确的防雪崩动机。单体不是终点，按域分包 + 拆分骨架让它随时可以继续演进。</p>
+<hr />
+<h2 id="_10">系列导航 · 工程实战</h2>
+<ul>
+<li>上一篇：<a href="01-外部数据核验批处理引擎.html">外部数据核验批处理引擎：失败分类、分级重试与两轮校对的完整设计</a></li>
+<li>下一篇：<a href="03-AI-Agent质量门禁.html">AI Agent 质量门禁：CI 之外的智能分析链与代码生成链</a></li>
+<li>关联项目：<a href="../project/backend-sandbox.html">业务后端沙盒（Agent 工具的数据源）</a></li>
+</ul>
     </article>
     <aside class="toc-side"><details class="toc" open>
   <summary>目录</summary>
   <nav>
     <ul>
-      <li class="lv2"><a href="#_1">一、整体思路：单体，但按域切分</a></li>
+      <li class="lv2"><a href="#_1">一个后端服务三个前端</a></li>
+      <li class="lv2"><a href="#_2">一、整体思路：单体，但按域切分</a></li>
       <li class="lv2"><a href="#mongodb">二、双存储：为什么考试域用 MongoDB</a></li>
-      <li class="lv2"><a href="#_2">三、四条核心链路</a></li>
+      <li class="lv2"><a href="#_3">三、四条核心链路</a></li>
       <li class="lv3"><a href="#1">链路 1：组卷 → 发布（状态机 + 缓存失效）</a></li>
       <li class="lv3"><a href="#2">链路 2：答题 → 判分 → 统计（安全贯穿全程）</a></li>
       <li class="lv3"><a href="#3">链路 3：招生目录大文件同步（本项目最值得讲的工程）</a></li>
       <li class="lv3"><a href="#4minio">链路 4：文件上传（MinIO）</a></li>
-      <li class="lv2"><a href="#_3">四、双轨认证与三级缓存</a></li>
-      <li class="lv3"><a href="#_4">双轨认证</a></li>
-      <li class="lv3"><a href="#_5">三级缓存（防雪崩是核心命题）</a></li>
-      <li class="lv2"><a href="#_6">五、可观测与压测</a></li>
-      <li class="lv2"><a href="#_7">六、部署形态</a></li>
-      <li class="lv2"><a href="#_8">七、复盘</a></li>
+      <li class="lv2"><a href="#_4">四、双轨认证与三级缓存</a></li>
+      <li class="lv3"><a href="#_5">双轨认证</a></li>
+      <li class="lv3"><a href="#_6">三级缓存（防雪崩是核心命题）</a></li>
+      <li class="lv2"><a href="#_7">五、可观测与压测</a></li>
+      <li class="lv2"><a href="#_8">六、部署形态</a></li>
+      <li class="lv2"><a href="#_9">七、复盘</a></li>
+      <li class="lv2"><a href="#_10">系列导航 · 工程实战</a></li>
     </ul>
   </nav>
 </details></aside>

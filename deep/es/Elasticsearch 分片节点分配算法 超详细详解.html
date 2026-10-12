@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Elasticsearch 分片节点分配算法 超详细详解", "description": "覆盖：分配整体流程、分片分配四大核心算法、平衡策略、分配约束、倾斜成因、要点，结合你前面冷热分层、分片倾斜知识点打通。", "url": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/Elasticsearch 分片节点分配算法 超详细详解.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-13", "keywords": "Elasticsearch, 分库分表, es"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>Elasticsearch 分片节点分配算法 超详细详解</h1>
-<div class="meta-row"><span class="m-item">2026-07-13</span><span class="m-item">es 系列</span><span class="m-item">约 23 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a></span></div>
+<div class="meta-row"><span class="m-item">2026-07-13</span><span class="m-item">es 系列</span><span class="m-item">约 23 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a></span></div><div class="doc-role"><span class="role-badge r-main">原理主文</span><span class="role-note">系统讲解分片分配决策链与磁盘水位的完整机制。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">

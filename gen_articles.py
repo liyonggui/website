@@ -15,7 +15,8 @@ import urllib.parse
 import markdown
 from pygments.formatters import HtmlFormatter
 
-from path_data import MYSQL_ORDER, REDIS_ORDER, ES_ORDER, K8S_ORDER
+from path_data import MYSQL_ORDER, REDIS_ORDER, ES_ORDER, K8S_ORDER, AGENT_ORDER
+import doc_roles
 
 try:
     import yaml
@@ -44,7 +45,7 @@ TEMPLATE = """<!DOCTYPE html>
 <meta property="og:url" content="__CANONICAL__" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">__JSONLD__</script>
-<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="__PREFIX__assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="__PREFIX__assets/css/pygments.css"/>
 <script>
@@ -174,9 +175,13 @@ def build_meta_row(meta, title, prefix):
             for t in tags
         )
         parts.append(f'<span class="m-tags">{chips}</span>')
-    if not parts:
-        return ""
-    return '<div class="meta-row">' + "".join(parts) + "</div>"
+    meta_row = '<div class="meta-row">' + "".join(parts) + "</div>" if parts else ""
+    role = meta.get("role")
+    if role:
+        cls, label, note = role
+        meta_row += (f'<div class="doc-role"><span class="role-badge {cls}">{html.escape(label)}</span>'
+                     f'<span class="role-note">{html.escape(note)}</span></div>')
+    return meta_row
 
 
 def depth_prefix(subdir):
@@ -407,6 +412,7 @@ PATH_NAV_CONF = {
     "deep/redis": (REDIS_ORDER, "redis-path.html", "Redis 学习线路"),
     "deep/es": (ES_ORDER, "es-path.html", "ES 学习线路"),
     "deep/k8s": (K8S_ORDER, "k8s-path.html", "K8s 学习线路"),
+    "deep/agent": (AGENT_ORDER, "agent-path.html", "AI Agent 学习线路"),
 }
 
 
@@ -481,6 +487,9 @@ def process_dir(rel_dir, active, back_label, catalog):
         with open(src, "r", encoding="utf-8") as f:
             text = f.read()
         meta, text = parse_front_matter(text)
+        role = doc_roles.role_for(rel_dir, fn[:-3])
+        if role:
+            meta["role"] = role
         if str(meta.get("draft", "")).strip().lower() in ("true", "yes", "1"):
             # 草稿不生成公开 HTML（索引同样排除）；若此前发布过，清除残留页面
             stale = os.path.join(abs_dir, fn[:-3] + ".html")

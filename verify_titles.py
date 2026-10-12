@@ -148,6 +148,22 @@ def check_static_h1():
     return errors
 
 
+PENDING_PAT = re.compile(r"(待补|待复测|待验证|待演练|TODO[:：]|^#{2,3} .*待办)")
+
+
+def report_pending():
+    """内容巡检（信息项，不计入失败）：列出文中明确的「待补」类未完成承诺。"""
+    hits = []
+    mds = list(ROOT.glob("blog/*.md")) + list(ROOT.glob("deep/*/*.md"))
+    for md in mds:
+        text = md.read_text(encoding="utf-8", errors="ignore")
+        for i, line in enumerate(text.splitlines(), 1):
+            if PENDING_PAT.search(line):
+                snippet = line.strip()[:60]
+                hits.append(f"{md.relative_to(ROOT)}:{i}  …{snippet}")
+    return hits
+
+
 def main():
     errors = []
     errors += check_md_quality()
@@ -165,6 +181,12 @@ def main():
         raise SystemExit(1)
 
     print("站点校验通过：元数据 / HTML 结构 / 产物对应 / 索引文件 / URL / XML 全部正常")
+
+    pending = report_pending()
+    if pending:
+        print(f"\n[巡检] 待补/待办标记 {len(pending)} 处（信息项，不影响通过）：")
+        for h in pending:
+            print("  ·", h)
 
 
 if __name__ == "__main__":

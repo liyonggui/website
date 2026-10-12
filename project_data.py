@@ -285,6 +285,7 @@ PROJECTS = [
          ("deep/agent/项目评估与改进建议.html", "项目评估与改进建议"),
          ("deep/agent/Agent中间件优化选型.html", "中间件选型"),
          ("deep/agent/全链路.html", "六阶段全链路"),
+         ("deep/prj/03-AI-Agent质量门禁.html", "AI Agent 质量门禁（工程实战复盘）"),
      ],
     ),
 

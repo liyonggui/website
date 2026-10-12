@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/连接层参数详细辨析.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL 连接层参数详细辨析", "description": "基于 MySQL 5.7/8.0，线程缓存 threadcachesize 参数，区分：连接、会话、线程、事务。 > 重要前提：MySQL 一个 TCP 连接 ≈ 一个会话(ses…", "url": "https://liyonggui.github.io/website/deep/mysql/连接层参数详细辨析.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/连接层参数详细辨析.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-29", "keywords": "MySQL, mysql"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>MySQL 连接层参数详细辨析</h1>
-<div class="meta-row"><span class="m-item">2026-05-29</span><span class="m-item">mysql 系列</span><span class="m-item">约 9 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div>
+<div class="meta-row"><span class="m-item">2026-05-29</span><span class="m-item">mysql 系列</span><span class="m-item">约 9 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div><div class="doc-role"><span class="role-badge r-sup">专题辨析</span><span class="role-note">只解决「连接层参数」这一个主题的逐项辨析。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">

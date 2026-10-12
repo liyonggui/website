@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ILM 全面实操手册（修订版）.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ILM 全面实操手册（修订版）", "description": "结论先行：我已经逐项检查并修改了你的文档，找出若干技术不准确或需要补充的点（尤其是路由哈希取模、路由变更的风险、ILM/rollover 字段与模板写法、shrink/split …", "url": "https://liyonggui.github.io/website/deep/es/ILM 全面实操手册（修订版）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ILM 全面实操手册（修订版）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-07", "keywords": "Elasticsearch, ILM, es"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ILM 全面实操手册（修订版）</h1>
-<div class="meta-row"><span class="m-item">2026-08-07</span><span class="m-item">es 系列</span><span class="m-item">约 30 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=ILM">ILM</a></span></div>
+<div class="meta-row"><span class="m-item">2026-08-07</span><span class="m-item">es 系列</span><span class="m-item">约 30 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=ILM">ILM</a></span></div><div class="doc-role"><span class="role-badge r-sup">实操补充</span><span class="role-note">ILM 各阶段（hot/warm/cold/delete）的实操验证，配合主手册阅读。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">

@@ -630,6 +630,41 @@ body::after {
 .path-hero h2 { font-size: clamp(28px, 4.5vw, 42px); letter-spacing: -0.03em; line-height: 1.15; margin: 12px 0 16px; }
 .path-progressbar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 28px; }
 .path-progressbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 2px; }
+
+/* 三要素：适合谁 / 前置知识 / 完成标准 */
+.path-fit {
+  margin: var(--s4) auto 0; max-width: 820px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-soft); padding: var(--s3) var(--s4);
+  display: grid; gap: 10px;
+}
+.fit-row { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: baseline; }
+.fit-k { font-size: 13px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+.fit-v { font-size: 14px; line-height: 1.65; color: var(--ink-soft); }
+
+/* 轻量捷径：先读这几站 */
+.path-shortcut {
+  margin: 14px auto 0; max-width: 820px;
+  border: 1px dashed var(--accent); border-radius: var(--radius);
+  padding: var(--s3) var(--s4); background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
+}
+.path-shortcut .sc-t { font-weight: 820; font-size: 15px; color: var(--ink); margin-bottom: 8px; }
+.path-shortcut .sc-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.path-shortcut .sc-list a { font-weight: 600; font-size: 14px; }
+.path-shortcut .sc-note { margin: 10px 0 0; font-size: 13px; color: var(--ink-faint); }
+.path-shortcut .sc-note a { color: var(--accent); font-weight: 600; }
+
+/* 本文定位徽标（主文 / 补充 / 速查 / 旧版本） */
+.doc-role { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.role-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.02em; white-space: nowrap;
+}
+.role-badge.r-main { background: var(--accent-soft); color: var(--accent); }
+.role-badge.r-sup { background: var(--bg-soft); color: var(--ink-soft); border: 1px solid var(--line); }
+.role-badge.r-ref { background: var(--ok-soft, rgba(15,148,110,.14)); color: var(--ok, #0f946e); }
+.role-badge.r-old { background: rgba(217,119,6,.14); color: #b45309; }
+.doc-role .role-note { font-size: 13px; color: var(--ink-faint); }
 .path-stage, .path-ref { max-width: 820px; margin: 0 auto var(--s6); }
 .stage-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
 .stage-no { flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: #fff;

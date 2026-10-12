@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/补测B4-SQL注入与安全治理.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测B4：SQL 注入与安全治理", "description": "高并发系统安全必修。SQL 注入是最高危的漏洞之一：字符串拼接 SQL，恶意入参可绕过 WHERE 泄露全表、绕过认证、删库。治理核心：参数化根治 + 纵深防御（字段最小化、脱敏、…", "url": "https://liyonggui.github.io/website/deep/mysql/补测B4-SQL注入与安全治理.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B4-SQL注入与安全治理.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-16", "keywords": "MySQL, mysql"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=10"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>补测B4：SQL 注入与安全治理</h1>
-<div class="meta-row"><span class="m-item">2026-05-16</span><span class="m-item">mysql 系列</span><span class="m-item">约 4 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div>
+<div class="meta-row"><span class="m-item">2026-05-16</span><span class="m-item">mysql 系列</span><span class="m-item">约 4 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=MySQL">MySQL</a></span></div><div class="doc-role"><span class="role-badge r-sup">补充实测</span><span class="role-note">对主线场景的边界补强，独立成篇可单独读。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">
