@@ -202,7 +202,9 @@ for key, title, desc, ic in SERIES:
         '            <div class="docs">\n%s            </div>\n'
         '          </div>\n'
         % (key, ic, title,
-           ('<a class="group-link" href="mysql-path.html">学习路线 →</a>' if key == "mysql" else ""),
+           ('<a class="group-link" href="%s">学习路线 →</a>'
+            % ("mysql-path.html" if key == "mysql" else "redis-path.html")
+            if key in ("mysql", "redis") else ""),
            "".join(items)))
 
 html = HEAD + "".join(nav_html) + TAIL.replace(GROUPS_PLACEHOLDER, "".join(groups_html))
