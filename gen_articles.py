@@ -94,7 +94,7 @@ __RELATED__
       <div id="giscus-comments"></div>
     </div>
   </section>
-  <script src="__PREFIX__assets/js/nav.js?v=2"></script>
+  <script src="__PREFIX__assets/js/nav.js?v=3"></script>
   <script src="__PREFIX__assets/js/comments.js?v=2"></script>
 </main>
 <footer>

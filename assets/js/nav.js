@@ -23,7 +23,7 @@
   ];
   nav.innerHTML = items.map(function (it) {
     var cls = it[0] === target ? ' class="active"' : "";
-    return '<a href="' + prefix + it[0] + '"' + cls + ">" + it[en] + "</a>";
+    return '<a href="' + prefix + it[0] + '"' + cls + ">" + (en ? it[2] : it[1]) + "</a>";
   }).join("");
 })();
 
