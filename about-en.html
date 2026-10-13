@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About Me · 小番茄程序猿</title>
+  <meta name="description" content="Li Yonggui — backend developer focused on high-concurrency Java systems and AI Agent engineering. 100+ long-form deep dives, all open source." />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="alternate" hreflang="zh-CN" href="https://liyonggui.github.io/website/about.html" />
+  <link rel="alternate" hreflang="en" href="https://liyonggui.github.io/website/about-en.html" />
+  <link rel="canonical" href="https://liyonggui.github.io/website/about-en.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="About Me · 小番茄程序猿" />
+  <meta property="og:description" content="High-concurrency Java backends + AI Agent engineering. 100+ deep dives, open source." />
+  <meta property="og:url" content="https://liyonggui.github.io/website/about-en.html" />
+  <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+  <link rel="stylesheet" href="assets/css/style.css?v=11" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks" data-prefix="" data-lang="en" data-active="about.html"></nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="Menu">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">About</div>
+          <h1>Hi, I'm Li Yonggui</h1>
+          <p>A backend developer working on two things: <b>high-concurrency Java systems</b> and <b>AI Agent engineering</b>. Based in China, writing in Chinese — but the code, benchmarks and numbers are universal.</p>
+        </div>
+        <div style="max-width:720px">
+          <p>
+            On one side: load testing, tuning and capacity planning for
+            <b>Redis / MySQL / Spring Cloud microservices</b> — every claim on this site is backed by
+            reproducible benchmark commands and measured numbers, not opinions.
+          </p>
+          <p>
+            On the other: a complete engineering progression with <b>Spring AI</b> — from a minimal
+            agent to RAG, MCP tool integration and evaluation systems. I care about things that
+            <i>run and are measurable</i>, not concept demos.
+          </p>
+          <p>
+            This site hosts <b>100+ long-form articles and deep-dive handbooks</b>, all open source on
+            <a href="https://github.com/liyonggui" target="_blank" rel="noopener">GitHub</a>.
+            Most articles are written in Chinese — if you read code and commands better than prose,
+            you'll still get most of the value.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">Explore</div>
+          <h2>What you'll find here</h2>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>Deep-dive series</h3>
+            <p>Benchmark-driven handbooks for Redis, MySQL, Elasticsearch and Kubernetes — latency curves, failure modes, and the fixes that actually worked in production.</p>
+            <div class="more"><a href="deep.html">Deep dives <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>AI Agent engineering</h3>
+            <p>A full agent project built with Spring AI: RAG retrieval, MCP tools, guardrails and an evaluation pipeline — with source code and honest post-mortems.</p>
+            <div class="more"><a href="projects.html">Projects <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>Learning paths</h3>
+            <p>Curated, opinionated roadmaps through each topic — what to learn in which order, with links to the corresponding deep dives.</p>
+            <div class="more"><a href="learn.html">Learning <span class="arr">→</span></a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">Contact</div>
+          <h2>Get in touch</h2>
+          <p>Happy to talk shop in English — consulting, collaboration, or just a technical discussion.</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>GitHub</h3>
+            <p>The best channel: source code, issues and discussions all live there. English issues are welcome.</p>
+            <div class="more"><a href="https://github.com/liyonggui" target="_blank" rel="noopener">github.com/liyonggui <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>Email</h3>
+            <p>For serious inquiries, email works too — <b>obfuscated against crawlers</b>, click to copy:</p>
+            <p id="mail-list" style="margin:0"></p>
+          </div>
+          <div class="card">
+            <h3>Comments</h3>
+            <p>Every page has a comment box (powered by GitHub Discussions). Leave a message in English or Chinese — either is fine.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · Full-stack portfolio &amp; blog</span>
+      <span class="foot-links"><a href="about.html">中文版</a> · <a href="about-en.html">English</a> · <a href="tags.html">Tags</a> · <a href="rss.xml">RSS</a></span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon() { th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+    syncThemeIcon();
+    th.addEventListener("click", function () {
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch (e) {}
+      syncThemeIcon();
+    });
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function () { l.classList.toggle("open"); });
+    // Email anti-crawl: Base64 only in source, decoded at runtime, click to copy
+    (function () {
+      var box = document.getElementById("mail-list");
+      if (!box) return;
+      var mails = ["bGl5b25nZ3VpODg4QGdtYWlsLmNvbQ==", "bHlnX2RldmVsb3BlckAxNjMuY29t"];
+      mails.forEach(function (b64, i) {
+        var addr = atob(b64);
+        var a = document.createElement("a");
+        a.href = "#";
+        a.textContent = addr;
+        a.setAttribute("data-mail", addr);
+        a.style.cssText = "display:inline-block;margin:" + (i ? "4px" : "0") + " 0;";
+        a.addEventListener("click", function (e) {
+          e.preventDefault();
+          var done = function () {
+            a.textContent = "Copied ✓";
+            setTimeout(function () { a.textContent = addr; }, 1500);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(addr).then(done, done);
+          } else {
+            var ta = document.createElement("textarea");
+            ta.value = addr; document.body.appendChild(ta); ta.select();
+            try { document.execCommand("copy"); } catch (err) {}
+            document.body.removeChild(ta); done();
+          }
+        });
+        box.appendChild(a);
+        if (i < mails.length - 1) box.appendChild(document.createElement("br"));
+      });
+    })();
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+      }, { threshold: 0.1 });
+      document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+    } else {
+      document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
+    }
+  </script>
+  <script src="assets/js/nav.js?v=3"></script>
+</body>
+</html>
