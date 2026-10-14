@@ -6,15 +6,15 @@
 <title>MySQL 四层架构、执行顺序、监控与 BufferPool 汇总 · 小番茄程序猿</title>
 <meta name="description" content="系统汇总 MySQL 核心原理：四层架构与各层监控、连接层参数辨析、SQL 执行顺序（正向/反向）、两阶段提交、BufferPool 与脏页、BufferPool 与无索引字段、长…"/>
 <meta name="keywords" content="MySQL, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/MySQL四层架构与监控汇总.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/MySQL%E5%9B%9B%E5%B1%82%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%9B%91%E6%8E%A7%E6%B1%87%E6%80%BB.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="MySQL 四层架构、执行顺序、监控与 BufferPool 汇总 · 小番茄程序猿" />
 <meta property="og:description" content="系统汇总 MySQL 核心原理：四层架构与各层监控、连接层参数辨析、SQL 执行顺序（正向/反向）、两阶段提交、BufferPool 与脏页、BufferPool 与无索引字段、长…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/MySQL四层架构与监控汇总.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/MySQL%E5%9B%9B%E5%B1%82%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%9B%91%E6%8E%A7%E6%B1%87%E6%80%BB.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL 四层架构、执行顺序、监控与 BufferPool 汇总", "description": "系统汇总 MySQL 核心原理：四层架构与各层监控、连接层参数辨析、SQL 执行顺序（正向/反向）、两阶段提交、BufferPool 与脏页、BufferPool 与无索引字段、长…", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL四层架构与监控汇总.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL四层架构与监控汇总.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-03", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL 四层架构、执行顺序、监控与 BufferPool 汇总", "description": "系统汇总 MySQL 核心原理：四层架构与各层监控、连接层参数辨析、SQL 执行顺序（正向/反向）、两阶段提交、BufferPool 与脏页、BufferPool 与无索引字段、长…", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL%E5%9B%9B%E5%B1%82%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%9B%91%E6%8E%A7%E6%B1%87%E6%80%BB.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL%E5%9B%9B%E5%B1%82%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%9B%91%E6%8E%A7%E6%B1%87%E6%80%BB.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-03", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

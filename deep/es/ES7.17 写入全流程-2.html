@@ -6,15 +6,15 @@
 <title>ES 7.17 写入全流程与底层存储算法拆解 · 小番茄程序猿</title>
 <meta name="description" content="本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…"/>
 <meta name="keywords" content="Elasticsearch, es"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES7.17 写入全流程-2.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="ES 7.17 写入全流程与底层存储算法拆解 · 小番茄程序猿" />
 <meta property="og:description" content="本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES7.17 写入全流程-2.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 7.17 写入全流程与底层存储算法拆解", "description": "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…", "url": "https://liyonggui.github.io/website/deep/es/ES7.17 写入全流程-2.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES7.17 写入全流程-2.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-24", "keywords": "Elasticsearch, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 7.17 写入全流程与底层存储算法拆解", "description": "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…", "url": "https://liyonggui.github.io/website/deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES7.17%20%E5%86%99%E5%85%A5%E5%85%A8%E6%B5%81%E7%A8%8B-2.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-24", "keywords": "Elasticsearch, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

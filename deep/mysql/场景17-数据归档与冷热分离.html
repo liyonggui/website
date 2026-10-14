@@ -6,15 +6,15 @@
 <title>场景 17 · 数据归档与冷热分离 · 小番茄程序猿</title>
 <meta name="description" content="业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致： - 查询需扫全表（含大量历史冷数据），性能下降 - 索引变大，缓存命中率降低 - 备份、迁移、统计耗时"/>
 <meta name="keywords" content="MySQL, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景17-数据归档与冷热分离.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF17-%E6%95%B0%E6%8D%AE%E5%BD%92%E6%A1%A3%E4%B8%8E%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="场景 17 · 数据归档与冷热分离 · 小番茄程序猿" />
 <meta property="og:description" content="业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致： - 查询需扫全表（含大量历史冷数据），性能下降 - 索引变大，缓存命中率降低 - 备份、迁移、统计耗时" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景17-数据归档与冷热分离.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF17-%E6%95%B0%E6%8D%AE%E5%BD%92%E6%A1%A3%E4%B8%8E%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 17 · 数据归档与冷热分离", "description": "业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致： - 查询需扫全表（含大量历史冷数据），性能下降 - 索引变大，缓存命中率降低 - 备份、迁移、统计耗时", "url": "https://liyonggui.github.io/website/deep/mysql/场景17-数据归档与冷热分离.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景17-数据归档与冷热分离.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-01", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 17 · 数据归档与冷热分离", "description": "业务数据随时间持续累积，大表（订单/日志）行数越来越大，导致： - 查询需扫全表（含大量历史冷数据），性能下降 - 索引变大，缓存命中率降低 - 备份、迁移、统计耗时", "url": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF17-%E6%95%B0%E6%8D%AE%E5%BD%92%E6%A1%A3%E4%B8%8E%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF17-%E6%95%B0%E6%8D%AE%E5%BD%92%E6%A1%A3%E4%B8%8E%E5%86%B7%E7%83%AD%E5%88%86%E7%A6%BB.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-01", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

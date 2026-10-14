@@ -6,15 +6,15 @@
 <title>写入链路降级设计：本地文件兜底 + 限速回放 · 小番茄程序猿</title>
 <meta name="description" content="性质：工程设计方案（内部沉淀，暂不作为文章内容发布） &gt; 适用：demo 高并发写入链路（HTTP → Disruptor → Kafka → 3 消费者 → MySQL/Redi…"/>
 <meta name="keywords" content="压测, bench"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/bench/降级设计-本地文件兜底与限速回放.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="写入链路降级设计：本地文件兜底 + 限速回放 · 小番茄程序猿" />
 <meta property="og:description" content="性质：工程设计方案（内部沉淀，暂不作为文章内容发布） &gt; 适用：demo 高并发写入链路（HTTP → Disruptor → Kafka → 3 消费者 → MySQL/Redi…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/bench/降级设计-本地文件兜底与限速回放.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "写入链路降级设计：本地文件兜底 + 限速回放", "description": "性质：工程设计方案（内部沉淀，暂不作为文章内容发布） > 适用：demo 高并发写入链路（HTTP → Disruptor → Kafka → 3 消费者 → MySQL/Redi…", "url": "https://liyonggui.github.io/website/deep/bench/降级设计-本地文件兜底与限速回放.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/bench/降级设计-本地文件兜底与限速回放.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-21", "keywords": "压测, bench"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "写入链路降级设计：本地文件兜底 + 限速回放", "description": "性质：工程设计方案（内部沉淀，暂不作为文章内容发布） > 适用：demo 高并发写入链路（HTTP → Disruptor → Kafka → 3 消费者 → MySQL/Redi…", "url": "https://liyonggui.github.io/website/deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/bench/%E9%99%8D%E7%BA%A7%E8%AE%BE%E8%AE%A1-%E6%9C%AC%E5%9C%B0%E6%96%87%E4%BB%B6%E5%85%9C%E5%BA%95%E4%B8%8E%E9%99%90%E9%80%9F%E5%9B%9E%E6%94%BE.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-21", "keywords": "压测, bench"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

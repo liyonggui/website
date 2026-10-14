@@ -6,15 +6,15 @@
 <title>ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册） · 小番茄程序猿</title>
 <meta name="description" content="1. 索引/分片/节点层级基础关系 2. 路由寻址原理 &amp; MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…"/>
 <meta name="keywords" content="Elasticsearch, 分库分表, ILM, es"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87ILM%26Reindex%E5%88%AB%E5%90%8D%E5%AE%8C%E6%95%B4%E6%89%8B%E5%86%8C.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册） · 小番茄程序猿" />
 <meta property="og:description" content="1. 索引/分片/节点层级基础关系 2. 路由寻址原理 &amp; MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87ILM%26Reindex%E5%88%AB%E5%90%8D%E5%AE%8C%E6%95%B4%E6%89%8B%E5%86%8C.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册）", "description": "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…", "url": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由分片ILM&Reindex别名完整手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-01", "keywords": "Elasticsearch, 分库分表, ILM, es"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 路由 · 分片分配 · ILM 冷热分层 · Reindex 重构 · 别名架构（整合手册）", "description": "1. 索引/分片/节点层级基础关系 2. 路由寻址原理 & MurmurHash3 哈希机制 3. 两类分片倾斜成因与路由二次打散方案 4. 分片分配算法、磁盘水位、搬迁管控 5.…", "url": "https://liyonggui.github.io/website/deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87ILM%26Reindex%E5%88%AB%E5%90%8D%E5%AE%8C%E6%95%B4%E6%89%8B%E5%86%8C.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES%E8%B7%AF%E7%94%B1%E5%88%86%E7%89%87ILM%26Reindex%E5%88%AB%E5%90%8D%E5%AE%8C%E6%95%B4%E6%89%8B%E5%86%8C.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-08-01", "keywords": "Elasticsearch, 分库分表, ILM, es"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

@@ -6,15 +6,15 @@
 <title>RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子 · 小番茄程序猿</title>
 <meta name="description" content="「高并发实测」系列第 4 篇。 &gt; &gt; 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…"/>
 <meta name="keywords" content="RAG, 博客"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/blog/04-RAG评测三层反转.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子 · 小番茄程序猿" />
 <meta property="og:description" content="「高并发实测」系列第 4 篇。 &gt; &gt; 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/blog/04-RAG评测三层反转.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子", "description": "「高并发实测」系列第 4 篇。 > > 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…", "url": "https://liyonggui.github.io/website/blog/04-RAG评测三层反转.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/04-RAG评测三层反转.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-08", "keywords": "RAG, 博客"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子", "description": "「高并发实测」系列第 4 篇。 > > 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…", "url": "https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-08", "keywords": "RAG, 博客"}</script>
 <link rel="stylesheet" href="../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
@@ -56,7 +56,7 @@
 <p>环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embedding 走百炼；评测用 Java 写的 <strong>RAGAS 风格自实现四指标</strong>（LLM-as-judge，5 题 gold 集，temperature=0）——🟡 <strong>名字复刻了 RAGAS，算法没有</strong>（见篇末更正提示）。排序质量另用 <code>/evalrank</code> 数答案块在候选池里的首现排名——<strong>排名计算本身是确定性的，但"哪块算相关"的标签由 LLM 裁判打出</strong>。</p>
 <p><strong>一句话结论</strong>：<code>context-precision@4 = 0.55</code> 这个难看的数字，测的不是"检索好不好"，而是"我的数据里答案占了几块"。<strong>换成 hit@1 / MRR 一测，纯向量排序早就满分（1.0），rerank 一点提升空间都没有。</strong> 我差点花钱去优化一个根本没坏的东西。（🟡 两句均已被第 5 篇部分修正：数据特性那句的方向对、具体解释错；MRR 满分那句要降级——见下文标注。）</p>
 <p>而这篇文章真正想写的，是后面两层：<strong>我纠正了第一次"尺子错"之后，又犯了第二次——而且是在我自己定的判据上犯的。</strong></p>
-<p>⚠️ <strong>更正提示（2026-10-11）</strong>：本文第二、三、五节的三处说法已被第 5 篇《我发出去的文章里有一句承重墙是错的》推翻——① 0.55 不是"答案只占 1 块"的算术结果（实际是 11/20，平均每题 2.2 块被判相关）；② MRR 不是"零噪声"（它的相关性标签由 LLM 裁判打出）；③ precision@4 在这个设置下测的是语料库属性（10 块的库交出 40%），不是检索器质量。<strong>为保留原始记录，本文不做静默修改，被推翻处均以 🟡 就地标注</strong>；当前有效结论以第 5 篇为准。</p>
+<p>⚠️ <strong>更正提示（2026-10-11）</strong>：本文第二、三、五节的三处说法已被第 5 篇《我发出去的文章里有一句承重墙是错的》推翻——① 0.55 不是"答案只占 1 块"的算术结果（实际是 11/20，平均每题 2.2 块被判相关）；② MRR 不是"零噪声"（它的相关性标签由 LLM 裁判打出）；③ precision@4 在这个设置下测的是语料库属性（10 块的库交出 40%），不是检索器质量。<strong>为保留原始记录，本文不做静默修改，被推翻处均以 🟡 就地标注</strong>；当前有效结论以第 5 篇为准。另：②中「LLM 裁判噪声」已有学术印证——LLM-as-judge 的逐条判定翻转率、以及 temperature 固定也不保证复现，见第 5 篇文末「参考与延伸阅读」。</p>
 </blockquote>
 <h2 id="_1">〇、一分钟带走版</h2>
 <p>同一套 RAG，五种测法，五个结论：</p>

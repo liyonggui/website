@@ -6,15 +6,15 @@
 <title>别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距 · 小番茄程序猿</title>
 <meta name="description" content="环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…"/>
 <meta name="keywords" content="Redis, 压测, 博客"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/blog/01-Redis-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81%E5%8E%8B%E6%B5%8B.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距 · 小番茄程序猿" />
 <meta property="og:description" content="环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/blog/01-Redis-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81%E5%8E%8B%E6%B5%8B.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距", "description": "环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…", "url": "https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-09-03", "keywords": "Redis, 压测, 博客"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距", "description": "环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…", "url": "https://liyonggui.github.io/website/blog/01-Redis-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81%E5%8E%8B%E6%B5%8B.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/01-Redis-String%E4%B8%89%E7%A7%8D%E7%BC%96%E7%A0%81%E5%8E%8B%E6%B5%8B.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-09-03", "keywords": "Redis, 压测, 博客"}</script>
 <link rel="stylesheet" href="../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>

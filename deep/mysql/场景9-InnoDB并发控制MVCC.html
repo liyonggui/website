@@ -6,15 +6,15 @@
 <title>场景 9 · InnoDB 并发控制（MVCC 多版本并发控制） · 小番茄程序猿</title>
 <meta name="description" content="InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…"/>
 <meta name="keywords" content="MySQL, 事务, Java 并发, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景9-InnoDB并发控制MVCC.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="场景 9 · InnoDB 并发控制（MVCC 多版本并发控制） · 小番茄程序猿" />
 <meta property="og:description" content="InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景9-InnoDB并发控制MVCC.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 9 · InnoDB 并发控制（MVCC 多版本并发控制）", "description": "InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…", "url": "https://liyonggui.github.io/website/deep/mysql/场景9-InnoDB并发控制MVCC.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景9-InnoDB并发控制MVCC.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-22", "keywords": "MySQL, 事务, Java 并发, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 9 · InnoDB 并发控制（MVCC 多版本并发控制）", "description": "InnoDB 的高并发读写的基石是 MVCC（多版本并发控制）。它让快照读（普通 SELECT）不加锁即可实现一致性和可重复读，从而读写互不阻塞，大幅提升并发度。MVCC 的核心是…", "url": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF9-InnoDB%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6MVCC.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-22", "keywords": "MySQL, 事务, Java 并发, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

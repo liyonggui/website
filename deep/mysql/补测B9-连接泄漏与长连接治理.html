@@ -6,15 +6,15 @@
 <title>补测 B9 · 连接泄漏与长连接治理 · 小番茄程序猿</title>
 <meta name="description" content="连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的&quot;隐藏故障&quot;（进程运行几天/几周后连接缓…"/>
 <meta name="keywords" content="MySQL, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/补测B9-连接泄漏与长连接治理.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="补测 B9 · 连接泄漏与长连接治理 · 小番茄程序猿" />
 <meta property="og:description" content="连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的&quot;隐藏故障&quot;（进程运行几天/几周后连接缓…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/补测B9-连接泄漏与长连接治理.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测 B9 · 连接泄漏与长连接治理", "description": "连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的\"隐藏故障\"（进程运行几天/几周后连接缓…", "url": "https://liyonggui.github.io/website/deep/mysql/补测B9-连接泄漏与长连接治理.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/补测B9-连接泄漏与长连接治理.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-28", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "补测 B9 · 连接泄漏与长连接治理", "description": "连接泄漏：获取数据库连接后忘记释放，连接池/数据库连接被慢性耗尽，最终报 Too many connections 雪崩。是生产环境最常见的\"隐藏故障\"（进程运行几天/几周后连接缓…", "url": "https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/%E8%A1%A5%E6%B5%8BB9-%E8%BF%9E%E6%8E%A5%E6%B3%84%E6%BC%8F%E4%B8%8E%E9%95%BF%E8%BF%9E%E6%8E%A5%E6%B2%BB%E7%90%86.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-05-28", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

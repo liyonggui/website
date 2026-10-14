@@ -457,8 +457,8 @@ def build_jsonld(title, desc, rel_url, meta, tags, series):
         "@type": "BlogPosting",
         "headline": title,
         "description": desc,
-        "url": SITE_BASE + rel_url,
-        "mainEntityOfPage": SITE_BASE + rel_url,
+        "url": SITE_BASE + urllib.parse.quote(rel_url, safe="/"),
+        "mainEntityOfPage": SITE_BASE + urllib.parse.quote(rel_url, safe="/"),
         "author": {"@type": "Person", "name": "小番茄程序猿"},
         "publisher": {"@type": "Person", "name": "小番茄程序猿"},
         "image": SITE_BASE + "assets/logo.svg",
@@ -518,7 +518,7 @@ def process_dir(rel_dir, active, back_label, catalog):
             pathnav = build_path_nav(conf[0].index(fn[:-3]), path_titles, prefix, rel_dir)
         html_doc = build_html(
             prefix, title, body, active, back_href, back_label, toc, meta,
-            canonical=SITE_BASE + rel_url,
+            canonical=SITE_BASE + urllib.parse.quote(rel_url, safe="/"),
             keywords=", ".join(dict.fromkeys(tags + [series])),
             jsonld=build_jsonld(title, desc, rel_url, meta, tags, series),
             related_html=build_related_html(related, prefix),

@@ -6,15 +6,15 @@
 <title>场景 6 · 读写分离与主从延迟 · 小番茄程序猿</title>
 <meta name="description" content="在 MySQL 高并发场景下，读多写少是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用读写分离：写走主库、读走从库，把读压力分摊到只读副本上。"/>
 <meta name="keywords" content="MySQL, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景6-读写分离与主从延迟.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF6-%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB%E4%B8%8E%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="场景 6 · 读写分离与主从延迟 · 小番茄程序猿" />
 <meta property="og:description" content="在 MySQL 高并发场景下，读多写少是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用读写分离：写走主库、读走从库，把读压力分摊到只读副本上。" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景6-读写分离与主从延迟.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF6-%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB%E4%B8%8E%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 6 · 读写分离与主从延迟", "description": "在 MySQL 高并发场景下，读多写少是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用读写分离：写走主库、读走从库，把读压力分摊到只读副本上。", "url": "https://liyonggui.github.io/website/deep/mysql/场景6-读写分离与主从延迟.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景6-读写分离与主从延迟.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-19", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 6 · 读写分离与主从延迟", "description": "在 MySQL 高并发场景下，读多写少是常态。单库既要扛读又要扛写，容易出现读压力拖垮主库、写性能下降。生产常用读写分离：写走主库、读走从库，把读压力分摊到只读副本上。", "url": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF6-%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB%E4%B8%8E%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF6-%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB%E4%B8%8E%E4%B8%BB%E4%BB%8E%E5%BB%B6%E8%BF%9F.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-19", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

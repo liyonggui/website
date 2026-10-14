@@ -6,15 +6,15 @@
 <title>MySQL（InnoDB）事务与锁排查治理手册 · 小番茄程序猿</title>
 <meta name="description" content="适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…"/>
 <meta name="keywords" content="MySQL, 事务, 锁, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/MySQL-事务与锁排查治理手册.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="MySQL（InnoDB）事务与锁排查治理手册 · 小番茄程序猿" />
 <meta property="og:description" content="适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/MySQL-事务与锁排查治理手册.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL（InnoDB）事务与锁排查治理手册", "description": "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL-事务与锁排查治理手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL-事务与锁排查治理手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-23", "keywords": "MySQL, 事务, 锁, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL（InnoDB）事务与锁排查治理手册", "description": "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-23", "keywords": "MySQL, 事务, 锁, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

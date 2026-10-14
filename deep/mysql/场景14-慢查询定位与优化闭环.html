@@ -6,15 +6,15 @@
 <title>场景 14 · 慢查询定位与优化闭环 · 小番茄程序猿</title>
 <meta name="description" content="慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要完整闭环：定位 → 分析 → 优化 → 验证，而不是拍脑袋改。"/>
 <meta name="keywords" content="MySQL, mysql"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/场景14-慢查询定位与优化闭环.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="场景 14 · 慢查询定位与优化闭环 · 小番茄程序猿" />
 <meta property="og:description" content="慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要完整闭环：定位 → 分析 → 优化 → 验证，而不是拍脑袋改。" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/场景14-慢查询定位与优化闭环.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 14 · 慢查询定位与优化闭环", "description": "慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要完整闭环：定位 → 分析 → 优化 → 验证，而不是拍脑袋改。", "url": "https://liyonggui.github.io/website/deep/mysql/场景14-慢查询定位与优化闭环.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/场景14-慢查询定位与优化闭环.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-28", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 14 · 慢查询定位与优化闭环", "description": "慢查询是线上性能问题的常见根源。一次全表扫描可能拖垮整个库。治理慢查询需要完整闭环：定位 → 分析 → 优化 → 验证，而不是拍脑袋改。", "url": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/%E5%9C%BA%E6%99%AF14-%E6%85%A2%E6%9F%A5%E8%AF%A2%E5%AE%9A%E4%BD%8D%E4%B8%8E%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-03-28", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

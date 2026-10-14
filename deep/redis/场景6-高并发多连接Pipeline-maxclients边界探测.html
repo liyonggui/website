@@ -6,15 +6,15 @@
 <title>场景 6 · 高并发多连接 Pipeline — maxclients 边界探测 · 小番茄程序猿</title>
 <meta name="description" content="生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …"/>
 <meta name="keywords" content="Redis, Java 并发, 缓存, redis"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF6-%E9%AB%98%E5%B9%B6%E5%8F%91%E5%A4%9A%E8%BF%9E%E6%8E%A5Pipeline-maxclients%E8%BE%B9%E7%95%8C%E6%8E%A2%E6%B5%8B.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="场景 6 · 高并发多连接 Pipeline — maxclients 边界探测 · 小番茄程序猿" />
 <meta property="og:description" content="生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF6-%E9%AB%98%E5%B9%B6%E5%8F%91%E5%A4%9A%E8%BF%9E%E6%8E%A5Pipeline-maxclients%E8%BE%B9%E7%95%8C%E6%8E%A2%E6%B5%8B.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 6 · 高并发多连接 Pipeline — maxclients 边界探测", "description": "生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …", "url": "https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景6-高并发多连接Pipeline-maxclients边界探测.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-02", "keywords": "Redis, Java 并发, 缓存, redis"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 6 · 高并发多连接 Pipeline — maxclients 边界探测", "description": "生产现象: 微服务拆分后，十几个服务共享一个 Redis 实例 每个服务内部又有多线程 Pipeline 写入 连接数暴涨 → 逼近 maxclients → 新建连接被拒绝 → …", "url": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF6-%E9%AB%98%E5%B9%B6%E5%8F%91%E5%A4%9A%E8%BF%9E%E6%8E%A5Pipeline-maxclients%E8%BE%B9%E7%95%8C%E6%8E%A2%E6%B5%8B.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF6-%E9%AB%98%E5%B9%B6%E5%8F%91%E5%A4%9A%E8%BF%9E%E6%8E%A5Pipeline-maxclients%E8%BE%B9%E7%95%8C%E6%8E%A2%E6%B5%8B.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-02", "keywords": "Redis, Java 并发, 缓存, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

@@ -6,15 +6,15 @@
 <title>场景 10 · 哨兵 vs 集群：写入阶段选型压测 · 小番茄程序猿</title>
 <meta name="description" content="目标：为&quot;写入阶段&quot;做架构选型验证。聚焦两组对比： &gt; 1. 稳态写压测：哨兵 vs 集群 的纯写吞吐/延迟 &gt; 2. 故障韧性压测：kill master → 观察写中断/恢复表…"/>
 <meta name="keywords" content="Redis, 压测, redis"/>
-<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/场景10-哨兵vs集群写入阶段选型.html"/>
+<link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="场景 10 · 哨兵 vs 集群：写入阶段选型压测 · 小番茄程序猿" />
 <meta property="og:description" content="目标：为&quot;写入阶段&quot;做架构选型验证。聚焦两组对比： &gt; 1. 稳态写压测：哨兵 vs 集群 的纯写吞吐/延迟 &gt; 2. 故障韧性压测：kill master → 观察写中断/恢复表…" />
-<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景10-哨兵vs集群写入阶段选型.html" />
+<meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 10 · 哨兵 vs 集群：写入阶段选型压测", "description": "目标：为\"写入阶段\"做架构选型验证。聚焦两组对比： > 1. 稳态写压测：哨兵 vs 集群 的纯写吞吐/延迟 > 2. 故障韧性压测：kill master → 观察写中断/恢复表…", "url": "https://liyonggui.github.io/website/deep/redis/场景10-哨兵vs集群写入阶段选型.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景10-哨兵vs集群写入阶段选型.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-13", "keywords": "Redis, 压测, redis"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 10 · 哨兵 vs 集群：写入阶段选型压测", "description": "目标：为\"写入阶段\"做架构选型验证。聚焦两组对比： > 1. 稳态写压测：哨兵 vs 集群 的纯写吞吐/延迟 > 2. 故障韧性压测：kill master → 观察写中断/恢复表…", "url": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF10-%E5%93%A8%E5%85%B5vs%E9%9B%86%E7%BE%A4%E5%86%99%E5%85%A5%E9%98%B6%E6%AE%B5%E9%80%89%E5%9E%8B.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-13", "keywords": "Redis, 压测, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
