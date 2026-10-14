@@ -381,7 +381,7 @@ ALTER SYSTEM SET idle_in_transaction_session_timeout = '5min';
 
 ---
 
-## 9. 本次案例待办 Checklist
+## 9. 治理行动清单
 
 - [ ] 让运维/DBA 对 `pid=21634` **精准 `kill -9`**（或超级用户 `pg_terminate_backend`），**不重启实例**。
 - [ ] 附证据推动：会话详情 + 完整 SQL + `xact_age≈2 天` + `holds_back_xacts`（见 4.5）+ 是否连带阻塞（4.3）。

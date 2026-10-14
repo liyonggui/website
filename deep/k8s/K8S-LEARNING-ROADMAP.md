@@ -141,7 +141,7 @@ draft: false
 3. **发布进阶**：`蓝绿 / 金丝雀`（用 Traefik 做 canary，复用已通的 Ingress）
 4. **平台级**：`GitOps(ArgoCD)` → `Operator` → `Service Mesh`
 
-### 待办（未完成项，供后续会话接手）
+### 遗留项与后续计划
 - **[未固化]** redis 主库 masterauth：当前集群为临时修复态，需 `kubectl apply -f redis-statefulset.yaml -n sc-demo` + 重建两 Pod，拓扑回到 redis-0 主且主库自带 masterauth
 - **[可选]** sc-user 真正接入 redis 做缓存联调（最有实战感的一步）
 

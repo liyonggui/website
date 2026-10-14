@@ -331,7 +331,7 @@
 <li><strong>发布进阶</strong>：<code>蓝绿 / 金丝雀</code>（用 Traefik 做 canary，复用已通的 Ingress）</li>
 <li><strong>平台级</strong>：<code>GitOps(ArgoCD)</code> → <code>Operator</code> → <code>Service Mesh</code></li>
 </ol>
-<h3 id="_8">待办（未完成项，供后续会话接手）</h3>
+<h3 id="_8">遗留项与后续计划</h3>
 <ul>
 <li><strong>[未固化]</strong> redis 主库 masterauth：当前集群为临时修复态，需 <code>kubectl apply -f redis-statefulset.yaml -n sc-demo</code> + 重建两 Pod，拓扑回到 redis-0 主且主库自带 masterauth</li>
 <li><strong>[可选]</strong> sc-user 真正接入 redis 做缓存联调（最有实战感的一步）</li>
@@ -377,7 +377,7 @@ kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> <
       <li class="lv3"><a href="#_5">★★ 第二档：运维进阶（集群跑稳必碰）</a></li>
       <li class="lv3"><a href="#_6">★★★ 第三档：高阶（走向生产级平台）</a></li>
       <li class="lv2"><a href="#_7">三、建议学习路线</a></li>
-      <li class="lv3"><a href="#_8">待办（未完成项，供后续会话接手）</a></li>
+      <li class="lv3"><a href="#_8">遗留项与后续计划</a></li>
       <li class="lv2"><a href="#_9">附录：常用命令速查</a></li>
     </ul>
   </nav>

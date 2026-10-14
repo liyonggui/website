@@ -612,7 +612,7 @@
 <li><strong><code>transaction_timeout</code></strong>（PG 17+）可限制整个事务（含 active+idle）总时长，作为长事务的最后兜底；KingbaseES 视版本而定，查不到即不支持。</li>
 </ul>
 <hr />
-<h2 id="9-checklist">9. 本次案例待办 Checklist</h2>
+<h2 id="9">9. 治理行动清单</h2>
 <ul>
 <li>[ ] 让运维/DBA 对 <code>pid=21634</code> <strong>精准 <code>kill -9</code></strong>（或超级用户 <code>pg_terminate_backend</code>），<strong>不重启实例</strong>。</li>
 <li>[ ] 附证据推动：会话详情 + 完整 SQL + <code>xact_age≈2 天</code> + <code>holds_back_xacts</code>（见 4.5）+ 是否连带阻塞（4.3）。</li>
@@ -813,7 +813,7 @@
       <li class="lv3"><a href="#_2">参数详解（逐个说明含义）</a></li>
       <li class="lv2"><a href="#7">7. 实际开发常用设置与最佳实践</a></li>
       <li class="lv2"><a href="#8">8. 注意事项 / 常见坑</a></li>
-      <li class="lv2"><a href="#9-checklist">9. 本次案例待办 Checklist</a></li>
+      <li class="lv2"><a href="#9">9. 治理行动清单</a></li>
       <li class="lv2"><a href="#10-mysqlinnodb">10. 附录：MySQL（InnoDB）对照速查</a></li>
       <li class="lv3"><a href="#101">10.1 概念对照总表</a></li>
       <li class="lv3"><a href="#102-mysql-mdl">10.2 「改不了表」在 MySQL 里多半是 MDL</a></li>

@@ -25,6 +25,7 @@
 | Redis | `redis-path.html` | 15 站 + 3 篇随查手册 |
 | Elasticsearch | `es-path.html` | 9 站 + 4 篇随查手册 |
 | K8s | `k8s-path.html` | 7 站 + 2 篇随查手册 |
+| AI Agent | `agent-path.html` | 8 站 + 2 篇随查手册 |
 
 文章数量以 `verify_titles.py` 校验结果与 `data/articles.json` 为准（随内容持续增长，README 不写死具体数值）。
 
@@ -38,7 +39,7 @@
   ▼
 add_front_matter.py   # 给新文章注入元数据（幂等）
 gen_articles.py       # 渲染全部文章页（排版/TOC/线路导航/评论区/暗色模式）
-gen_path.py           # 生成 mysql/redis/es/k8s-path.html 学习线路页
+gen_path.py           # 生成 mysql/redis/es/k8s/agent-path.html 学习线路页
 gen_projects.py       # 生成 project/*.html 项目详情页
 gen_deep.py           # 生成 deep.html 深度专栏索引
 generate_index.py     # 生成 data/*.json（文章/标签/归档/搜索索引）+ rss.xml + sitemap.xml

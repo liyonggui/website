@@ -181,7 +181,7 @@ PATHS = [
         "dir": "deep/agent",
         "keywords": "AI Agent, 学习路线, 学习线路, RAG, MCP, 护栏, 评测, 工程化",
         "desc_t": "把本站全部 AI Agent 文章按认知顺序组织成 %d 站学习线路：基础闭环与工具调用、"
-                  "RAG 检索与评测、MCP 与工具接入、护栏容错与可观测、端到端工程化与质量评估，另附随查手册。",
+                  "RAG 检索与评测、护栏容错与可观测、MCP 与工具接入、端到端工程化与质量评估，另附随查手册。",
         "fit": {
             "audience": "调过 LLM API 但没系统化工程化的开发者；想把 Agent 从 demo 推向生产、关心护栏/成本/评测的人。",
             "prereq": "会用 Java 或 Python 调用 LLM 接口，理解 prompt 与函数调用的基本概念；不需要框架使用经验。",
