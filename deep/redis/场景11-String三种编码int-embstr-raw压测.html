@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/场景11-String三种编码int-embstr-raw压测.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 11 · Redis 内部编码性能对比压测（String int/embstr/raw + Hash listpack/hashtable + ZSet listpack/skiplist + Set intset/listpack/hashtable）", "description": "已实测 ✅ 2026-08-04（String/Hash/ZSet）· 2026-08-11（Set） | Redis 7 单体（appendonly no），compose 按需…", "url": "https://liyonggui.github.io/website/deep/redis/场景11-String三种编码int-embstr-raw压测.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/场景11-String三种编码int-embstr-raw压测.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-15", "keywords": "Redis, 压测, redis"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -224,7 +224,7 @@
 - <strong>增量拼接时 raw 最优</strong>：<code>sdsMakeRoomFor</code> 预分配 2 倍容量，后续 APPEND 容量足够即 O(1)（实测 max 延迟 39ms，远低于 embstr 的 287ms）</p>
 <p><strong>注意事项</strong>：
 - 大 value 的 memcpy 成本线性增长：SET 1KB 比 200B 慢 39%（实测）
-- <strong>不要对 int/embstr 起点反复 APPEND</strong>：会反复全量重分配，延迟长尾放大
+- <strong>不要对 int/embstr 起点反复 APPEND</strong>：首次追加会发生一次跨编码全量拷贝，之后容量不足还会触发 SDS 扩容，延迟长尾放大（实测 max 287ms vs raw 预分配 39ms）
 - 超大 value（几百 KB 以上）会阻塞主线程并放大 slowlog，应压缩或拆分</p>
 <h3 id="24">2.4 三种编码选型速查表</h3>
 <table>

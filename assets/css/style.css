@@ -653,6 +653,9 @@ body::after {
 .path-shortcut .sc-list a { font-weight: 600; font-size: 14px; }
 .path-shortcut .sc-note { margin: 10px 0 0; font-size: 13px; color: var(--ink-faint); }
 .path-shortcut .sc-note a { color: var(--accent); font-weight: 600; }
+.path-cases { margin: 10px 0 0; padding: 10px 14px; background: var(--bg-soft); border: 1px dashed var(--line); border-radius: 10px; font-size: 13.5px; color: var(--ink-faint); line-height: 1.9; }
+.path-cases .pc-t { font-weight: 780; color: var(--ink); margin-right: 6px; }
+.path-cases a { color: var(--accent); font-weight: 600; margin-right: 14px; white-space: nowrap; }
 
 /* 本文定位徽标（主文 / 补充 / 速查 / 旧版本） */
 .doc-role { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; flex-wrap: wrap; }

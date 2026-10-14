@@ -13,7 +13,7 @@
   <meta property="og:url" content="https://liyonggui.github.io/website/" />
   <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
   <meta name="twitter:card" content="summary" />
-  <link rel="stylesheet" href="assets/css/style.css?v=11" />
+  <link rel="stylesheet" href="assets/css/style.css?v=12" />
   <script>
     (function () {
       try {
@@ -59,7 +59,7 @@
               <div class="stat"><div class="n">8</div><div class="l">高并发子项目</div></div>
               <div class="stat"><div class="n">29</div><div class="l">压测 / 治理场景</div></div>
               <div class="stat"><div class="n">6</div><div class="l">AI Agent 阶段工程</div></div>
-              <div class="stat"><div class="n">108</div><div class="l">技术长文 / 深度文档</div></div>
+              <div class="stat"><div class="n" id="statTotal">108</div><div class="l">技术长文 / 深度文档</div></div>
             </div>
           </div>
 
@@ -78,7 +78,7 @@
               <div class="line"><span class="key">  高并发子项目 </span><span class="val">8</span></div>
               <div class="line"><span class="key">  压测 / 治理   </span><span class="val">29</span></div>
               <div class="line"><span class="key">  Agent 阶段    </span><span class="val">6</span></div>
-              <div class="line"><span class="key">  深度文档     </span><span class="val">109</span></div>
+              <div class="line"><span class="key">  深度文档     </span><span class="val" id="termDeep">102</span></div>
               <div class="line"><span class="key">  RAG 召回     </span><span class="val">83%</span></div>
             </div>
           </div>
@@ -131,12 +131,12 @@
         </div>
         <div class="viz">
           <div class="bars" id="vizBars">
-            <div class="bar-row"><span class="name">MySQL</span><span class="track"><i style="width:100%"></i></span><span class="cnt">44</span></div>
-            <div class="bar-row"><span class="name">Redis</span><span class="track"><i style="width:41%"></i></span><span class="cnt">18</span></div>
-            <div class="bar-row"><span class="name">Elasticsearch</span><span class="track"><i style="width:41%"></i></span><span class="cnt">18</span></div>
-            <div class="bar-row"><span class="name">Agent 原理</span><span class="track"><i style="width:23%"></i></span><span class="cnt">10</span></div>
-            <div class="bar-row"><span class="name">K8s 云原生</span><span class="track"><i style="width:20%"></i></span><span class="cnt">9</span></div>
-            <div class="bar-row"><span class="name">压测方法论</span><span class="track"><i style="width:11%"></i></span><span class="cnt">5</span></div>
+            <div class="bar-row" data-dir="mysql"><span class="name">MySQL</span><span class="track"><i style="width:100%"></i></span><span class="cnt">44</span></div>
+            <div class="bar-row" data-dir="redis"><span class="name">Redis</span><span class="track"><i style="width:41%"></i></span><span class="cnt">18</span></div>
+            <div class="bar-row" data-dir="es"><span class="name">Elasticsearch</span><span class="track"><i style="width:30%"></i></span><span class="cnt">13</span></div>
+            <div class="bar-row" data-dir="agent"><span class="name">Agent 原理</span><span class="track"><i style="width:23%"></i></span><span class="cnt">10</span></div>
+            <div class="bar-row" data-dir="k8s"><span class="name">K8s 云原生</span><span class="track"><i style="width:20%"></i></span><span class="cnt">9</span></div>
+            <div class="bar-row" data-dir="bench"><span class="name">压测方法论</span><span class="track"><i style="width:11%"></i></span><span class="cnt">5</span></div>
           </div>
           <div class="note">
             <p>不是项目罗列，而是支撑那些项目跑起来、能量化的<strong>底层知识</strong>：</p>
@@ -266,6 +266,25 @@
                '<span class="lr-title">' + esc(a.title) + '</span>' +
                '<span class="lr-meta">' + esc(a.date) + ' · ' + esc(a.series) + ' 系列</span></a>';
       }).join("");
+
+      // 统计口径统一由 articles.json 计算（静态值是兜底，JS 可用时以数据为准）
+      var total = list.length;
+      var deep = list.filter(function(a){ return a.url.indexOf("deep/") === 0; }).length;
+      var t = document.getElementById("statTotal"); if (t) t.textContent = total;
+      var d = document.getElementById("termDeep"); if (d) d.textContent = deep;
+      var counts = {}, max = 0;
+      list.forEach(function(a){
+        var m = a.url.match(/^deep\/([^/]+)\//);
+        if (!m) return;
+        counts[m[1]] = (counts[m[1]] || 0) + 1;
+        if (counts[m[1]] > max) max = counts[m[1]];
+      });
+      document.querySelectorAll("#vizBars .bar-row").forEach(function(row){
+        var dir = row.getAttribute("data-dir");
+        var n = counts[dir] || 0;
+        row.querySelector(".cnt").textContent = n;
+        row.querySelector(".track i").style.width = (max ? Math.round(n / max * 100) : 0) + "%";
+      });
     }).catch(function(){
       document.getElementById("recentList").innerHTML = '<span class="dim-note">索引加载失败——请通过本地服务器或 GitHub Pages 访问。</span>';
     });

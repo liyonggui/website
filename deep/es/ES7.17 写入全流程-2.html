@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES7.17 写入全流程-2.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 7.17 写入全流程与底层存储算法拆解", "description": "本文档全覆盖拆解 Elasticsearch 7.17 文档写入全链路，从分片路由、事务日志、内存索引、Refresh刷新、Flush落盘、段合并六大核心阶段，逐一标注使用算法、底…", "url": "https://liyonggui.github.io/website/deep/es/ES7.17 写入全流程-2.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES7.17 写入全流程-2.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-24", "keywords": "Elasticsearch, es"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES 7.17 写入全流程与底层存储算法拆解</h1>
-<div class="meta-row"><span class="m-item">2026-07-24</span><span class="m-item">es 系列</span><span class="m-item">约 14 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a></span></div><div class="doc-role"><span class="role-badge r-main">原理主文</span><span class="role-note">沿 ES 7.17 写入全流程逐段梳理，讲清「可见 ≠ 可靠」的分界。</span></div>
+<div class="meta-row"><span class="m-item">2026-07-24</span><span class="m-item">es 系列</span><span class="m-item">约 14 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a></span></div><div class="doc-role"><span class="role-badge r-main">原理主文 · 修订版</span><span class="role-note">沿 ES 7.17 写入全流程逐段梳理，讲清「可见 ≠ 可靠」的分界（-2 为第二版修订序号，非分册）。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">

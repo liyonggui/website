@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES ILM 索引生命周期管理完整手册（原理 · 参数 · 生产配置 · 故障排查）", "description": "本文承接前文ES路由、分片分配、冷热分层全套内容，ILM是ES冷热分层唯一原生实现方案，全程无业务代码、无定时任务，配置驱动实现索引自动冷热流转；同时厘清所有人都踩过的时间误区、调…", "url": "https://liyonggui.github.io/website/deep/es/ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES ILM索引生命周期管理 完整版手册（原理+参数+生产配置+故障排查）.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-21", "keywords": "Elasticsearch, 索引, 源码, ILM, es"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES ILM 索引生命周期管理完整手册（原理 · 参数 · 生产配置 · 故障排查）</h1>
-<div class="meta-row"><span class="m-item">2026-07-21</span><span class="m-item">es 系列</span><span class="m-item">约 11 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=索引">索引</a><a class="m-tag" href="../../tags.html?t=源码">源码</a><a class="m-tag" href="../../tags.html?t=ILM">ILM</a></span></div><div class="doc-role"><span class="role-badge r-main">主文</span><span class="role-note">系统讲解完整机制：原理 + 参数 + 生产配置 + 故障排查。</span></div>
+<div class="meta-row"><span class="m-item">2026-07-21</span><span class="m-item">es 系列</span><span class="m-item">约 11 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=索引">索引</a><a class="m-tag" href="../../tags.html?t=源码">源码</a><a class="m-tag" href="../../tags.html?t=ILM">ILM</a></span></div><div class="doc-role"><span class="role-badge r-main">主文 · ILM</span><span class="role-note">ILM 主题主文：索引生命周期管理的原理 + 参数 + 生产配置 + 故障排查。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">

@@ -92,7 +92,7 @@ Redis 的 String 类型有三种内部编码，由 value 自动决定：
 
 **注意事项**：
 - 大 value 的 memcpy 成本线性增长：SET 1KB 比 200B 慢 39%（实测）
-- **不要对 int/embstr 起点反复 APPEND**：会反复全量重分配，延迟长尾放大
+- **不要对 int/embstr 起点反复 APPEND**：首次追加会发生一次跨编码全量拷贝，之后容量不足还会触发 SDS 扩容，延迟长尾放大（实测 max 287ms vs raw 预分配 39ms）
 - 超大 value（几百 KB 以上）会阻塞主线程并放大 slowlog，应压缩或拆分
 
 ### 2.4 三种编码选型速查表

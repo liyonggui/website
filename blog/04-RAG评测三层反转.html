@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/blog/04-RAG评测三层反转.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子", "description": "「高并发实测」系列第 4 篇。 > > 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…", "url": "https://liyonggui.github.io/website/blog/04-RAG评测三层反转.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/04-RAG评测三层反转.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-08", "keywords": "RAG, 博客"}</script>
-<link rel="stylesheet" href="../assets/css/style.css?v=11"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -53,9 +53,10 @@
     <article class="prose">
 <blockquote>
 <p>「高并发实测」系列第 4 篇。</p>
-<p>环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embedding 走百炼；评测用 Java 复刻的 RAGAS 四指标（LLM-as-judge，5 题 gold 集，temperature=0）。排序质量另用 <code>/evalrank</code> 数答案块在候选池里的首现排名——<strong>这一项是确定性计算，不经过模型裁判</strong>。</p>
-<p><strong>一句话结论</strong>：<code>context-precision@4 = 0.55</code> 这个难看的数字，测的不是"检索好不好"，而是"我的数据里答案占了几块"。<strong>换成 hit@1 / MRR 一测，纯向量排序早就满分（1.0），rerank 一点提升空间都没有。</strong> 我差点花钱去优化一个根本没坏的东西。</p>
+<p>环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embedding 走百炼；评测用 Java 写的 <strong>RAGAS 风格自实现四指标</strong>（LLM-as-judge，5 题 gold 集，temperature=0）——🟡 <strong>名字复刻了 RAGAS，算法没有</strong>（见篇末更正提示）。排序质量另用 <code>/evalrank</code> 数答案块在候选池里的首现排名——<strong>排名计算本身是确定性的，但"哪块算相关"的标签由 LLM 裁判打出</strong>。</p>
+<p><strong>一句话结论</strong>：<code>context-precision@4 = 0.55</code> 这个难看的数字，测的不是"检索好不好"，而是"我的数据里答案占了几块"。<strong>换成 hit@1 / MRR 一测，纯向量排序早就满分（1.0），rerank 一点提升空间都没有。</strong> 我差点花钱去优化一个根本没坏的东西。（🟡 两句均已被第 5 篇部分修正：数据特性那句的方向对、具体解释错；MRR 满分那句要降级——见下文标注。）</p>
 <p>而这篇文章真正想写的，是后面两层：<strong>我纠正了第一次"尺子错"之后，又犯了第二次——而且是在我自己定的判据上犯的。</strong></p>
+<p>⚠️ <strong>更正提示（2026-10-11）</strong>：本文第二、三、五节的三处说法已被第 5 篇《我发出去的文章里有一句承重墙是错的》推翻——① 0.55 不是"答案只占 1 块"的算术结果（实际是 11/20，平均每题 2.2 块被判相关）；② MRR 不是"零噪声"（它的相关性标签由 LLM 裁判打出）；③ precision@4 在这个设置下测的是语料库属性（10 块的库交出 40%），不是检索器质量。<strong>为保留原始记录，本文不做静默修改，被推翻处均以 🟡 就地标注</strong>；当前有效结论以第 5 篇为准。</p>
 </blockquote>
 <h2 id="_1">〇、一分钟带走版</h2>
 <p>同一套 RAG，五种测法，五个结论：</p>
@@ -76,7 +77,7 @@
 <tr>
 <td>RAGAS <code>context-precision@4</code></td>
 <td style="text-align: right;"><strong>0.55</strong></td>
-<td><strong>不是排序质量</strong>——是"答案块数 ÷ 保留块数"</td>
+<td>🟡 ~~<strong>不是排序质量</strong>——是"答案块数 ÷ 保留块数"~~ <strong>已更正</strong>：实际是"相关块占比 11/20"（平均每题 2.2 块被判相关，不是 1 块），且它在这个设置下测的是语料库属性</td>
 </tr>
 <tr>
 <td>RAGAS <code>answer-relevancy</code></td>
@@ -86,7 +87,7 @@
 <tr>
 <td><strong><code>hit@1</code> / <code>mrr_vector</code></strong></td>
 <td style="text-align: right;"><strong>1.0 / 1.0</strong></td>
-<td><strong>排序质量，确定性计算，零噪声</strong></td>
+<td>🟡 ~~<strong>排序质量，确定性计算，零噪声</strong>~~ <strong>已更正</strong>：只有排名计算是确定性的，"哪块算相关"的标签同样来自 LLM 裁判</td>
 </tr>
 <tr>
 <td><code>mrr_rerank − mrr_vector</code></td>
@@ -97,7 +98,7 @@
 </table>
 <p><strong>三层反转，一层比一层难看：</strong></p>
 <ol>
-<li><strong>第一次反转</strong>：precision 0.55 难看 → 上 rerank → 变成 0.50，<strong>更差了</strong> → 我准备继续加钱换更好的 rerank。<strong>但我先去数了一下排名：<code>hit@1 = 1.0</code>，5 道题答案块全部排第 1，<code>delta_mrr = 0</code>。</strong> 排序早就满分——<strong>0.55 不是检索差，是"答案只在 1 块、我却保留 4 块"的必然结果。我差点优化一个没坏的东西。</strong></li>
+<li><strong>第一次反转</strong>：precision 0.55 难看 → 上 rerank → 变成 0.50，<strong>更差了</strong> → 我准备继续加钱换更好的 rerank。<strong>但我先去数了一下排名：<code>hit@1 = 1.0</code>，5 道题答案块全部排第 1，<code>delta_mrr = 0</code>。</strong> 排序早就满分——<strong>0.55 不是检索差，是"答案只在 1 块、我却保留 4 块"的必然结果。我差点优化一个没坏的东西。</strong>（🟡 前半句"0.55 不是检索差"成立；但"答案只在 1 块"这个解释是错的——真实读数是 11/20，且 0.55 难看的真正原因是"10 块的库交出 40%"。见第 5 篇。）</li>
 <li><strong>第二次反转</strong>：为了确认 0.55→0.50 是不是真变差，我用 <code>runs=3</code> 取中位数，发现 <strong>temp=0 仍有 ±0.05 抖动</strong>，0.05 的差值正好等于噪声 → <strong>"rerank 让 precision 下降"这个结论作废，它根本没动。</strong></li>
 <li><strong>第三次反转（这篇最该看的一段）</strong>：我拿"比 spread 小的差异不算数"这条自己定的纪律去判第三组数据时，翻出同一配置三次跑的 <code>answer-relevancy</code> 是 <strong>0.76 / 0.85 / 0.87</strong>——<strong>跨批次范围 0.11，是我声明的组内 spread 0.05 的 2.2 倍。我用组内方差，去判了组间差异。</strong> 而"紧 topK=2 让 precision 升到 0.70"这个我写进结论的东西，增量 0.15 只有组间范围的 1.4 倍——<strong>它撑不起"真变化"四个字，只能算趋势。</strong></li>
 </ol>
@@ -117,6 +118,9 @@
 <p>然后我去上了 RAGAS 四指标。</p>
 <h2 id="_2">二、第一次反转：一个难看的数字，差点让我白花一笔钱</h2>
 <p>Java 复刻的四个指标（LLM-as-judge，5 题 gold 集，每题各跑一次裁判）：</p>
+<blockquote>
+<p>🟡 <strong>【第 5 篇更正】</strong> "Java 复刻"应正名为 <strong>"RAGAS 风格的自实现"</strong>——名字借了 RAGAS，算法没有（我的 <code>contextPrecision</code> 就是 <code>相关块数 ÷ 保留块数</code>，无排名加权）。下文所有"RAGAS"字样均按此理解。</p>
+</blockquote>
 <table>
 <thead>
 <tr>
@@ -219,6 +223,9 @@
 </table>
 <p><strong>纯向量已经把每道题的答案块排在了第 1 位。满分。没有提升空间。</strong></p>
 <p><strong>那 0.55 是什么？</strong> 它测的根本不是"排得好不好"。我的数据里<strong>每道题的答案只落在 1 个块，而我保留了 4 个块</strong>——precision@k 的分母是"保留了几块"，<strong>这个结构本身就把它压死了</strong>。其中跨主题的那两道题只有 <strong>0.25</strong>。</p>
+<blockquote>
+<p>🟡 <strong>【第 5 篇更正·第二节】</strong> 上面这段的解释与数字矛盾：0.55 = 11/20 意味着<strong>平均每题 2.2 块被判相关</strong>，不是 1 块；若真只有 1 块，读数应是 0.25。0.55 反映的是"主题相关"（裁判的判定标准），不是"答案定位"。且整个语料库只有 <strong>10 块</strong>，topK=4 等于每次交出 40% 的库——precision@4 在这个设置下测的是<strong>语料库的主题集中度</strong>。这两个理由都比"答案占几块"更干净，见第 5 篇第二、四节。</p>
+</blockquote>
 <p><strong>换句话说：0.55 是我数据特性的算术结果，不是系统质量的读数。</strong> rerank 改变的是顺序，不改变"相关块的数量"，所以它对 precision@4 几乎无解——<strong>它没变差，它压根就没法变好。</strong></p>
 <p><strong>我差点花钱买一个工具，去优化一个已经满分的环节。</strong></p>
 <h2 id="precisionk-mrr">三、机制：precision@k 和 MRR 到底谁在测排序</h2>
@@ -244,7 +251,7 @@
 </tr>
 <tr>
 <td>答案只在 1 块、保留 k 块时</td>
-<td><strong>天花板被 k 压死</strong></td>
+<td>🟡 ~~<strong>天花板被 k 压死</strong>~~ <strong>已作废</strong>：读数是 11/20 不是 1/4，"天花板"解释不成立；真实机制是"宽松裁判 + 40% 库占比"</td>
 <td>满分可得</td>
 </tr>
 <tr>
@@ -340,6 +347,9 @@
 <p><strong>① 有一条结论反而更稳了。</strong> <code>rerank 让 precision 0.55→0.50</code>，差 0.05。<strong>按组内 spread 判是噪声，按组间范围 0.11 判更是噪声。</strong> 撤回"变差"这个说法，安全。</p>
 <p><strong>② 但另一条必须降级。</strong> <code>紧 topK=2 → precision 0.70</code>，相对基线 0.55 的增量是 <strong>0.15，只有组间范围 0.11 的 1.4 倍。</strong> 我在 README 里把它写成"才是真变化"——<strong>这句话撑不住，只能说趋势。</strong>（A/B 那节我自己写的"单次有噪声，趋势清晰"其实是对的，是后来回头把它拔高了。）</p>
 <p><strong>③ 而核心结论毫发无损。</strong> <code>hit@1=1.0</code>、<code>mrr=1.0</code>、逐 case 首现排名全为 1——<strong>这些是数排名算出来的，不经过任何模型裁判，零噪声。</strong> "precision@4=0.55 是指标假象"这个反转，站在确定性数据上。</p>
+<blockquote>
+<p>🟡 <strong>【第 5 篇更正·第三节】</strong> "不经过任何模型裁判，零噪声"是错的：<code>relevanceLabels</code> 调 LLM 裁判打"是否相关"的标签，<code>firstRelevantRank()</code> / <code>mrr()</code> 只是<strong>拿到标签之后</strong>的确定性计算。准确说法是 <strong>MRR = LLM 判定标签 + 确定性排名计算</strong>，它和 precision@k 共享同一个宽松裁判。核心结论"检索没坏"仍然成立，但"MRR 才是对的尺子"降级——两把尺子共享同一个刻度误差。</p>
+</blockquote>
 <p><strong>这条纪律现在被我改成：</strong></p>
 <blockquote>
 <p><strong>判"是不是噪声"，要用同一批次的方差；跨批次比较，要用跨批次方差。两者不是一回事，混用的结果是——你会把噪声读成结论，或者把结论误判成噪声。</strong></p>
@@ -423,7 +433,7 @@
 </table>
 <h2 id="_7">复现（命令与代码路径）</h2>
 <ul>
-<li>代码：<code>phase2-rag</code> 模块 —— <code>RagEvalService.java</code>（RAGAS 四指标 + runs 中位数 + rerank 开关）、<code>/evalrank</code>（hit@1 / MRR / precision@k，纯计算不经裁判）；护栏与网关见 <code>phase4-agent-ops</code>（<code>ToolGateway</code> / <code>Breaker</code> 均为手写，缓存用 Caffeine，其余 ChatClient/VectorStore 为 Spring AI 自带）。</li>
+<li>代码：<code>phase2-rag</code> 模块 —— <code>RagEvalService.java</code>（RAGAS 风格自实现四指标 + runs 中位数 + rerank 开关）、<code>/evalrank</code>（hit@1 / MRR / precision@k，排名计算确定性、相关性标签来自 LLM 裁判）；护栏与网关见 <code>phase4-agent-ops</code>（<code>ToolGateway</code> / <code>Breaker</code> 均为手写，缓存用 Caffeine，其余 ChatClient/VectorStore 为 Spring AI 自带）。</li>
 <li>四指标（runs=3 取中位数）：</li>
 </ul>
 <div class="codehilite"><pre><span></span><code>curl<span class="w"> </span><span class="s2">"http://localhost:8082/api/rag/evalrag?topK=4&amp;retrieve=10&amp;rerank=false&amp;runs=3"</span>
@@ -441,6 +451,8 @@
 <h2 id="_8">九、局限（照例先说）</h2>
 <ul>
 <li><strong>5 题 gold 集，语料是我自己的项目文档。</strong> 这是个小样本上的机制演示，<strong>不是可用的评测基准。</strong> 换语料、换题量，0.55 这个数没有可比性。</li>
+<li><strong>🟡 语料库总共只有 10 个 chunk（第 5 篇更正补充）。</strong> topK=4 意味着每次检索交出全库的 40%——"precision@4"在这个设置下测的是语料库的主题集中度，不是检索器质量；换成 500 块取 5 块，precision@k 立刻有意义。</li>
+<li><strong>🟡 指标命名不准确（第 5 篇更正）。</strong> 文中"RAGAS 四指标"应读作"RAGAS 风格的自实现四指标"：名字复刻，算法没有复刻（无排名加权）。</li>
 <li><strong>我没有重新推导 RAGAS 的 precision@k 加权公式。</strong> 文中只说"答案占几块会压低它"这个方向性结论，具体 0.55 是怎么加权出来的我没有逐题复算——<strong>所以别拿这篇去解释 RAGAS 的实现细节。</strong></li>
 <li><strong><code>answer-relevancy</code> 报的是区间 0.76 至 0.87，不给点值。</strong> 因为那三次跑本身就是不同批次的单跑，我没法说哪个"才是真的"。</li>
 <li><strong><code>topK=2 → 0.70</code> 降级为趋势</strong>（第五节），<strong>这条是本文自己推翻的结论之一，保留在文里而不是删掉。</strong></li>
@@ -459,7 +471,8 @@
 <p>八股可以被背，结论只能被跑出来。这是「高并发实测」系列第四篇。</p>
 <p>上一篇：《Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层》。
 再上一篇：《高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%》。
-第一篇：《别再死背 44 字节了：Redis String 三种编码压测》。</p>
+第一篇：《别再死背 44 字节了：Redis String 三种编码压测》。
+<strong>更正篇（必读，本文多处标注指向它）</strong>：《我发出去的文章里有一句承重墙是错的（第 4 篇更正）》。</p>
     </article>
     <aside class="toc-side"><details class="toc" open>
   <summary>目录</summary>

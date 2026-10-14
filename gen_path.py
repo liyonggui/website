@@ -59,7 +59,10 @@ def build_body(name, stages, refs, order, titles, base_dir, fit=None, shortcut=N
     step = 0
     for si, (stage_name, stage_desc, items) in enumerate(stages, 1):
         lis = []
-        for stem, line in items:
+        case_html = ""
+        for item in items:
+            stem, line = item[0], item[1]
+            cases = item[2] if len(item) > 2 else None
             step += 1
             title = titles.get(base_dir + "/" + stem + ".html", stem)
             href = base_dir + "/" + urllib.parse.quote(stem + ".html")
@@ -70,14 +73,25 @@ def build_body(name, stages, refs, order, titles, base_dir, fit=None, shortcut=N
                 '<span class="arr">→</span></a></li>'
                 % (href, step, title, line)
             )
+        # 阶段级「案例补读」：站外实测/纠错案例（item 第三元素，可选）
+        for item in items:
+            if len(item) > 2 and item[2]:
+                links = "".join(
+                    '<a href="%s">%s</a>' % (urllib.parse.quote(href, safe="/"), label)
+                    for label, href in item[2]
+                )
+                case_html = (
+                    '<div class="path-cases"><span class="pc-t">案例补读</span>%s</div>' % links
+                )
         parts.append(
             '<section class="path-stage">'
             '<div class="stage-head"><span class="stage-no">%d</span>'
             '<div class="stage-tt"><h3>%s</h3><p>%s</p></div>'
             '<span class="stage-cnt">%d 站</span></div>'
             '<ol class="path-list">%s</ol>'
+            '%s'
             '</section>'
-            % (si, stage_name, stage_desc, len(items), "".join(lis))
+            % (si, stage_name, stage_desc, len(items), "".join(lis), case_html)
         )
 
     refs_html = []

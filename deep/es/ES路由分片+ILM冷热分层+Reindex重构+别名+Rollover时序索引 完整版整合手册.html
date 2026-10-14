@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "ES 路由分片 · ILM 冷热分层 · Reindex 重构 · 别名 · Rollover 时序索引（整合手册）", "description": "1. 索引/分片/节点层级基础关系", "url": "https://liyonggui.github.io/website/deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/es/ES路由分片+ILM冷热分层+Reindex重构+别名+Rollover时序索引 完整版整合手册.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-07-31", "keywords": "Elasticsearch, 索引, 分库分表, ILM, es"}</script>
-<link rel="stylesheet" href="../../assets/css/style.css?v=11"/>
+<link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
 <script>
@@ -47,7 +47,7 @@
   <div class="article-head">
     <a class="back" href="../../deep.html">← 返回深度技术</a>
     <h1>ES 路由分片 · ILM 冷热分层 · Reindex 重构 · 别名 · Rollover 时序索引（整合手册）</h1>
-<div class="meta-row"><span class="m-item">2026-07-31</span><span class="m-item">es 系列</span><span class="m-item">约 24 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=索引">索引</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a><a class="m-tag" href="../../tags.html?t=ILM">ILM</a></span></div><div class="doc-role"><span class="role-badge r-main">主文</span><span class="role-note">系统讲解完整机制：原理 + 参数 + 生产配置 + 故障排查。</span></div>
+<div class="meta-row"><span class="m-item">2026-07-31</span><span class="m-item">es 系列</span><span class="m-item">约 24 分钟阅读</span><span class="m-tags"><a class="m-tag" href="../../tags.html?t=Elasticsearch">Elasticsearch</a><a class="m-tag" href="../../tags.html?t=索引">索引</a><a class="m-tag" href="../../tags.html?t=分库分表">分库分表</a><a class="m-tag" href="../../tags.html?t=ILM">ILM</a></span></div><div class="doc-role"><span class="role-badge r-main">主文 · 整合</span><span class="role-note">路由 + ILM + Reindex + 别名 + Rollover 整合主题主文：生产通用入口，与其他 ES 长文有重叠时以本篇为准。</span></div>
   </div>
   <div class="article-layout">
     <article class="prose">

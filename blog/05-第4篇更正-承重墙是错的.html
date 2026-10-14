@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/blog/05-第4篇更正-承重墙是错的.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "我发出去的文章里有一句承重墙是错的（第 4 篇更正）", "description": "「高并发实测」系列 · 第 4 篇更正。 > > 第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条…", "url": "https://liyonggui.github.io/website/blog/05-第4篇更正-承重墙是错的.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/05-第4篇更正-承重墙是错的.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-10-11", "keywords": "技术笔记, 博客"}</script>
-<link rel="stylesheet" href="../assets/css/style.css?v=11"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -168,7 +168,9 @@
 </tbody>
 </table>
 <p><strong>这张表现在还不存在。</strong> <code>RagEvalService.java:105</code> 是 <code>sP += contextPrecision(...)</code>——<strong>只累加，不落盘</strong>，所以 <code>eval-median.json</code> 里只有聚合值。要出这张表得改代码加 per-case 输出再重跑。</p>
-<p><strong>在它填上之前，这篇不发布。</strong> 理由很直接：<strong>一篇主张"别把没跑出来的东西写成结论"的文章，自己不能带着一张没跑的表发出去。</strong></p>
+<blockquote>
+<p><strong>先认账：这篇最终还是带着这张没填的表发了。</strong> 写更正稿时我给自己立了"表不填完不发"的规矩，发布前检查了一遍，还是发了——<strong>规矩立了又破，比不立更难看。</strong> 但把边界说清楚：本文三处更正的证据链（读 <code>contextPrecision</code> / <code>relevanceLabels</code> 的实现、反算分母、<code>run.log</code> 的入库行）<strong>不依赖这张表</strong>，可以照常引用；逐题明细在补齐之前<strong>未经任何验证，请勿转引</strong>。补表需要改代码加 per-case 输出再重跑，排期后补。</p>
+</blockquote>
 <h2 id="_4">三、第二层：那句"零噪声"是错的，我用来护住核心结论的那句话塌了</h2>
 <p>第 4 篇<strong>第五节</strong>我写了：</p>
 <blockquote>
@@ -255,7 +257,7 @@
 </ol>
 <h2 id="_7">八、局限（这篇也一样先说）</h2>
 <ul>
-<li><strong>本文的三处更正，全部基于读代码和读已有产物，没有重跑。</strong> 逐题计数表（第二节）是<strong>待填状态</strong>，填上之前这篇不发。</li>
+<li><strong>本文的三处更正，全部基于读代码和读已有产物，没有重跑。</strong> 逐题计数表（第二节）是<strong>待填状态</strong>：本篇已公开（违反了撰稿时"表不填完不发"的自我要求，已在第二节开头认账），三处更正不依赖该表；该表补齐前，请勿引用逐题明细。</li>
 <li><strong>我没有改 <code>contextPrecision</code> 去实现真正的 RAGAS 排名加权版本。</strong> 所以"我的实现和 RAGAS 不同名同实"这个批评，我只能承认，不能反驳——<strong>文章里用"RAGAS 四指标"这个名字，本身就不够准确，应该写成"RAGAS 风格的自实现四指标"。</strong></li>
 <li><strong><code>relevanceLabels</code> 的宽松程度我没有量化。</strong> 比如让裁判在"是否含答案"和"是否主题相关"两种问法下各跑一遍，看标签差多少——<strong>这个实验没做，所以第三、四节的机制解释是推理，不是测量。</strong></li>
 <li><strong>10 块语料 / topK=4 这个设置下的结论，不能外推到正常规模的库。</strong> 换成 500 块取 5 块，precision@k 立刻有意义。</li>

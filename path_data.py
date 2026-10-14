@@ -203,7 +203,11 @@ AGENT_STAGES = [
      ]),
     ("RAG 检索与评测", "检索质量决定回答上限：分层实现、混合检索、召回率量化。",
      [
-         ("RAG代码与原理详解", "Document 切分 → 向量化 → 混合检索（向量+BM25+RRF）→ rerank，代码与原理逐层对照"),
+         ("RAG代码与原理详解", "Document 切分 → 向量化 → 混合检索（向量+BM25+RRF）→ rerank，代码与原理逐层对照",
+          [
+              ("博客 04 · RAG 评测三层反转（指标误用全过程，文内带更正标注）", "blog/04-RAG评测三层反转.html"),
+              ("博客 05 · 第 4 篇更正（04 的三处结论如何被自己推翻）", "blog/05-第4篇更正-承重墙是错的.html"),
+          ]),
      ]),
     ("护栏容错与可观测", "LLM 的不确定性必须被工程手段兜住：舱壁隔离、语义缓存、熔断降级、全链路追踪。",
      [
@@ -216,15 +220,18 @@ AGENT_STAGES = [
     ("端到端工程化与质量评估", "从 demo 到可维护系统：中间件选型、评测门禁、工程化复盘。",
      [
          ("Agent中间件优化选型", "向量库 / 语义缓存 / 会话记忆 / 可观测的中间件选型对比与决策依据"),
-         ("agent-工程化落地纪要", "生产级 Agent 工程化落地全记录：架构演进、踩坑与最终形态"),
+         ("agent-工程化落地纪要", "生产级 Agent 工程化落地全记录：架构演进、踩坑与最终形态",
+          [
+              ("博客 03 · Agent 工程化实测（p95 836→12ms 的完整归因）", "blog/03-Agent工程化实测.html"),
+          ]),
          ("phase6-评测代码与原理详解", "评测 harness：关键词硬校验 + LLM-as-judge 按 rubric 打分，接入 CI 门禁（<90% 直接 fail）"),
      ]),
 ]
 
-AGENT_ORDER = [stem for _, _, items in AGENT_STAGES for stem, _ in items]
+AGENT_ORDER = [item[0] for _, _, items in AGENT_STAGES for item in items]
 
 # 随查手册：不按顺序读，工作中直接翻
 AGENT_REFERENCE = [
-    ("README", "Agent 项目总览：六个 Phase 的全景地图与依赖关系"),
+    ("README", "Agent 项目 Phase 1 指南：最小 Agent 循环的环境、跑法与验证命令"),
     ("项目评估与改进建议", "对整套 Agent 系统的评估与改进路线：已验证的优势与下一步方向"),
 ]

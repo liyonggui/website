@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距", "description": "环境：Redis 7 单体（无持久化）、Lettuce Pipeline（c=16, batch=100）、10 万 key 空间、每轮 5s 预热 + 10s 采样。文中吞吐绝对…", "url": "https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html", "mainEntityOfPage": "https://liyonggui.github.io/website/blog/01-Redis-String三种编码压测.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-09-03", "keywords": "Redis, 压测, 博客"}</script>
-<link rel="stylesheet" href="../assets/css/style.css?v=11"/>
+<link rel="stylesheet" href="../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../assets/css/pygments.css"/>
 <script>
@@ -57,7 +57,7 @@
 <h2 id="_1">〇、一分钟带走版</h2>
 <p>赶时间的话，结论在这里；想知道数据是怎么跑出来的，往下看。</p>
 <blockquote>
-<p>String 有 int/embstr/raw 三种编码：整数走 int，≤44B 走 embstr（一次 malloc，连续内存），更大走 raw（两次 malloc）。我实测过：embstr 比 raw 的 SET 快 25%、GET 快 14%，差距来自 malloc 次数和 cache 命中率；INCR 最快，53 万 ops/s，因为零分配纯算术。最容易踩的坑是 APPEND：embstr 和 int 都是"只读"起点，每次追加触发跨编码重分配，max 延迟实测比 raw 预分配高 7.3 倍（287ms vs 39ms），所以增量构建大字符串要先 SET 铺底容量再追加。</p>
+<p>String 有 int/embstr/raw 三种编码：整数走 int，≤44B 走 embstr（一次 malloc，连续内存），更大走 raw（两次 malloc）。我实测过：embstr（40B）比 raw（200B）的 SET 快 25%、GET 快 14%——🟡 <strong>注意这组对比同时变了"编码"和"载荷大小"两个变量，差距不能单独归因于 malloc 次数</strong>（见第五节修订）；INCR 最快，53 万 ops/s，因为零分配纯算术。最容易踩的坑是 APPEND：embstr 和 int 都是"只读"起点，<strong>首次追加会触发一次跨编码转换（全量拷贝）</strong>，之后是否再重分配取决于 raw 的 SDS 剩余容量；max 延迟实测比 raw 预分配高 7.3 倍（287ms vs 39ms，均为单轮极值），所以增量构建大字符串要先 SET 铺底容量再追加。</p>
 </blockquote>
 <h2 id="_2">一、从一个"玄学抖动"说起</h2>
 <p>先说场景。我们有个接口要往 Redis 里写聚合结果，早期实现图省事，直接对同一个 key 反复 <code>APPEND</code> 拼接 JSON 片段。平时延迟 3~4ms，稳得很，但每隔一阵子就出现一个 <strong>200ms+ 的长尾请求</strong>。</p>
@@ -189,7 +189,8 @@
 </tbody>
 </table>
 <p>三个结论：</p>
-<p><strong>1. embstr 比 raw 快，SET +25.3%，GET +14.2%。</strong> 根因是教科书级的：embstr 一次 malloc 分配出连续内存，raw 要分两次。SET 的差距（25%）比 GET（14%）更大，因为写入路径要多付一次 malloc + memcpy，分配器的开销在写入时被放大；读取两边都是 O(1) 查 dict 返回指针，差距只剩 cache 命中率的贡献。</p>
+<p><strong>1. embstr 比 raw 快，SET +25.3%，GET +14.2%。</strong> 🟡 <strong>归因警告（2026-10-14 补）</strong>：这组对比同时变了两个变量——编码（embstr vs raw）<strong>和载荷大小（40B vs 200B）</strong>。所以"快 25%/14%"是<strong>该组合在本环境下的观察值</strong>，"差距来自 malloc 次数"只是与教科书机制一致的<strong>推断</strong>，无法从这组数据单独证实（载荷越大，memcpy 开销也线性增长，见下一节 1KB 对照组）。要把功劳记给编码本身，需要补一组"等长对照"（同尺寸下比较两种编码）。</p>
+<p>机制上说：embstr 一次 malloc 分配出连续内存，raw 要分两次。SET 的差距（25%）比 GET（14%）更大，因为写入路径要多付一次 malloc + memcpy，分配器的开销在写入时被放大；读取两边都是 O(1) 查 dict 返回指针，差距只剩 cache 命中率的贡献——<strong>这个解释与数据方向一致，但它现在只是候选解释，不是被本实验证实的结论。</strong></p>
 <p><strong>2. INCR 是 Redis String 的最快路径：53 万 ops/s，p99 只有 7.85ms。</strong> int 编码下 value 就是 RedisObject 里的一个 <code>long</code>，INCR 只做一次整数加法——零 malloc、零 memcpy、零 sds 操作。主线程纯算术，没有比这更便宜的了。</p>
 <p><strong>3. 一个容易忽略的点：能不能进 int 编码，取决于值本身，不是引号。</strong> Redis 在协议层收到的是字节串，<code>SET k 0</code> 和 <code>SET k "0"</code> 是同一个值，都会走 int。真正的分界是<strong>这个字节串能否被 <code>string2ll</code> 解析成 64 位整数</strong>：<code>SET k 100</code> 是 int，但 <code>SET k "100 "</code>（带空格）、<code>SET k 1.5</code>、<code>SET k 99999999999999999999</code>（超出 64 位）都会退化成 embstr/raw。所以计数器场景别用浮点、别带空格、别存超长数字——一旦退化成字符串编码，INCR 的零分配优势就没了。</p>
 <p>到这里为止，数据和八股文说的差不多。真正有意思的是后面两组。</p>
@@ -284,9 +285,11 @@
 <p>根因在编码的"可变性"上：</p>
 <ul>
 <li><strong>raw 的 sds 有预分配机制</strong>（<code>sdsMakeRoomFor</code>）：空间不足时按几何倍增扩容（1MB 以内近似翻倍，超过 <code>SDS_MAX_PREALLOC</code> 后改为固定步长线性增长，避免大 value 浪费内存），所以只要当前容量够用，后续 <code>APPEND</code> 就是 O(1) 原地追加，整体摊销下来是 O(1)；</li>
-<li><strong>embstr 是只读编码</strong>（Redis 源码 <code>t_string.c</code> 里就是这么定义的）：它的 sds 是一次性连续分配的，<code>alloc</code> 等于 <code>len</code>，<strong>没有为增长预留任何 spare 空间</strong>。所以每次 <code>APPEND</code> 都必须新建 sds、把旧值全量拷过去、再释放旧内存——每次都是 O(N) 的重分配。</li>
+<li><strong>embstr 是只读编码</strong>（Redis 源码 <code>t_string.c</code> 里就是这么定义的）：它的 sds 是一次性连续分配的，<code>alloc</code> 等于 <code>len</code>，<strong>没有为增长预留任何 spare 空间</strong>。</li>
 </ul>
-<p>而且这是<strong>跨编码的坑</strong>：int 起步也一样。<code>APPEND</code> 一个 int 编码的 key，会先转 raw 再操作，实测确认 <code>encodingAfter = raw</code>。也就是说，<strong>只要起点不是"已预分配的 raw"，反复 APPEND 就是反复全量重分配</strong>，延迟长尾完全不可控。</p>
+<p>🟡 <strong>修订（2026-10-14）</strong>：原文这里写的是"每次 APPEND 都必须新建 sds、把旧值全量拷过去——每次都是 O(N) 的重分配"，<strong>这个说法不准确</strong>。准确路径是：<strong>embstr / int 被首次修改时，整体转换成 raw（这一次是全量拷贝，O(N)）；转换完成后，后续 APPEND 与普通 raw 无异，是否再发生重分配取决于 SDS 剩余容量是否够用</strong>——容量不够才触发一次扩容拷贝。所以"反复全量重分配"不成立，<strong>跨编码转换只发生一次</strong>。</p>
+<p>而且 int 起步同理：<code>APPEND</code> 一个 int 编码的 key，会先转 raw 再操作，实测确认 <code>encodingAfter = raw</code>。</p>
+<p><strong>那么 287ms 的毛刺是什么？</strong> 诚实说：<strong>目前归因不清</strong>。它可能来自首次跨编码转换的全量拷贝，也可能来自后续某次容量不足的扩容——两种都指向"起点没预分配"，但要区分归属，需要 per-operation 埋点（记录每次 APPEND 前的 <code>alloc</code>/<code>len</code>），这个没做。所以文中的表述从"每次追加都全量重分配"下调为：<strong>embstr/int 起步的 APPEND 长尾不可控，首次转换付一次全量拷贝，后续扩容按需再付</strong>——这是与机制一致的推断，不是本次实测分离出来的结论。</p>
 <p>这个知识点，面试题不考，文档只有一句"embstr is read-only"，但生产上它就是 200ms 的毛刺。</p>
 <h2 id="_4">六、生产建议：一张速查表 + 四条原则</h2>
 <table>
@@ -306,7 +309,7 @@
 <tr>
 <td>短状态 / Token / 短配置（≤44B）</td>
 <td>不用管，自动 <strong>embstr</strong></td>
-<td>SET +25%，GET +14%</td>
+<td>SET +25%，GET +14%（40B vs 200B，含载荷差异，见第五节归因警告）</td>
 </tr>
 <tr>
 <td>JSON / 长文本（&gt;44B）</td>
@@ -344,6 +347,8 @@
 <p><strong>已知局限（先替你问了）</strong>：</p>
 <ul>
 <li>数据为<strong>单轮采样</strong>，max 是本次观测到的单次极值，受系统噪声影响，绝对值请当作量级参考（多轮复测与 p99.9 分位会在后续版本补上）；</li>
+<li>🟡 <strong>embstr vs raw 的 SET/GET 对比混杂了载荷大小变量（40B vs 200B）</strong>，"malloc 次数导致差距"是与机制一致的推断，未做等长对照验证；</li>
+<li>🟡 <strong>APPEND 毛刺（287ms）的具体归属未定</strong>：首次跨编码转换与后续 SDS 扩容都可能贡献，需 per-op 埋点分离，当前表述为推断；</li>
 <li>未记录内存分配器（jemalloc / libc）与 lazyfree 配置，这两者会影响 malloc 与释放相关操作的绝对耗时；</li>
 <li>单机 + Pipeline 客户端，客户端打包/序列化会压低吞吐上限，所以<strong>请看相对差距，别拿绝对 QPS 和 redis-benchmark 的结果对比</strong>；</li>
 <li>不同硬件、Redis 版本、value 尺寸下阈值与衰减幅度会有出入，欢迎评论区贴出你的实测结果。</li>
