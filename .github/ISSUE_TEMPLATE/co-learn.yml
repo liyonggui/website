@@ -1,0 +1,92 @@
+name: 同行 · 组队学习邀约
+description: 发起学习邀约，或留下「我想被邀请」的信息
+title: "[同行] "
+labels: ["invitation"]
+body:
+  - type: dropdown
+    id: intent
+    attributes:
+      label: 意向类型
+      description: 你发起邀约，还是想被邀请加入？
+      options:
+        - 发起邀约（我在学某个方向，找人组队）
+        - 我想被邀请（贴出我的背景，等别人找我）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: direction
+    attributes:
+      label: 方向
+      description: 对应本站的学习线路或项目，可多选近似项
+      options:
+        - MySQL 底层原理与治理
+        - Redis 底层原理与压测
+        - Elasticsearch 内核与运维
+        - Kubernetes 实战
+        - AI Agent 工程化
+        - 源码共读（具体项目写在补充里）
+        - 模拟面试 / 互挑文章
+        - 其他（补充里说明）
+    validations:
+      required: true
+
+  - type: input
+    id: stage
+    attributes:
+      label: 当前进度
+      description: 例如「Redis 线路第 8 站」或「刚看完 ES 写入全流程」
+    validations:
+      required: true
+
+  - type: dropdown
+    id: form
+    attributes:
+      label: 组队形式
+      options:
+        - 分头跑场景，每周对数据
+        - 源码共读，轮值讲解
+        - 文章互评 / 互相挑刺
+        - 模拟面试（互相出题）
+        - 联合做一个小实验
+        - 都可以，好商量
+    validations:
+      required: true
+
+  - type: dropdown
+    id: time
+    attributes:
+      label: 可投入时间
+      options:
+        - 每周 2 小时以内
+        - 每周 2~5 小时
+        - 每周 5 小时以上
+        - 时间不固定，看话题
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: 补充说明
+      description: 你的背景（几年经验、熟悉什么）、想解决的具体问题、其他想法。
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: 确认须知
+      description: 组队是自愿的技术交流，与雇佣、内推、商务合作无关。
+      options:
+        - label: 我已确认内容中不含公司保密信息，不涉及敏感数据
+          required: true
+        - label: 我理解组队自愿、双向选择，不合适可直接退出
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **提交后会发生什么**
+        邀约会以 Issue 形式公开沉淀在仓库里，有意者直接在 issue 下回复；我（站长）每周会看一遍，合适的在站内「同行」页留言回应。
+        涉及隐私的联系方式请不要写在 issue 里——留 GitHub 账号或邮箱即可，进一步沟通方式双方自行约定。

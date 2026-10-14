@@ -19,6 +19,7 @@
     ["blog.html", "博客", "Blog"],
     ["deep.html", "深度", "Deep Dives"],
     ["learn.html", "学习", "Learning"],
+    ["community.html", "同行", "Community"],
     ["about.html", "关于", "About"]
   ];
   nav.innerHTML = items.map(function (it) {

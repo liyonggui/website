@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>同行 · 组队学习 · 小番茄程序猿</title>
+  <meta name="description" content="邀请同道中人一起学习：组队刷学习线路、源码共读、文章互评、模拟面试。也欢迎留下你的背景，等一个邀请。基于 GitHub Issue 模板承接，公开沉淀。" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="同行 · 组队学习 · 小番茄程序猿" />
+  <meta property="og:description" content="一个人走得快，一群人走得远。组队刷线路、源码共读、互评互考。" />
+  <meta property="og:url" content="https://liyonggui.github.io/website/community.html" />
+  <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
+  <link rel="stylesheet" href="assets/css/style.css?v=11" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html">
+        <img class="logo" src="assets/logo.svg" alt="logo" />
+        <span>小番茄程序猿<span class="dot">.</span>dev</span>
+      </a>
+      <div class="nav-right">
+        <nav class="nav-links" id="navLinks" data-prefix="" data-active="community.html"></nav>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换主题">🌙</button>
+        <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">同行</div>
+          <h1>一起走，走得更远</h1>
+          <p>深度技术一个人啃容易半途而废。这里给同道中人一个组队学习的入口：你发起邀约找人组队，也可以留下背景等别人来邀。纯技术交流，与雇佣、内推、商务合作无关。</p>
+        </div>
+        <div class="hero" style="padding:28px 26px">
+          <div class="cta">
+            <a class="btn btn-primary" href="https://github.com/liyonggui/website/issues/new?template=co-learn.yml&amp;labels=invitation" target="_blank" rel="noopener">发起邀约 <span class="arr">→</span></a>
+            <a class="btn btn-ghost" href="https://github.com/liyonggui/website/issues/new?template=co-learn.yml&amp;labels=invitation" target="_blank" rel="noopener">我想被邀请 <span class="arr">→</span></a>
+          </div>
+          <p style="margin:14px 0 0;font-size:13.5px;color:var(--ink-faint)">两个按钮打开同一个表单，区别在「意向类型」那一栏选「发起邀约」还是「我想被邀请」。邀约以 Issue 形式公开沉淀，有意者直接在 issue 下回复。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">方式</div>
+          <h2>三种一起学的方式</h2>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>组队刷学习线路</h3>
+            <p>同一条线路，两人分头跑不同的场景压测/实验，每周对一次数据与结论。线路里每一站都有明确产出，天然适合分账。</p>
+            <div class="more"><a href="learn.html">看五条线路 <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>源码共读</h3>
+            <p>Redis 或 Elasticsearch 按章节轮值讲解，一人主讲一人记录，讲不清楚的地方就是没读明白的地方。产出直接沉淀成文章。</p>
+            <div class="more"><a href="deep.html">对应深度系列 <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>互评互考</h3>
+            <p>文章互挑刺、互相出模拟面试题、复盘真实故障。本站全部文章都欢迎这种挑刺——被找出问题比赞有价值。</p>
+            <div class="more"><a href="blog.html">看文章列表 <span class="arr">→</span></a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">在场</div>
+          <h2>当前在学的</h2>
+          <p>我在这些方向上有完整线路与实测数据，组队可以直接从某一站切入。</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>MySQL · 38 站</h3>
+            <p>从四层架构到 18 个生产场景治理，含压测与调优闭环。</p>
+            <div class="more"><a href="mysql-path.html">学习路线 <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>Redis · 15 站</h3>
+            <p>编码压测、Pipeline、集群边界探测，全部有实测曲线。</p>
+            <div class="more"><a href="redis-path.html">学习路线 <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>Elasticsearch · 9 站</h3>
+            <p>写入全流程、分片分配、ILM 冷热分层与线上应急。</p>
+            <div class="more"><a href="es-path.html">学习路线 <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>Kubernetes · 7 站</h3>
+            <p>从 Compose 对比到 Ingress、HPA、Redis 复制的落地。</p>
+            <div class="more"><a href="k8s-path.html">学习路线 <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>AI Agent · 8 站</h3>
+            <p>Spring AI 从最小 Agent 到 RAG、MCP 与评测体系。</p>
+            <div class="more"><a href="agent-path.html">学习路线 <span class="arr">→</span></a></div>
+          </div>
+          <div class="card">
+            <h3>开源项目</h3>
+            <p>16 个项目均可共同研究：压测工具、质量门禁、多端架构。</p>
+            <div class="more"><a href="projects.html">项目总览 <span class="arr">→</span></a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">规则</div>
+          <h2>邀约须知</h2>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>先脱敏，再开口</h3>
+            <p>不写公司保密信息、真实数据、内部系统名。聊技术就聊技术，案例提前脱敏是底线。</p>
+          </div>
+          <div class="card">
+            <h3>写清时间预期</h3>
+            <p>每周能投入几小时、打算持续多久，表单里有选项。半途而废比不来更伤人——组队先对齐节奏。</p>
+          </div>
+          <div class="card">
+            <h3>双向选择，好聚好散</h3>
+            <p>自愿组队，不合适直接说、直接退。与雇佣、内推、商务合作无关，也别把它当成这些的通道。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <section class="giscus-wrap" id="giscus-anchor">
+    <div class="wrap">
+      <h2>留言区</h2>
+      <p class="sub">轻量回应、找话题、约共读，都可以在这里留一句；正式邀约请用上面的 Issue 表单。用 GitHub 账号即可留言。</p>
+      <div id="giscus-comments"></div>
+    </div>
+  </section>
+
+  <script src="assets/js/comments.js?v=2"></script>
+
+  <footer>
+    <div class="wrap">
+      <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+      <span class="foot-links"><a href="about.html">关于</a> · <a href="community.html">同行</a> · <a href="tags.html">标签</a> · <a href="archives.html">归档</a> · <a href="search.html">搜索</a> · <a href="rss.xml">RSS</a></span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+    var th = document.getElementById("themeToggle");
+    function syncThemeIcon() { th.textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "☀" : "🌙"; }
+    syncThemeIcon();
+    th.addEventListener("click", function () {
+      var nxt = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", nxt);
+      try { localStorage.setItem("theme", nxt); } catch (e) {}
+      syncThemeIcon();
+    });
+    var t = document.getElementById("navToggle"), l = document.getElementById("navLinks");
+    t.addEventListener("click", function () { l.classList.toggle("open"); });
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+      }, { threshold: 0.1 });
+      document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+    } else {
+      document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
+    }
+  </script>
+  <script src="assets/js/nav.js?v=4"></script>
+</body>
+</html>

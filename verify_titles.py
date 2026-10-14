@@ -134,7 +134,7 @@ def check_xml():
 def check_static_h1():
     """顶层静态页与线路页：h1 恰好 1 个（标题层级统一）。"""
     pages = ["index.html", "projects.html", "blog.html", "deep.html", "learn.html",
-             "about.html", "about-en.html", "tags.html", "archives.html", "search.html",
+             "about.html", "about-en.html", "community.html", "tags.html", "archives.html", "search.html",
              "mysql-path.html", "redis-path.html", "es-path.html", "k8s-path.html"]
     errors = []
     for p in pages:
