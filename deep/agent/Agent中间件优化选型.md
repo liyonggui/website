@@ -55,7 +55,7 @@ draft: false
 ## 二、准确度类（检索 / 生成质量）
 
 ### 5. 专用 Rerank API ⭐⭐⭐ ✅ 已落地（自研 agent 应用 rag_search：向量top10→`qwen3.7-text-rerank`→top4，实测 ~0.4s/次）
-- **治什么**：LLM listwise 重排慢且贵；**专用 rerank 模型一次调用返回每块 relevance_score**。⚠️ **诚实边界**：本项目 toy 语料答案集中在 1~2 块、纯向量 MRR 已近满分，所以 rerank **不会**把 precision@4 抬起来（那 0.55 是"答案1块却保4块"的指标假象，phase2 已用数据证过）。这里实测到的真收益是：每块连续相关性分 + 把噪声块（标题行"# 示例语料"）挤出 top4 + 稳定排序。**量级收益要配 大/杂语料 + 答案分散 + hit@1/MRR 才显形**，别拿 precision@k 验收。
+- **治什么**：LLM listwise 重排慢且贵；**专用 rerank 模型一次调用返回每块 relevance_score**。⚠️ **诚实边界**：本项目 toy 语料答案集中在 1~2 块、纯向量 MRR 已近满分，所以 rerank **不会**把 precision@4 抬起来（🟡 那 0.55 是指标假象，归因已更正为"宽松裁判 + 40% 库占比"而非早先写的"答案1块却保4块"，见博客 05 号更正篇）。这里实测到的真收益是：每块连续相关性分 + 把噪声块（标题行"# 示例语料"）挤出 top4 + 稳定排序。**量级收益要配 大/杂语料 + 答案分散 + hit@1/MRR 才显形**，别拿 precision@k 验收。
 - **选型**：**百炼 MaaS OpenAI 兼容 `qwen3.7-text-rerank`**（零新基础设施）；端点 `POST .../compatible-api/v1/reranks`（注意 `compatible-api` 非 `compatible-mode`）。备选 Jina / Cohere / 本地 bge-reranker。
 - **接哪里**：`rag/RagReranker.java`（降级安全：失败退回向量原序）+ `RagSearchTool`；A/B 探针 `GET /api/agent/retrieve?rerank=true|false`。开关 `agent.rerank.*`。
 
@@ -100,7 +100,7 @@ draft: false
 | ◑部分 | Higress AI 网关 | 统一入口/路由/鉴权 | 已跑起来+脚本化配了服务来源/重写路由，agent 走网关实测通过；限流/多厂商兜底留 UI |
 | ✅已做 | 调试端点鉴权 | /history·/trace·/retrieve 裸奔泄内部态 | 已完成：`X-Admin-Token` 拦截器（/chat·/stream 属产品API另议），实测 401/200 |
 | ✅已做 | 观测脱敏 profile | prompt/completion/工具内容全量入观测=敏感外泄 | 已完成：`application-prod.yml` 关三开关，dev 全量/prod 脱敏，启动 `[obs]` 日志可验 |
-| ✅已做 | 自动化测试 | 无测试→回归裸奔 | 已完成：13 单测 + 4 真Redis集成测试(双模式:testcontainer / `-Dredis.it.port=6380`)，本机 17/17 绿；`.github/workflows/ci.yml` CI 跑 |
+| ✅已做 | 自动化测试 | 无测试→回归裸奔 | 已完成：13 单测 + 4 真Redis集成测试(双模式:testcontainer / `-Dredis.it.port=6380`) + Web层鉴权测试，`mvn clean verify` 25/25 绿（截至 2026-10-04 工程化落地纪要）；`.github/workflows/ci.yml` CI 跑 |
 | 7 | Guardrails | 注入/合规 | 生产再上 |
 
 **共同纪律**：每上一个，先定"用哪个指标证明它有效"（phase6 三路 + `/evalrag` + 命中率），**改前改后各跑一轮、取中位数**——评测闭环就是为这件事准备的。

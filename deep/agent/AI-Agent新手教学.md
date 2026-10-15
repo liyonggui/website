@@ -206,7 +206,7 @@ draft: false
 ### 第7课补充实验：三道护栏的实测方法（已全跑通）
 - **舱壁**：6 并发 `/api/ops/chat`（LLM并发上限=3）→ 3×503 秒拒 + 2×200（mean 11.8s）+1 客户端超时。**拒得快、放行的变慢**——并发保护的真实表现。
 - **缓存**：`/ops/snapshot` 看 `cache{}` 命中计数；压测用 k6（cache-off/on 对比 p95 836→12ms，见 phase4 README）。
-- **熔断**：混沌实例（工具基址指死端口+TOOL_TIMEOUT_MS=1000）连打 15 次 → 前 5 次真试失败 → **OPEN** → 之后 **11 次 `circuit-open` 秒拒**，返回 `{"unavailable":true}`。
+- **熔断**：混沌实例（工具基址指死端口+TOOL_TIMEOUT_MS=1000）连打 20 次 → 前 5 次真试失败 → **OPEN** → 之后 **16 次 `circuit-open` 秒拒**，返回 `{"unavailable":true}`（注意 5+16=21 与连打 20 次对不上：`/snapshot` 是累计计数器、5 秒冷却期内会插入探针请求，详见博客 03 第五节的坦白）。
 - 全部数字在 `/ops/snapshot`：延迟 mean/max、工具 ok/fail、cache hit/miss、breaker.rejects、token 成本。
 
 ### 第5/6课补充实验：复合问题全链路耗时拆解（phase5）

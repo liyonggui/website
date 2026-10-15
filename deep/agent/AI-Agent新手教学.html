@@ -197,7 +197,7 @@
 <ul>
 <li><strong>舱壁</strong>：6 并发 <code>/api/ops/chat</code>（LLM并发上限=3）→ 3×503 秒拒 + 2×200（mean 11.8s）+1 客户端超时。<strong>拒得快、放行的变慢</strong>——并发保护的真实表现。</li>
 <li><strong>缓存</strong>：<code>/ops/snapshot</code> 看 <code>cache{}</code> 命中计数；压测用 k6（cache-off/on 对比 p95 836→12ms，见 phase4 README）。</li>
-<li><strong>熔断</strong>：混沌实例（工具基址指死端口+TOOL_TIMEOUT_MS=1000）连打 15 次 → 前 5 次真试失败 → <strong>OPEN</strong> → 之后 <strong>11 次 <code>circuit-open</code> 秒拒</strong>，返回 <code>{"unavailable":true}</code>。</li>
+<li><strong>熔断</strong>：混沌实例（工具基址指死端口+TOOL_TIMEOUT_MS=1000）连打 20 次 → 前 5 次真试失败 → <strong>OPEN</strong> → 之后 <strong>16 次 <code>circuit-open</code> 秒拒</strong>，返回 <code>{"unavailable":true}</code>（注意 5+16=21 与连打 20 次对不上：<code>/snapshot</code> 是累计计数器、5 秒冷却期内会插入探针请求，详见博客 03 第五节的坦白）。</li>
 <li>全部数字在 <code>/ops/snapshot</code>：延迟 mean/max、工具 ok/fail、cache hit/miss、breaker.rejects、token 成本。</li>
 </ul>
 <h3 id="56phase5">第5/6课补充实验：复合问题全链路耗时拆解（phase5）</h3>

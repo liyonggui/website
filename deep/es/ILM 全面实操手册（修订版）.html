@@ -66,7 +66,7 @@
 <li>改进：用 Long.hashCode + Math.floorMod 做取模，避免 Math.abs 溢出，并增加空值校验与注释；同时补充并发/分布式唯一性注意事项（不要把 _id 与不同 routing 混用造成重复）。</li>
 <li>ILM 策略里的 rollover 配置项与 index template 写法</li>
 <li>问题：示例中使用的 rollover 字段名（如 max_primary_shard_size）和 index.routing.allocation.data_tier 写法在不同 ES 版本间有差异，可能导致误用。</li>
-<li>处理：统一用兼容写法示例： rollover: { "max_age": "7d", "max_size":"45gb" }；template 中 use "index.routing.allocation.require.data_tier": "hot"（或根据集群版本改为 data_tier 相关 setting），并提醒 “请按你的 ES 版本校验字段名”。</li>
+<li>处理：统一用兼容写法示例： rollover: { "max_age": "7d", "max_size":"45gb" }；template 中 use "index.routing.allocation.require._tier_preference": "data_hot"（或根据集群版本改为对应的层级 setting），并提醒 “请按你的 ES 版本校验字段名”。</li>
 <li>shrink / split / reindex 的约束 &amp; 可选替代策略</li>
 <li>补充：明确 shrink/split 的前置条件（read-only/index on single node/all shards relocated to one node 等）、split API 可在一定约束下放大主分片数（必须为当前分片数的倍数并且索引为只读），并建议在大型或生产索引上优先使用 reindex/rollover+alias 的零停机迁移流程。</li>
 <li>关于分片大小建议：补充可搜索快照、snapshot lifecycle（SLM）</li>
@@ -84,40 +84,33 @@
 <li>语言与结构上做了统一排版、增加小节标题，便于阅读和落地执行。</li>
 </ul>
 <p>下面给出修订后完整文档（已合并修正与补充）。你可以直接复制使用；我在各关键点保留了注释/说明以便实践时参考。</p>
-<div class="codehilite"><pre><span></span><code><span class="gh"># Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）</span>
-
-<span class="k">&gt; </span><span class="ge">版本说明：本文档为实践型运维手册，兼顾 Elasticsearch 常见版本差异（7.x / 8.x）。示例 API/字段在不同 ES 版本可能有细微差别（例如 rollover 的某些字段名、data_tier 相关设置等），上线前请以集群实际版本的官方文档为准。</span>
-
----
-
-<span class="gu">## 一、索引 / 分片 / 节点 层级关系（概念回顾）</span>
-
-<span class="k">-</span><span class="w"> </span>层级结构：Cluster → Index → Primary Shards + Replica Shards → shards 部署在 Node → Node 依托服务器磁盘/内存/CPU
-<span class="k">-</span><span class="w"> </span>核心两条约束：
-<span class="w">  </span><span class="k">1.</span> 一个分片（shard）永久只归属一个索引（分片物理文件独立），**不能跨索引共享分片**。
-<span class="w">  </span><span class="k">2.</span> 同一分片的主分片与其副本**不允许**部署到同一节点（或同一机架/可用区），避免单点故障导致数据不可用。
-
-示例（3 节点、index order，9 主分片 + 1 副本 → 总分片 18）：
-<span class="k">-</span><span class="w"> </span>总分片 = 主分片数 × (副本数 + 1) = 9 × (1 + 1) = 18
-<span class="k">-</span><span class="w"> </span>理论均分：3 节点，每节点承载 6 个该索引的分片（实际受其他索引/磁盘水位/allocations 策略影响）
-
-说明：
-<span class="k">-</span><span class="w"> </span>节点：承载任意索引分片的资源容器
-<span class="k">-</span><span class="w"> </span>分片：索引的存储单元；分片归属创建后固定（不可随意改主分片数量）
-
----
-
-<span class="gu">## 二、路由寻址底层原理 &amp; MurmurHash3</span>
-
-<span class="gu">### 1) 路由计算（核心逻辑）</span>
-索引一下写入/查找时底层计算分片的核心思路（伪代码）：
-
-```java
-// routingKey = (user-provided routing != null) ? routing : document_id;
-int hash = Murmur3.hash32(routingKeyBytes); // Murmur3 on UTF-8 bytes -&gt; 32-bit signed int
-// 安全取模（避免 Math.abs 溢出问题）
-int shardId = Math.floorMod(hash, number_of_primary_shards);
-// 也可用: int shardId = (hash &amp; 0x7fffffff) % number_of_primary_shards;
+<h2 id="elasticsearch-ilm">Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）</h2>
+<blockquote>
+<p>版本说明：本文档为实践型运维手册，兼顾 Elasticsearch 常见版本差异（7.x / 8.x）。示例 API/字段在不同 ES 版本可能有细微差别（例如 rollover 的某些字段名、data_tier 相关设置等），上线前请以集群实际版本的官方文档为准。</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、索引 / 分片 / 节点 层级关系（概念回顾）</h2>
+<ul>
+<li>层级结构：Cluster → Index → Primary Shards + Replica Shards → shards 部署在 Node → Node 依托服务器磁盘/内存/CPU</li>
+<li>核心两条约束：</li>
+<li>一个分片（shard）永久只归属一个索引（分片物理文件独立），<strong>不能跨索引共享分片</strong>。</li>
+<li>同一分片的主分片与其副本<strong>不允许</strong>部署到同一节点（或同一机架/可用区），避免单点故障导致数据不可用。</li>
+</ul>
+<p>示例（3 节点、index order，9 主分片 + 1 副本 → 总分片 18）：
+- 总分片 = 主分片数 × (副本数 + 1) = 9 × (1 + 1) = 18
+- 理论均分：3 节点，每节点承载 6 个该索引的分片（实际受其他索引/磁盘水位/allocations 策略影响）</p>
+<p>说明：
+- 节点：承载任意索引分片的资源容器
+- 分片：索引的存储单元；分片归属创建后固定（不可随意改主分片数量）</p>
+<hr />
+<h2 id="murmurhash3">二、路由寻址底层原理 &amp; MurmurHash3</h2>
+<h3 id="1">1) 路由计算（核心逻辑）</h3>
+<p>索引一下写入/查找时底层计算分片的核心思路（伪代码）：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1">// routingKey = (user-provided routing != null) ? routing : document_id;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3</span><span class="p">.</span><span class="na">hash32</span><span class="p">(</span><span class="n">routingKeyBytes</span><span class="p">);</span><span class="w"> </span><span class="c1">// Murmur3 on UTF-8 bytes -&gt; 32-bit signed int</span>
+<span class="c1">// 安全取模（避免 Math.abs 溢出问题）</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">floorMod</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span><span class="w"> </span><span class="n">number_of_primary_shards</span><span class="p">);</span>
+<span class="c1">// 也可用: int shardId = (hash &amp; 0x7fffffff) % number_of_primary_shards;</span>
 </code></pre></div>
 
 <p>要点：</p>
@@ -152,8 +145,8 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <li>结论：路由打散适用于新写入的热点分散；对于已有数据要变更 routing，必须走 reindex/迁移流程，且严格测试。</li>
 </ul>
 <hr />
-<h2 id="_1">三、两类分片倾斜成因 + 路由二次打散解决方案</h2>
-<h3 id="1">类型1：路由数据倾斜（业务层面）</h3>
+<h2 id="_2">三、两类分片倾斜成因 + 路由二次打散解决方案</h2>
+<h3 id="1_1">类型1：路由数据倾斜（业务层面）</h3>
 <ul>
 <li>成因：业务自定义 routing（省份/日期/大客户ID 等）导致热点 key 长期落在单个分片。</li>
 <li>典型场景：按日期或省份路由导致单天或少数省份分片数据远大于其它分片。</li>
@@ -202,8 +195,8 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <li>诊断与处置：检查 allocation/filter/watermark、cluster.routing.allocation.* 配置与搬迁并发参数、pending migrations、rebalance 阈值。</li>
 </ul>
 <hr />
-<h2 id="_2">四、分片节点分配算法完整解析（补充与细化）</h2>
-<h3 id="1_1">1) 分配流程</h3>
+<h2 id="_3">四、分片节点分配算法完整解析（补充与细化）</h2>
+<h3 id="1_2">1) 分配流程</h3>
 <ul>
 <li>前置过滤（优先级最高）：同主副本同节点/磁盘水位/节点角色/节点离线/单节点分片上限等。</li>
 <li>候选节点打分：IndexBalance（0.55）与 ShardBalance（0.45）加权得分（ES 默认权重可以配置），得分越低越优先。</li>
@@ -242,8 +235,8 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <li>定期合并（forcemerge）和 shrink 操作会带来大量 IO，请避开业务高峰。</li>
 </ul>
 <hr />
-<h2 id="_3">五、容量规划与分片数建议（实践版）</h2>
-<h3 id="1_2">1) 单分片容量建议（依据场景）</h3>
+<h2 id="_4">五、容量规划与分片数建议（实践版）</h2>
+<h3 id="1_3">1) 单分片容量建议（依据场景）</h3>
 <ul>
 <li>热数据（高写高查）：20 ~ 35 GB / 分片</li>
 <li>常规业务：35 ~ 50 GB / 分片</li>
@@ -281,7 +274,7 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <li>Rollover 索引：以每个滚动生成的新索引的创建时间计时</li>
 <li>调度模式：ILM 以内置服务周期性轮询（默认 polling interval），并非严格 cron；默认间隔视 ES 版本（通常为 10m），可调整。</li>
 <li>流转不可逆：Hot → Warm → Cold → Delete（若要回流需人工或自研流程）</li>
-<li>流转本质：修改 indexing allocation 标签（data_tier/allocate.require）以触发分片重新分配到对应节点池</li>
+<li>流转本质：修改 indexing allocation 标签（_tier_preference/allocate.require）以触发分片重新分配到对应节点池</li>
 </ol>
 <h3 id="62-ilm-cron">6.2 ILM 优于自研 Cron 的理由（补充）</h3>
 <ul>
@@ -301,7 +294,7 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <p>Warm 阶段：</p>
 <ul>
 <li>min_age: 7d（示例）</li>
-<li>allocate.require.data_tier: "warm"</li>
+<li>allocate.require._tier_preference: "data_warm"</li>
 <li>forcemerge.max_num_segments: 1（根据查询频率启用）</li>
 <li>shrink: 目标 shards（注意 shrink 是不可逆并有前置条件）</li>
 <li>readonly: 如果确实无写入</li>
@@ -309,7 +302,7 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <p>Cold 阶段：</p>
 <ul>
 <li>min_age: 30d（示例）</li>
-<li>allocate.require.data_tier: "cold"</li>
+<li>allocate.require._tier_preference: "data_cold"</li>
 <li>freeze: 可选（长期归档开启）</li>
 <li>set_priority: 10 之类</li>
 </ul>
@@ -338,7 +331,7 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <span class="w">      </span><span class="nt">"warm"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7d"</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="s2">"warm"</span><span class="p">}},</span>
+<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"_tier_preference"</span><span class="p">:</span><span class="s2">"data_warm"</span><span class="p">}},</span>
 <span class="w">          </span><span class="nt">"forcemerge"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"max_num_segments"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"shrink"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">}</span>
@@ -347,7 +340,7 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <span class="w">      </span><span class="nt">"cold"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">"min_age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"30d"</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"data_tier"</span><span class="p">:</span><span class="s2">"cold"</span><span class="p">}},</span>
+<span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"require"</span><span class="p">:{</span><span class="nt">"_tier_preference"</span><span class="p">:</span><span class="s2">"data_cold"</span><span class="p">}},</span>
 <span class="w">          </span><span class="nt">"freeze"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
 <span class="w">          </span><span class="nt">"set_priority"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"priority"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span>
 <span class="w">        </span><span class="p">}</span>
@@ -373,7 +366,7 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <span class="w">      </span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"number_of_replicas"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"index.lifecycle.name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"order_hot_warm_cold_policy"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"index.routing.allocation.require.data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hot"</span>
+<span class="w">      </span><span class="nt">"index.routing.allocation.require._tier_preference"</span><span class="p">:</span><span class="w"> </span><span class="s2">"data_hot"</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">"mappings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -388,7 +381,7 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 </code></pre></div>
 
 <blockquote>
-<p>注意：部分集群/版本也可使用 <code>index.routing.allocation.include</code> / <code>index.routing.allocation.require</code> / data_tier 相关字段，按集群版本确认。</p>
+<p>注意：部分集群/版本也可使用 <code>index.routing.allocation.include</code> / <code>index.routing.allocation.require</code> / <code>_tier_preference</code> 相关字段，按集群版本确认。</p>
 </blockquote>
 <h3 id="66-ilm">6.6 ILM 实操注意事项（八条）— 保留并补充</h3>
 <ol>
@@ -396,20 +389,20 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <li>shrink 操作不可逆，且有前置条件（索引需只读且可迁移至单节点上进行 shrink）。</li>
 <li>ILM 有轮询延迟（默认轮询间隔），短时间误差属正常。</li>
 <li>forcemerge IO 高，请错峰执行或禁用。</li>
-<li>集群必须部署对应 data_tier 节点（hot/warm/cold），否则流转会卡住。</li>
-<li>不要随意手工修改索引 data_tier 或 allocation 标签，避免分片乱跑。</li>
+<li>集群必须部署对应 data tier 节点（data_hot/data_warm/data_cold 角色，ES 7.10+），否则流转会卡住。</li>
+<li>不要随意手工修改索引 _tier_preference 或 allocation 标签，避免分片乱跑。</li>
 <li>freeze 适合长期归档但会降低查询速度。</li>
 <li>Delete 阶段建议先确保 SLM 快照可恢复再启用。</li>
 </ol>
 <h3 id="67-ilm">6.7 ILM 常见故障排查（快速对照）</h3>
 <ul>
-<li>索引未流转至下一阶段：可能缺乏对应 data_tier 节点或分片搬迁阻塞。命令：GET /index_name/_ilm/explain</li>
+<li>索引未流转至下一阶段：可能缺乏对应 data tier 节点或分片搬迁阻塞。命令：GET /index_name/_ilm/explain</li>
 <li>Rollover 不触发：确认写入是否走 alias，确认阈值配置是否合理。命令：GET /_alias/your_alias</li>
 <li>冻结后查询慢：检查 index settings 的 frozen flag。命令：GET index/_settings?filter_path=*.frozen</li>
 </ul>
 <hr />
 <h2 id="reindex">七、Reindex &amp; 迁移全场景方案（补充细化）</h2>
-<h3 id="_4">核心流程（零停机改造模版）</h3>
+<h3 id="_5">核心流程（零停机改造模版）</h3>
 <p>新建目标索引（含新 mapping/setting/ILM） → 执行 Reindex（可用 Painless 脚本转换）→ 双写阶段（业务同时写旧索引与新索引）→ 增量追赶（时间窗口或按 ID 范围重跑）→ 原子别名切换 → 观察与关闭双写 → 删除旧索引/归档</p>
 <p>示例 Reindex（脚本转换）：</p>
 <div class="codehilite"><pre><span></span><code><span class="err">POST _reindex</span>
@@ -437,20 +430,20 @@ int shardId = Math.floorMod(hash, number_of_primary_shards);
 <li>长时间迁移使用 wait_for_completion=false 并监控 task API</li>
 <li>在跨集群迁移时使用 reindex from remote（注意带宽）</li>
 </ul>
-<h3 id="_5">不可原地修改清单</h3>
+<h3 id="_6">不可原地修改清单</h3>
 <ul>
 <li>新增字段：可直接 PUT mapping</li>
 <li>修改已有字段类型/重命名/改变 analyzer：必须重建索引并 Reindex</li>
 </ul>
 <hr />
-<h2 id="_6">八、备份 / 快照 / 冷归档（补充）</h2>
+<h2 id="_7">八、备份 / 快照 / 冷归档（补充）</h2>
 <ul>
 <li>强烈建议对核心业务数据使用 Snapshot（到远端仓库，如 S3）的 SLM（Snapshot Lifecycle Management），并在 delete 阶段前确保有可用最小保留快照策略。</li>
 <li>可搜索快照（Searchable Snapshots）：将冷数据使用对象存储成本更低的方式保留并允许查询，是冷归档的重要手段，配合 ILM cold 阶段可显著降低成本。</li>
 <li>恢复演练：定期演练从快照恢复，验证策略有效性。</li>
 </ul>
 <hr />
-<h2 id="_7">九、监控与告警（新增建议）</h2>
+<h2 id="_8">九、监控与告警（新增建议）</h2>
 <p>推荐监控指标（至少包含）：</p>
 <ul>
 <li>cluster health / status</li>
@@ -479,7 +472,7 @@ A: 会。写入时 routing 决定 shard。变更 routing 要么 reindex（把文
 <p>Q: 分片数应多还是少？<br />
 A: 既不宜过多（元数据、Heap 问题），也不宜过少（单分片过大迁移成本高）。按预计规模与单分片目标容量折中，建议略偏多并保留弹性。</p>
 <hr />
-<h2 id="_8">结束语（落地提示）</h2>
+<h2 id="_9">结束语（落地提示）</h2>
 <p>我已把文档中的技术漏洞与实践盲点修正并补充了运维/迁移/监控相关内容。建议下一步：</p>
 <ul>
 <li>基于你们集群的 ES 版本（请回复版本号，例如 7.10 / 7.17 / 8.4 等），我可以把示例 API/字段（如 rollover 参数、index.template 写法、data_tier 配置）逐条对齐到你们版本的准确语法并输出最终可跑的 API 脚本。</li>
@@ -491,19 +484,23 @@ A: 既不宜过多（元数据、Heap 问题），也不宜过少（单分片过
   <summary>目录</summary>
   <nav>
     <ul>
+      <li class="lv2"><a href="#elasticsearch-ilm">Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）</a></li>
+      <li class="lv2"><a href="#_1">一、索引 / 分片 / 节点 层级关系（概念回顾）</a></li>
+      <li class="lv2"><a href="#murmurhash3">二、路由寻址底层原理 &amp;amp; MurmurHash3</a></li>
+      <li class="lv3"><a href="#1">1) 路由计算（核心逻辑）</a></li>
       <li class="lv3"><a href="#2-murmurhash3">2) MurmurHash3 两个版本的使用场景（补充）</a></li>
       <li class="lv3"><a href="#3-routing">3) Routing 长度规范（建议）</a></li>
       <li class="lv3"><a href="#4-mysql">4) 路由二次打散（与 MySQL 的兼容性说明）</a></li>
-      <li class="lv2"><a href="#_1">三、两类分片倾斜成因 + 路由二次打散解决方案</a></li>
-      <li class="lv3"><a href="#1">类型1：路由数据倾斜（业务层面）</a></li>
+      <li class="lv2"><a href="#_2">三、两类分片倾斜成因 + 路由二次打散解决方案</a></li>
+      <li class="lv3"><a href="#1_1">类型1：路由数据倾斜（业务层面）</a></li>
       <li class="lv3"><a href="#2">类型2：节点分片分配倾斜（集群层面）</a></li>
-      <li class="lv2"><a href="#_2">四、分片节点分配算法完整解析（补充与细化）</a></li>
-      <li class="lv3"><a href="#1_1">1) 分配流程</a></li>
+      <li class="lv2"><a href="#_3">四、分片节点分配算法完整解析（补充与细化）</a></li>
+      <li class="lv3"><a href="#1_2">1) 分配流程</a></li>
       <li class="lv3"><a href="#2_1">2) 磁盘水位（默认值可配置）</a></li>
       <li class="lv3"><a href="#3">3) 分片迁移并发配置（示例）</a></li>
       <li class="lv3"><a href="#4">4) 额外补充</a></li>
-      <li class="lv2"><a href="#_3">五、容量规划与分片数建议（实践版）</a></li>
-      <li class="lv3"><a href="#1_2">1) 单分片容量建议（依据场景）</a></li>
+      <li class="lv2"><a href="#_4">五、容量规划与分片数建议（实践版）</a></li>
+      <li class="lv3"><a href="#1_3">1) 单分片容量建议（依据场景）</a></li>
       <li class="lv3"><a href="#2_2">2) 主分片数估算</a></li>
       <li class="lv3"><a href="#3_1">3) 副本策略</a></li>
       <li class="lv3"><a href="#4_1">4) 单节点分片上限</a></li>
@@ -517,12 +514,12 @@ A: 既不宜过多（元数据、Heap 问题），也不宜过少（单分片过
       <li class="lv3"><a href="#66-ilm">6.6 ILM 实操注意事项（八条）— 保留并补充</a></li>
       <li class="lv3"><a href="#67-ilm">6.7 ILM 常见故障排查（快速对照）</a></li>
       <li class="lv2"><a href="#reindex">七、Reindex &amp;amp; 迁移全场景方案（补充细化）</a></li>
-      <li class="lv3"><a href="#_4">核心流程（零停机改造模版）</a></li>
-      <li class="lv3"><a href="#_5">不可原地修改清单</a></li>
-      <li class="lv2"><a href="#_6">八、备份 / 快照 / 冷归档（补充）</a></li>
-      <li class="lv2"><a href="#_7">九、监控与告警（新增建议）</a></li>
+      <li class="lv3"><a href="#_5">核心流程（零停机改造模版）</a></li>
+      <li class="lv3"><a href="#_6">不可原地修改清单</a></li>
+      <li class="lv2"><a href="#_7">八、备份 / 快照 / 冷归档（补充）</a></li>
+      <li class="lv2"><a href="#_8">九、监控与告警（新增建议）</a></li>
       <li class="lv2"><a href="#faq">十、常见问答（FAQ 快速提示）</a></li>
-      <li class="lv2"><a href="#_8">结束语（落地提示）</a></li>
+      <li class="lv2"><a href="#_9">结束语（落地提示）</a></li>
     </ul>
   </nav>
 </details></aside>

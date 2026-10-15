@@ -67,7 +67,7 @@ Hot热 → Warm温 → Cold冷 → Delete删除，**只能往后走，不能自�
 
 ## 5\. 底层流转本质动作
 
-ILM不搬运数据，只**修改索引分片分配标签**：给索引打上`data_tier:warm/cold`强制标签，ES分片分配算法自动将分片搬迁至对应节点池，全程集群内部自愈。
+ILM不搬运数据，只**修改索引分片分配标签**：给索引打上`_tier_preference: data_warm/data_cold`强制标签，ES分片分配算法自动将分片搬迁至对应节点池，全程集群内部自愈。
 
 ---
 
@@ -136,7 +136,7 @@ PUT _ilm/policy/order_hot_warm_cold_policy
         "actions": {
           "allocate": {
             "require": {
-              "data_tier": "warm"
+              "_tier_preference": "data_warm"
             }
           },
           "forcemerge": {
@@ -155,7 +155,7 @@ PUT _ilm/policy/order_hot_warm_cold_policy
         "actions": {
           "allocate": {
             "require": {
-              "data_tier": "cold"
+              "_tier_preference": "data_cold"
             }
           },
           "freeze": {},
@@ -186,7 +186,7 @@ PUT _index_template/template_order
       "number_of_shards": 9,
       "number_of_replicas": 1,
       "index.lifecycle.name": "order_hot_warm_cold_policy",
-      "index.routing.allocation.data_tier": "hot"
+      "index.routing.allocation.include._tier_preference": "data_hot"
     },
     "mappings": {
       "properties": {
@@ -256,7 +256,7 @@ PUT _cluster/settings
 }
 
 # 5.查看索引当前冷热节点分配标签
-GET index_name/_settings?filter_path=*.data_tier
+GET index_name/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference
 ```
 
 ---

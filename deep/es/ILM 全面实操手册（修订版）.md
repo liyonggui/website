@@ -29,7 +29,7 @@ draft: false
    - 改进：用 Long.hashCode + Math.floorMod 做取模，避免 Math.abs 溢出，并增加空值校验与注释；同时补充并发/分布式唯一性注意事项（不要把 _id 与不同 routing 混用造成重复）。
 5. ILM 策略里的 rollover 配置项与 index template 写法
    - 问题：示例中使用的 rollover 字段名（如 max_primary_shard_size）和 index.routing.allocation.data_tier 写法在不同 ES 版本间有差异，可能导致误用。
-   - 处理：统一用兼容写法示例： rollover: { "max_age": "7d", "max_size":"45gb" }；template 中 use "index.routing.allocation.require.data_tier": "hot"（或根据集群版本改为 data_tier 相关 setting），并提醒 “请按你的 ES 版本校验字段名”。
+   - 处理：统一用兼容写法示例： rollover: { "max_age": "7d", "max_size":"45gb" }；template 中 use "index.routing.allocation.require._tier_preference": "data_hot"（或根据集群版本改为对应的层级 setting），并提醒 “请按你的 ES 版本校验字段名”。
 6. shrink / split / reindex 的约束 & 可选替代策略
    - 补充：明确 shrink/split 的前置条件（read-only/index on single node/all shards relocated to one node 等）、split API 可在一定约束下放大主分片数（必须为当前分片数的倍数并且索引为只读），并建议在大型或生产索引上优先使用 reindex/rollover+alias 的零停机迁移流程。
 7. 关于分片大小建议：补充可搜索快照、snapshot lifecycle（SLM）
@@ -48,7 +48,6 @@ draft: false
 
 下面给出修订后完整文档（已合并修正与补充）。你可以直接复制使用；我在各关键点保留了注释/说明以便实践时参考。
 
-```markdown
 # Elasticsearch 分片 / 路由 / ILM 全面实操手册（修订版）
 
 > 版本说明：本文档为实践型运维手册，兼顾 Elasticsearch 常见版本差异（7.x / 8.x）。示例 API/字段在不同 ES 版本可能有细微差别（例如 rollover 的某些字段名、data_tier 相关设置等），上线前请以集群实际版本的官方文档为准。
@@ -259,7 +258,7 @@ PUT _cluster/settings
    - Rollover 索引：以每个滚动生成的新索引的创建时间计时
 3. 调度模式：ILM 以内置服务周期性轮询（默认 polling interval），并非严格 cron；默认间隔视 ES 版本（通常为 10m），可调整。
 4. 流转不可逆：Hot → Warm → Cold → Delete（若要回流需人工或自研流程）
-5. 流转本质：修改 indexing allocation 标签（data_tier/allocate.require）以触发分片重新分配到对应节点池
+5. 流转本质：修改 indexing allocation 标签（_tier_preference/allocate.require）以触发分片重新分配到对应节点池
 
 ### 6.2 ILM 优于自研 Cron 的理由（补充）
 
@@ -279,7 +278,7 @@ Hot 阶段（示例）：
 Warm 阶段：
 
 - min_age: 7d（示例）
-- allocate.require.data_tier: "warm"
+- allocate.require._tier_preference: "data_warm"
 - forcemerge.max_num_segments: 1（根据查询频率启用）
 - shrink: 目标 shards（注意 shrink 是不可逆并有前置条件）
 - readonly: 如果确实无写入
@@ -287,7 +286,7 @@ Warm 阶段：
 Cold 阶段：
 
 - min_age: 30d（示例）
-- allocate.require.data_tier: "cold"
+- allocate.require._tier_preference: "data_cold"
 - freeze: 可选（长期归档开启）
 - set_priority: 10 之类
 
@@ -317,7 +316,7 @@ PUT _ilm/policy/order_hot_warm_cold_policy
       "warm": {
         "min_age": "7d",
         "actions": {
-          "allocate": {"require":{"data_tier":"warm"}},
+          "allocate": {"require":{"_tier_preference":"data_warm"}},
           "forcemerge": {"max_num_segments": 1},
           "shrink": {"number_of_shards": 3},
           "set_priority": {"priority": 50}
@@ -326,7 +325,7 @@ PUT _ilm/policy/order_hot_warm_cold_policy
       "cold": {
         "min_age": "30d",
         "actions": {
-          "allocate": {"require":{"data_tier":"cold"}},
+          "allocate": {"require":{"_tier_preference":"data_cold"}},
           "freeze": {},
           "set_priority": {"priority": 10}
         }
@@ -353,7 +352,7 @@ PUT _index_template/template_order
       "number_of_shards": 9,
       "number_of_replicas": 1,
       "index.lifecycle.name": "order_hot_warm_cold_policy",
-      "index.routing.allocation.require.data_tier": "hot"
+      "index.routing.allocation.require._tier_preference": "data_hot"
     },
     "mappings": {
       "properties": {
@@ -367,7 +366,7 @@ PUT _index_template/template_order
 }
 ```
 
-> 注意：部分集群/版本也可使用 `index.routing.allocation.include` / `index.routing.allocation.require` / data_tier 相关字段，按集群版本确认。
+> 注意：部分集群/版本也可使用 `index.routing.allocation.include` / `index.routing.allocation.require` / `_tier_preference` 相关字段，按集群版本确认。
 
 ### 6.6 ILM 实操注意事项（八条）— 保留并补充
 
@@ -375,14 +374,14 @@ PUT _index_template/template_order
 2. shrink 操作不可逆，且有前置条件（索引需只读且可迁移至单节点上进行 shrink）。
 3. ILM 有轮询延迟（默认轮询间隔），短时间误差属正常。
 4. forcemerge IO 高，请错峰执行或禁用。
-5. 集群必须部署对应 data_tier 节点（hot/warm/cold），否则流转会卡住。
-6. 不要随意手工修改索引 data_tier 或 allocation 标签，避免分片乱跑。
+5. 集群必须部署对应 data tier 节点（data_hot/data_warm/data_cold 角色，ES 7.10+），否则流转会卡住。
+6. 不要随意手工修改索引 _tier_preference 或 allocation 标签，避免分片乱跑。
 7. freeze 适合长期归档但会降低查询速度。
 8. Delete 阶段建议先确保 SLM 快照可恢复再启用。
 
 ### 6.7 ILM 常见故障排查（快速对照）
 
-- 索引未流转至下一阶段：可能缺乏对应 data_tier 节点或分片搬迁阻塞。命令：GET /index_name/_ilm/explain
+- 索引未流转至下一阶段：可能缺乏对应 data tier 节点或分片搬迁阻塞。命令：GET /index_name/_ilm/explain
 - Rollover 不触发：确认写入是否走 alias，确认阈值配置是否合理。命令：GET /_alias/your_alias
 - 冻结后查询慢：检查 index settings 的 frozen flag。命令：GET index/_settings?filter_path=*.frozen
 

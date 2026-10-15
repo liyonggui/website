@@ -82,7 +82,7 @@ NodeC
 ```java
 String routingKey = 自定义routing != null ? 自定义routing : 文档_id;
 int hash = Murmur3HashFunction.hash(routingKey);
-int shardId = Math.abs(hash) % number_of_primary_shards;
+int shardId = Math.floorMod(hash, number_of_primary_shards);   // 真实实现即 floorMod；勿用 Math.abs（Integer.MIN_VALUE 仍为负）
 ```
 
 ### 硬性约束
@@ -144,8 +144,9 @@ import java.util.List;
 public class RoutingSplitUtil {
     // 写入生成打散路由
     public static String getSplitRouting(String bizKey, int splitNum, Long snowId) {
-        if (splitNum <= 1) return bizKey;
-        int suffix = Math.abs(snowId.intValue()) % splitNum;
+        if (splitNum <= 1 || bizKey == null || snowId == null) return bizKey;
+        int hash = Long.hashCode(snowId);
+        int suffix = Math.floorMod(hash, splitNum); // 安全取模，避免 Math.abs 溢出问题
         return bizKey + "_" + suffix;
     }
     // 查询遍历全部路由批量检索
@@ -286,7 +287,7 @@ PUT _cluster/settings
 
 4. 流转单向不可逆：`Hot → Warm → Cold → Delete`，ES无原生自动回流机制
 
-5. 流转本质：修改索引 `data_tier` 分配标签约束，分片分配器自动将分片搬迁至对应节点池
+5. 流转本质：修改索引 `_tier_preference` 层级约束，分片分配器自动将分片搬迁至对应节点池
 
 ## 6.2 ILM轮询 vs 自定义定时任务 对比
 
@@ -299,7 +300,7 @@ PUT _cluster/settings
 5. 资源开销：轮询仅遍历索引元数据，空闲状态开销极低；定时任务常驻调度，维护成本更高
 6. 唯一短板：存在最多一个轮询周期时间误差；Cron可以做到精准整点执行
 
-补充：修改 `data_tier` 标签是流转执行动作，两种调度修改标签本身开销基本一致，差距核心在调度架构设计。
+补充：修改 `_tier_preference` 标签是流转执行动作，两种调度修改标签本身开销基本一致，差距核心在调度架构设计。
 
 ## 6.3 ILM 四阶段参数速查表（含义+默认+修改场景+推荐值）
 
@@ -326,7 +327,7 @@ PUT _cluster/settings
 | 参数                          | 作用            | 默认   | 修改场景               | 推荐值                  |
 | --------------------------- | ------------- | ---- | ------------------ | -------------------- |
 | min_age                     | 滚动生成后多久转入温层   | 7d   | 活跃查询周期调整、提前释放热节点资源 | 访问久：10~15d；快速归档：3~5d |
-| allocate.require.data_tier  | 强制分片分配到warm节点 | warm | 整体下线冷热分层架构         | 注释allocate节点即可取消迁移   |
+| allocate.require._tier_preference | 强制分片分配到warm节点 | data_warm | 整体下线冷热分层架构         | 注释allocate节点即可取消迁移   |
 | forcemerge.max_num_segments | 段合并优化查询，IO消耗高 | 1    | 温层访问频次、高峰期防IO抖动    | 有查询保留1；几乎无查询可关闭      |
 | shrink.number_of_shards     | 收缩主分片数量（不可逆）  | 3    | 集群分片过多内存紧张、仍有聚合查询  | 有聚合：3~5片；极少查询可缩至1片   |
 | readonly                    | 索引自动设置只读      | 开启   | 业务存在滞后补发写入场景       | 有迟写需求则移除readonly动作   |
@@ -337,7 +338,7 @@ PUT _cluster/settings
 | 参数                         | 作用              | 默认   | 修改场景              | 推荐值                    |
 | -------------------------- | --------------- | ---- | ----------------- | ---------------------- |
 | min_age                    | 多久转入冷归档节点       | 30d  | 存储成本敏感提前归档、频繁溯源延后 | 省钱归档：15~20d；经常查：45~60d |
-| allocate.require.data_tier | 强制分片分配到cold节点   | cold | 下线分层架构            | 注释allocate配置           |
+| allocate.require._tier_preference | 强制分片分配到cold节点   | data_cold | 下线分层架构            | 注释allocate配置           |
 | freeze                     | 索引冻结降低内存占用，查询变慢 | 开启   | 偶尔检索排查、集群内存紧张     | 几乎不查开启；经常查询关闭冻结        |
 | set_priority               | 分片恢复优先级         | 10   | 归档数据降低资源抢占        | 调整为5~8                 |
 
@@ -370,7 +371,7 @@ PUT _ilm/policy/order_hot_warm_cold_policy
       "warm": {
         "min_age": "7d",
         "actions": {
-          "allocate": {"require":{"data_tier":"warm"}},
+          "allocate": {"require":{"_tier_preference":"data_warm"}},
           "forcemerge": {"max_num_segments": 1},
           "shrink": {"number_of_shards": 3},
           "set_priority": {"priority": 50}
@@ -379,7 +380,7 @@ PUT _ilm/policy/order_hot_warm_cold_policy
       "cold": {
         "min_age": "30d",
         "actions": {
-          "allocate": {"require":{"data_tier":"cold"}},
+          "allocate": {"require":{"_tier_preference":"data_cold"}},
           "freeze": {},
           "set_priority": {"priority": 10}
         }
@@ -404,7 +405,7 @@ PUT _index_template/template_order
       "number_of_shards": 9,
       "number_of_replicas": 1,
       "index.lifecycle.name": "order_hot_warm_cold_policy",
-      "index.routing.allocation.data_tier": "hot"
+      "index.routing.allocation.include._tier_preference": "data_hot"
     },
     "mappings": {
       "properties": {
@@ -425,7 +426,7 @@ PUT _index_template/template_order
 3. 流转存在十几分钟正常延迟，轮询间隔+分片迁移耗时，流转时间卡点不会完全精准。
 4. forcemerge段合并IO消耗极高，尽量避开业务高峰期执行。
 5. 集群必须提前部署 `data_hot/data_warm/data_cold` 对应属性节点，缺少对应节点流转会卡住停滞。
-6. 禁止手动随意修改索引 `data_tier` 配置，容易造成分片乱跑、集群变黄。
+6. 禁止手动随意修改索引 `_tier_preference` 配置，容易造成分片乱跑、集群变黄。
 7. freeze冻结适合长期归档索引，频繁查询索引建议关闭冻结避免查询延迟上涨。
 8. 自动删除存在数据丢失风险，核心业务数据必须提前配置快照备份，验证无误再启用删除阶段。
 
@@ -469,7 +470,7 @@ PUT _cluster/settings
 GET _settings/index.lifecycle.name:*
 
 # 查看索引当前冷热层级
-GET index_name/_settings?filter_path=*.data_tier
+GET index_name/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference
 ```
 
 ## 6.8 ILM策略修改快速判断口诀
@@ -560,7 +561,7 @@ split/shrink仅支持倍数增减分片，**不能修改路由逻辑、无法打
    "dest": {"index": "order_new"},
    "script": {
     "source": """
-      def suffix = Math.abs(ctx._source.orderId.hashCode()) % 3;
+      def suffix = Math.floorMod(ctx._source.orderId.hashCode(), 3);
       ctx._routing = ctx._source.province + "_" + suffix;
     """
    }
@@ -606,7 +607,7 @@ PUT order_v1
     "number_of_shards": 9,
     "number_of_replicas": 1,
     "index.lifecycle.name": "order_hot_warm_cold_policy",
-    "index.routing.allocation.data_tier": "hot"
+    "index.routing.allocation.include._tier_preference": "data_hot"
   },
   "mappings": {
     "properties": {
@@ -683,7 +684,7 @@ PUT _index_template/template_order_roll
       "number_of_shards": 9,
       "number_of_replicas": 1,
       "index.lifecycle.name": "order_hot_warm_cold_policy",
-      "index.routing.allocation.data_tier": "hot"
+      "index.routing.allocation.include._tier_preference": "data_hot"
     },
     "mappings": {
       "properties": {
@@ -768,11 +769,11 @@ Rollover滚动索引面向时序无限写入场景，依托写入别名+`is_writ
 
 ## 10.1 核心前置认知
 
-ILM设计为**单向流转 Hot→Warm→Cold→Delete，不存在原生自动回流逻辑**，索引一旦打上 `data_tier: warm/cold` 并完成分片搬迁，想要回退上一层级，只能**人工修改索引冷热标签，强制触发分片回迁**，同时必须做防护，避免ILM下一轮巡检再次自动下沉。
+ILM设计为**单向流转 Hot→Warm→Cold→Delete，不存在原生自动回流逻辑**，索引一旦打上 `_tier_preference: data_warm/data_cold` 并完成分片搬迁，想要回退上一层级，只能**人工修改索引冷热标签，强制触发分片回迁**，同时必须做防护，避免ILM下一轮巡检再次自动下沉。
 
 ### 通用底层逻辑（所有层级回退操作完全通用）
 
-1. 修改索引 `index.routing.allocation.data_tier` 为目标上层层级
+1. 修改索引 `index.routing.allocation.include._tier_preference` 为目标上层层级
 
 2. ES分片分配器检测分片所在节点与标签不匹配，后台自动执行分片搬迁
 
@@ -791,7 +792,7 @@ ILM设计为**单向流转 Hot→Warm→Cold→Delete，不存在原生自动回
 ### 步骤1：查询索引当前冷热层级
 
 ```http
-GET your_index/_settings?filter_path=*.data_tier
+GET your_index/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference
 ```
 
 ### 场景1：Warm → Hot 温层回退热层
@@ -799,7 +800,7 @@ GET your_index/_settings?filter_path=*.data_tier
 ```http
 PUT your_index/_settings
 {
-  "index.routing.allocation.data_tier": "hot"
+  "index.routing.allocation.include._tier_preference": "data_hot"
 }
 POST your_index/_ilm/stop
 ```
@@ -809,7 +810,7 @@ POST your_index/_ilm/stop
 ```http
 PUT your_index/_settings
 {
-  "index.routing.allocation.data_tier": "warm"
+  "index.routing.allocation.include._tier_preference": "data_warm"
 }
 POST your_index/_ilm/stop
 ```
@@ -819,7 +820,7 @@ POST your_index/_ilm/stop
 ```http
 PUT your_index/_settings
 {
-  "index.routing.allocation.data_tier": "hot"
+  "index.routing.allocation.include._tier_preference": "data_hot"
 }
 POST your_index/_ilm/stop
 ```
@@ -868,24 +869,46 @@ POST your_index/_ilm/start
 
 ### 生产两种ILM删除防丢数据兜底方案（完整可直接复制）
 
-#### 方案一：ILM原生delete阶段前置快照（删除前自动备份，精准防护）
+#### 方案一：SLM + wait_for_snapshot（删除前自动等待快照完成，ES 7.6+ 推荐）
 
-手动修改ILM策略，索引到期**先打快照、再删索引**，原生ILM默认没有该动作，必须手动添加配置：
+⚠️ **ES 任何版本都没有 ILM 的 `snapshot` action**——网上流传的"delete 阶段前置 snapshot 配置"照抄必报 `unsupported action [snapshot]`。正确做法是 ES 7.6+ 提供的 `wait_for_snapshot`：delete 阶段先等待指定 SLM 策略生成包含该索引的快照，再执行删除。
 
-```json
-"delete": {
-  "min_age": "90d",
-  "actions": {
-    // 先自动创建快照备份
-    "snapshot": {
-      "repository": "es_backup_repo",
-      "name": "ilm-del-snap-{{index}}"
-    },
-    // 备份完成后再物理删除索引
-    "delete": {}
-  }
-}
-```
+1. 第一步：创建 SLM 每日快照策略（ES 7.4+，Basic 许可即可用）
+
+   ```http
+   PUT _slm/policy/es_daily_snap_policy
+   {
+     "schedule": "0 0 2 * * ?",
+     "repository": "es_backup_repo",
+     "name": "daily-snap-{now/d}",
+     "config": {
+       "indices": "order-*",
+       "include_global_state": false
+     },
+     "retention": {
+       "expire_after": "30d",
+       "min_count": 7
+     }
+   }
+   ```
+
+2. 第二步：ILM delete 阶段挂载 wait_for_snapshot
+
+   ```json
+   "delete": {
+     "min_age": "90d",
+     "actions": {
+       "wait_for_snapshot": {
+         "policy": "es_daily_snap_policy"
+       },
+       "delete": {}
+     }
+   }
+   ```
+
+3. 执行逻辑：索引进入 delete 阶段后，ILM 先挂起，等待 `es_daily_snap_policy` 策略的下一次成功快照包含该索引，快照落盘后才执行物理删除；若在阶段时间窗内始终等不到快照，delete 阶段整体失败，索引停在 delete 阶段不被删除，数据得以保全。
+
+> 注意：`wait_for_snapshot` 需要 ES ≥ 7.6。低于 7.6 的环境请改用方案二或外部调度脚本（crontab + curl/curator）在到期前手动打快照。
 
 #### 方案二：SLM自动快照生命周期（生产最优，全局兜底）
 
@@ -971,9 +994,9 @@ echo "正在查询集群所有warm层级业务索引（过滤系统内置.开头
 
 # 获取所有warm索引，过滤系统索引
 if [ -n "$ES_USER" ];then
-  INDEX_LIST=$(curl -s -u $ES_USER:$ES_PWD "$ES_HOST/_settings/index.routing.allocation.data_tier:warm?pretty" | jq -r 'keys[] | select(startswith(".") | not)')
+  INDEX_LIST=$(curl -s -u $ES_USER:$ES_PWD "$ES_HOST/_settings/index.routing.allocation.include._tier_preference?pretty" | jq -r 'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key')
 else
-  INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.data_tier:warm?pretty" | jq -r 'keys[] | select(startswith(".") | not)')
+  INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.include._tier_preference?pretty" | jq -r 'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key')
 fi
 
 if [ -z "$INDEX_LIST" ];then
@@ -991,7 +1014,7 @@ while read index; do
     continue
   fi
   echo "正在处理索引：【$index】"
-  JSON_BODY='{"index.routing.allocation.data_tier":"hot"}'
+  JSON_BODY='{"index.routing.allocation.include._tier_preference":"data_hot"}'
   if [ -n "$ES_USER" ];then
     curl -s -u $ES_USER:$ES_PWD -X PUT "$ES_HOST/$index/_settings" -H "Content-Type: application/json" -d "$JSON_BODY"
   else
@@ -1036,7 +1059,7 @@ echo "👉 恢复生命周期自动流转：POST /索引名/_ilm/start"
 INDEX_LIST=$(curl xxx | jq -r 'keys[] | select(startswith(".") | not)')
 ```
 
-将匹配 `index.routing.allocation.data_tier:warm` 修改为 `index.routing.allocation.data_tier:cold`，目标data_tier同步修改即可复用整套逻辑。
+将脚本中 jq 过滤 `contains("data_warm")` 改为 `contains("data_cold")`，目标层级同步修改即可复用整套逻辑。
 
 ## 10.5 回流方案选型对比
 
@@ -1047,7 +1070,7 @@ INDEX_LIST=$(curl xxx | jq -r 'keys[] | select(startswith(".") | not)')
 
 ## 10.6 极简要点总结
 
-ES的ILM冷热流转是单向的，不支持自动从温层、冷层回退到热节点。如果温层、冷层数据需要回滚上一级，统一操作逻辑是手动修改索引的data_tier标签为目标上层，触发ES分片分配器自动将分片迁回对应节点；回迁完成后必须暂停该索引的ILM生命周期，否则下一轮ILM巡检会再次把索引自动下沉。另外执行过shrink缩分片的索引只能迁移节点位置，无法自动恢复原有分片数量，想要还原分片结构只能通过Reindex重建索引；索引进入Delete阶段被删除后无法直接回退，只能依靠快照备份恢复。大批量索引回流可以编写Shell脚本一键批量执行，减少重复人工操作。
+ES的ILM冷热流转是单向的，不支持自动从温层、冷层回退到热节点。如果温层、冷层数据需要回滚上一级，统一操作逻辑是手动修改索引的 _tier_preference 标签为目标上层，触发ES分片分配器自动将分片迁回对应节点；回迁完成后必须暂停该索引的ILM生命周期，否则下一轮ILM巡检会再次把索引自动下沉。另外执行过shrink缩分片的索引只能迁移节点位置，无法自动恢复原有分片数量，想要还原分片结构只能通过Reindex重建索引；索引进入Delete阶段被删除后无法直接回退，只能依靠快照备份恢复。大批量索引回流可以编写Shell脚本一键批量执行，减少重复人工操作。
 
 ---
 
@@ -1092,7 +1115,7 @@ PUT _cluster/settings
 
 ### 现象6：冷热分片跨层级乱跑、自动跳层
 
-原因：运维人员手动随意修改索引data_tier配置、索引模板分配规则错乱、节点属性配置不一致
+原因：运维人员手动随意修改索引 _tier_preference 配置、索引模板分配规则错乱、节点属性配置不一致
 处理：统一重置索引层级绑定配置，核对集群所有节点冷热属性标签，规范模板与ILM配置
 
 ---
@@ -1116,7 +1139,7 @@ PUT _cluster/settings
 ES依靠MurmurHash3哈希取模实现文档路由分片，主分片创建之后不可修改；业务自定义路由极易产生热点分片倾斜，标准解决方案为路由Key增加后缀二次打散均衡数据。
 集群依靠IndexBalance、ShardBalance双层加权算法实现分片数量均衡分配，分配逻辑同时受磁盘三级水位、主副分片隔离、冷热节点归属三层硬性约束；生产上单分片控制在30~50GB区间，前期分片规划遵循宁多勿少原则。
 
-ILM冷热流转为单向链路 Hot→Warm→Cold→Delete，依靠后台轮询调度，不会识别文档内部业务时间，只能优化存储成本，无法解决热分片数据倾斜；**所有层级向上回退操作模式完全通用**，修改索引data_tier标签触发分片回迁，同时暂停索引ILM防止再次下沉；shrink分片收缩属于不可逆变更，删除后的索引无法直接回退，仅可依靠快照备份恢复。
+ILM冷热流转为单向链路 Hot→Warm→Cold→Delete，依靠后台轮询调度，不会识别文档内部业务时间，只能优化存储成本，无法解决热分片数据倾斜；**所有层级向上回退操作模式完全通用**，修改索引 _tier_preference 标签触发分片回迁，同时暂停索引ILM防止再次下沉；shrink分片收缩属于不可逆变更，删除后的索引无法直接回退，仅可依靠快照备份恢复。
 ES无默认自动快照，快照仓库、SLM定时备份、ILM删除前置备份均需要手动部署配置。
 
 字段改名改类型、调整主分片数量、重构路由打散热点均无法原地修改，统一采用**新建索引+Reindex脚本迁移+业务双写同步增量+原子别名切换**零停机改造方案；业务上线初期就规划固定访问别名，底层索引迭代重构全程不用修改业务代码，切换、回滚简单便捷。面向日志、流水无限时序写入场景，可采用Rollover滚动索引自动拆分索引，配合ILM完成完整生命周期治理。

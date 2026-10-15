@@ -69,7 +69,7 @@
 <h3 id="_2">查看文档归属分片</h3>
 <div class="codehilite"><pre><span></span><code><span class="err">GET /索引名/_search?routing=路由值</span>
 <span class="err">{</span>
-<span class="err"> "_size": 1,</span>
+<span class="err"> "size": 1,</span>
 <span class="err"> "_source": false</span>
 <span class="err">}</span>
 </code></pre></div>
@@ -183,7 +183,7 @@
 <div class="codehilite"><pre><span></span><code><span class="err"># 修改层级标签，触发分片回迁</span>
 <span class="err">PUT 索引名/_settings</span>
 <span class="err">{</span>
-<span class="err"> "index.routing.allocation.data_tier": "hot"</span>
+<span class="err"> "index.routing.allocation.include._tier_preference": "data_hot"</span>
 <span class="err">}</span>
 <span class="err"># 暂停ILM防止再次下沉</span>
 <span class="err">POST 索引名/_ilm/stop</span>
@@ -192,7 +192,7 @@
 <h3 id="2cold-warm">场景2：Cold → Warm 冷层回退温层</h3>
 <div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
 <span class="err">{</span>
-<span class="err"> "index.routing.allocation.data_tier": "warm"</span>
+<span class="err"> "index.routing.allocation.include._tier_preference": "data_warm"</span>
 <span class="err">}</span>
 <span class="err">POST 索引名/_ilm/stop</span>
 </code></pre></div>
@@ -200,7 +200,7 @@
 <h3 id="3cold-hot">场景3：Cold → Hot 冷层跨层直接回退热层</h3>
 <div class="codehilite"><pre><span></span><code><span class="err">PUT 索引名/_settings</span>
 <span class="err">{</span>
-<span class="err"> "index.routing.allocation.data_tier": "hot"</span>
+<span class="err"> "index.routing.allocation.include._tier_preference": "data_hot"</span>
 <span class="err">}</span>
 <span class="err">POST 索引名/_ilm/stop</span>
 </code></pre></div>
@@ -249,7 +249,7 @@
 <span class="err"> "dest": {"index": "order_new"},</span>
 <span class="err"> "script": {</span>
 <span class="err"> "source": """</span>
-<span class="err"> def suffix = Math.abs(ctx._source.orderId.hashCode()) % 3;</span>
+<span class="err"> def suffix = Math.floorMod(ctx._source.orderId.hashCode(), 3);</span>
 <span class="err"> ctx._routing = ctx._source.province + "_" + suffix;</span>
 <span class="err"> """</span>
 <span class="err"> }</span>
@@ -398,7 +398,7 @@
 </code></pre></div>
 
 <h3 id="_26">查看索引冷热层级标签</h3>
-<div class="codehilite"><pre><span></span><code><span class="err">GET 索引名/_settings?filter_path=*.data_tier</span>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 索引名/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference</span>
 </code></pre></div>
 
 <hr />
@@ -433,7 +433,7 @@
 <span class="nv">ES_HOST</span><span class="o">=</span><span class="s2">"http://127.0.0.1:9200"</span>
 <span class="c1"># ES_USER="elastic"</span>
 <span class="c1"># ES_PWD="你的密码"</span>
-<span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:warm"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+<span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.include._tier_preference"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key'</span><span class="k">)</span>
 <span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="k">then</span>
 <span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"无warm索引需要回迁"</span>
 <span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">0</span>
@@ -441,7 +441,7 @@
 <span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span>
 <span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>index<span class="p">;</span><span class="w"> </span><span class="k">do</span>
 <span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$index</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">continue</span>
-curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_settings"</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type:application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"index.routing.allocation.data_tier":"hot"}'</span>
+curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_settings"</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type:application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"index.routing.allocation.include._tier_preference":"data_hot"}'</span>
 curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_ilm/stop"</span>
 <span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="nv">$index</span><span class="s2"> 已设置hot并暂停ILM"</span>
 <span class="k">done</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$INDEX_LIST</span><span class="s2">"</span>
@@ -449,7 +449,7 @@ curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>
 </code></pre></div>
 
 <h3 id="cold_1">适配 Cold 批量回流只需修改一行过滤条件</h3>
-<div class="codehilite"><pre><span></span><code><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:cold"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+<div class="codehilite"><pre><span></span><code><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.include._tier_preference"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_cold")) | select(.key | startswith(".") | not) | .key'</span><span class="k">)</span>
 </code></pre></div>
 
 <h3 id="_32">脚本使用方式</h3>
@@ -464,7 +464,7 @@ chmod<span class="w"> </span>+x<span class="w"> </span>warm_to_hot.sh
 <p>文档使用说明：</p>
 <ol>
 <li>全文为生产可直接复制执行的运维命令，覆盖分片排查、ILM冷热回流、Reindex重构、别名切换、异常排障全场景；</li>
-<li>回流逻辑统一：修改 <code>data_tier</code> + 暂停 ILM，所有层级回退操作模式通用；</li>
+<li>回流逻辑统一：修改 <code>_tier_preference</code> + 暂停 ILM，所有层级回退操作模式通用；</li>
 <li>保存为 <code>ES_运维命令速查手册.md</code>，日常运维、问题排查、版本重构可快速查阅使用。</li>
 </ol>
     </article>

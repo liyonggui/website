@@ -4,7 +4,7 @@
     "items": [
       {
         "title": "我发出去的文章里有一句承重墙是错的（第 4 篇更正）",
-        "summary": "「高并发实测」系列 · 第 4 篇更正。 > > 第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条…",
+        "summary": "「高并发实测」系列 · 第 4 篇更正。第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条…",
         "date": "2026-10-11",
         "tags": [
           "技术笔记"
@@ -95,7 +95,7 @@
       },
       {
         "title": "RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子",
-        "summary": "「高并发实测」系列第 4 篇。 > > 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…",
+        "summary": "「高并发实测」系列第 4 篇。环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…",
         "date": "2026-10-08",
         "tags": [
           "RAG"
@@ -291,7 +291,7 @@
       },
       {
         "title": "Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层",
-        "summary": "「高并发实测」系列第 3 篇。 > > 环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …",
+        "summary": "「高并发实测」系列第 3 篇。环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …",
         "date": "2026-09-13",
         "tags": [
           "技术笔记"
@@ -342,7 +342,7 @@
       },
       {
         "title": "高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%",
-        "summary": "「高并发实测」系列第 2 篇。 > > 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…",
+        "summary": "「高并发实测」系列第 2 篇。环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…",
         "date": "2026-09-09",
         "tags": [
           "MySQL",
@@ -411,8 +411,24 @@
         "source": "deep/k8s/README.md"
       },
       {
+        "title": "知乎回答：源码阅读方法",
+        "summary": "我的做法是三步：先立一个可证伪的假设 → 去源码里找到定义和调用链 → 写代码把它跑出来验证。只看不跑，读完记住的还是别人的结论；带着问题读，一个 object.c 能顶十篇解读文…",
+        "date": "2026-09-04",
+        "tags": [
+          "源码"
+        ],
+        "category": "blog",
+        "series": "博客",
+        "slug": "知乎回答-源码阅读方法版",
+        "reading_time": 9,
+        "featured": true,
+        "draft": false,
+        "url": "blog/知乎回答-源码阅读方法版.html",
+        "source": "blog/知乎回答-源码阅读方法版.md"
+      },
+      {
         "title": "K8s 实战学习路线图（已学 + 待学）",
-        "summary": "目标定位：认识 K8s，不是验证功能。本文件是学习进度的总账，记录已亲手跑通的能力、对应的清单文件、关键认知，以及尚未涉及但实战常用的功能与建议路线。 > > 最后更新：2026-…",
+        "summary": "目标定位：认识 K8s，不是验证功能。本文件是学习进度的总账，记录已亲手跑通的能力、对应的清单文件、关键认知，以及尚未涉及但实战常用的功能与建议路线。最后更新：2026-…",
         "date": "2026-09-04",
         "tags": [
           "K8s",
@@ -426,22 +442,6 @@
         "draft": false,
         "url": "deep/k8s/K8S-LEARNING-ROADMAP.html",
         "source": "deep/k8s/K8S-LEARNING-ROADMAP.md"
-      },
-      {
-        "title": "01-知乎回答-源码阅读方法版",
-        "summary": "我的做法是三步：先立一个可证伪的假设 → 去源码里找到定义和调用链 → 写代码把它跑出来验证。只看不跑，读完记住的还是别人的结论；带着问题读，一个 object.c 能顶十篇解读文…",
-        "date": "2026-09-04",
-        "tags": [
-          "源码"
-        ],
-        "category": "blog",
-        "series": "博客",
-        "slug": "01-知乎回答-源码阅读方法版",
-        "reading_time": 9,
-        "featured": true,
-        "draft": false,
-        "url": "blog/01-知乎回答-源码阅读方法版.html",
-        "source": "blog/01-知乎回答-源码阅读方法版.md"
       },
       {
         "title": "别再死背 44 字节了：12 轮压测，实测 Redis String 三种编码的真实差距",
@@ -1042,7 +1042,7 @@
       },
       {
         "title": "Redis 数据类型原理",
-        "summary": "从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。 > > 注：本文所有字节数与阈值均为\"典型 64-bit Linux + je…",
+        "summary": "从内存模型 → 内部编码 → 压缩策略 → 选型决策，系统化分析 Redis 数据存储的全链路原理。注：本文所有字节数与阈值均为\"典型 64-bit Linux + je…",
         "date": "2026-06-03",
         "tags": [
           "Redis",

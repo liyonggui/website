@@ -37,7 +37,7 @@ draft: false
 ```bash
 # prepare 数据（16表×100万）
 sysbench --db-driver=mysql --mysql-host=mysql --mysql-user=sbuser \
-  --mysql-password=sbpass --mysql-db=sbtest --tables=16 \
+  --mysql-password=<本地自定> --mysql-db=sbtest --tables=16 \
   --table-size=1000000 --threads=16 oltp_read_write prepare
 
 # 压测（递增并发找拐点）

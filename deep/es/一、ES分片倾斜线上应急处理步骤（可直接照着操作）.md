@@ -73,6 +73,7 @@ GET _cat/shards/你的索引名?v&s=store:desc
    ```
    
    > 业务低谷可改更大，高峰期不要超过4，避免IO打满。
+   > `node_concurrent_recoveries` 是 incoming/outgoing 两个方向并发恢复数的快捷设置，等效于同时配置 `node_concurrent_incoming_recoveries` 与 `node_concurrent_outgoing_recoveries`（默认各 2）。
 4. 检查并合理设置磁盘水位，防止节点塞满拒绝分片迁入
    
    ```http
@@ -81,18 +82,19 @@ GET _cat/shards/你的索引名?v&s=store:desc
    "transient": {
    "cluster.routing.allocation.disk.watermark.low": "85%",
    "cluster.routing.allocation.disk.watermark.high": "90%",
-   "cluster.routing.allocation.disk.watermark.flood_stage": "95%",
-   "cluster.routing.allocation.disk.include_relocations": true
+   "cluster.routing.allocation.disk.watermark.flood_stage": "95%"
    }
    }
    ```
+   
+   > 注：ES 8.0 起磁盘水位判断恒包含搬迁中的分片，旧设置 `cluster.routing.allocation.disk.include_relocations` 已移除，无需再配。
 5. 热点分片段合并限流，防止CPU/IO打垮节点
    
    ```http
    PUT 索引名/_settings
    {
    "index.merge.scheduler.max_thread_count": 1,
-   "indices.store.throttle.max_bytes_per_sec": "20mb"
+   "indices.recovery.max_bytes_per_sec": "20mb"
    }
    ```
    
@@ -162,7 +164,7 @@ MurmurHash3 **本身不是固定128位**，有两个输出规格，ES根据业�
    
    ```
    hashVal = Murmur3HashFunction.hash(routing/_id)
-   shardId = Math.abs(hashVal) % number_of_primary_shards
+   shardId = Math.floorMod(hashVal, number_of_primary_shards)   # 真实实现即 floorMod，勿用 Math.abs
    ```
    
    源码位置：

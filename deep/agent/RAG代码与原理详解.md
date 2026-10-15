@@ -77,7 +77,7 @@ draft: false
 - 替代：PgVector(Postgres+pgvector，运维熟)、Milvus/Qdrant(大规模)。同套路：加 starter+换 Bean+配连接。
 
 ## ⑦ 混合检索 + rerank（补 embedding 短板）
-**embedding 单用的毛病**：精确词/稀有词/专名/数字(如 `02:00`、`string2ll`、`t_string.c`)拉不准；只认"像不像"不认"到没到位"→ 召回一堆主题相关但不答这题的块（=你 precision@4=0.55 的根因）。
+**embedding 单用的毛病**：精确词/稀有词/专名/数字(如 `02:00`、`string2ll`、`t_string.c`)拉不准；只认"像不像"不认"到没到位"→ 召回一堆主题相关但不答这题的块。（注：这里说的是 embedding 的通用短板； toy 语料 precision@4=0.55 的归因已更正，不是检索差，见下方诚实边界与博客 05。）
 
 **药一 混合检索(向量+BM25)**：向量强在语义/换说法，BM25 强在精确词/稀有词/数字，能力互补。两路各召回一批 → **RRF 倒数排名融合**。例：问 string2ll，向量给泛块、BM25 精确命中含该词的块 → 融合后排上来。
 
@@ -87,7 +87,7 @@ draft: false
 - 标准两阶段：`召回(向量+BM25) top20 → rerank 精排 → 取 top4 喂 LLM`。你 MaaS 空间有 `qwen3.7-text-rerank`。
 - 效果：召回20块里只3块真相关，rerank 把3块顶到前3、只取top3 → precision 逼近1。
 
-**诚实边界**：你那个 toy 语料 **MRR 已 1.0**(答案块排第一)，precision@4 低很大程度是"答案只在1块却保留4块"的**指标假象**。所以：小库/答案集中→先收紧 topK+阈值就够；大库/答案分散/有精确词→混合检索+rerank 才是刚需。**先判断问题属于哪种，再决定上不上重武器**（别为显先进堆架构）。
+**诚实边界**：你那个 toy 语料 **MRR 已 1.0**(答案块排第一)，precision@4 低是**指标假象**。🟡 **归因已更正（博客 05）**：不是早年写的"答案只在 1 块却保留 4 块"，真实原因是"宽松裁判 + topK=4 交出全库 40%"（语料库总共才 10 块）——测的是语料库的主题集中度，不是检索器质量。结论不变：小库/答案集中→先收紧 topK+阈值就够；大库/答案分散/有精确词→混合检索+rerank 才是刚需。**先判断问题属于哪种，再决定上不上重武器**（别为显先进堆架构）。
 
 **落地结构**：`Query → 向量topK20 + BM25 topK20 → RRF融合 → cross-encoder rerank → top4 → 喂LLM`。Spring AI 有模块化 RAG(`RetrievalAugmentationAdvisor`/`DocumentRetriever`/`QueryTransformer`查询改写/rerank)；BM25 生产向量库(Redis/PgVector)自带混合，不用手搓。
 

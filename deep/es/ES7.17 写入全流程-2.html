@@ -57,31 +57,31 @@
 <h2 id="_2">目录</h2>
 <ol>
 <li>
-<p><a href="https://www.doubao.cn">分片路由：数据分片分配算法</a></p>
+<p><a href="#_3">分片路由：数据分片分配算法</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">Translog事务日志：WAL预写日志存储算法</a></p>
+<p><a href="#translog">Translog事务日志：WAL预写日志存储算法</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">内存缓冲区：内存索引结构与并发算法</a></p>
+<p><a href="#_4">内存缓冲区：内存索引结构与并发算法</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">Refresh刷新：倒排索引构建+词条排序核心算法</a></p>
+<p><a href="#refresh">Refresh刷新：倒排索引构建+词条排序核心算法</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">Flush落盘：磁盘Segment文件全套存储算法</a></p>
+<p><a href="#flush-segment">Flush落盘：磁盘Segment文件全套存储算法</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">Merge段合并：后台索引合并与清理算法</a></p>
+<p><a href="#merge">Merge段合并：后台索引合并与清理算法</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">不同字段类型专属存储算法区分</a></p>
+<p><a href="#_5">不同字段类型专属存储算法区分</a></p>
 </li>
 <li>
-<p><a href="https://www.doubao.cn">写入全流程算法执行顺序（背诵精简版）</a></p>
+<p><a href="#_6">写入全流程算法执行顺序（背诵精简版）</a></p>
 </li>
 <li>
-<p>高频核心问答（纯考点）</p>
+<p><a href="#_7">高频核心问答（纯考点）</a></p>
 </li>
 </ol>
 <hr />
@@ -98,9 +98,9 @@
 <p><strong>核心路由源码逻辑</strong></p>
 </li>
 </ul>
-<div class="codehilite"><pre><span></span><code><span class="c1">// ES原生分片路由计算逻辑</span>
-<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3</span><span class="p">.</span><span class="na">hash128</span><span class="p">(</span><span class="n">routingKey</span><span class="p">);</span>
-<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">hash</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">主分片数量</span><span class="p">;</span>
+<div class="codehilite"><pre><span></span><code><span class="c1">// ES原生分片路由计算逻辑（示意）</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3HashFunction</span><span class="p">.</span><span class="na">hash</span><span class="p">(</span><span class="n">routingKey</span><span class="p">);</span><span class="w">   </span><span class="c1">// 32 位有符号整型</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">floorMod</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span><span class="w"> </span><span class="n">主分片数量</span><span class="p">);</span><span class="w">     </span><span class="c1">// 必须 floorMod：Math.abs(Integer.MIN_VALUE) 仍为负，会算出负分片号</span>
 </code></pre></div>
 
 <ul>

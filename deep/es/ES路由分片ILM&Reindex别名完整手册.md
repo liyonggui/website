@@ -76,7 +76,7 @@ draft: false
 ```java
 String routingKey = 自定义routing != null ? 自定义routing : 文档_id;
 int hash = Murmur3HashFunction.hash(routingKey);
-int shardId = Math.abs(hash) % number_of_primary_shards;
+int shardId = Math.floorMod(hash, number_of_primary_shards);   // 必须 floorMod：Math.abs(Integer.MIN_VALUE) 仍为负
 ```
 
 ### 硬性约束
@@ -137,7 +137,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
   // 写入生成打散路由
   public static String getSplitRouting(String bizKey, int splitNum, Long snowId) {
   if (splitNum <= 1) return bizKey;
-  int suffix = Math.abs(snowId.intValue()) % splitNum;
+  int suffix = Math.floorMod(Long.hashCode(snowId), splitNum);
   return bizKey + "_" + suffix;
   }
   // 查询遍历全部路由批量检索
@@ -265,7 +265,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
    默认巡检间隔10分钟，配置项：`indices.lifecycle.poll_interval`
    每轮遍历绑定策略索引，上一阶段动作未完成则跳过本轮，不会重复执行。
 4. 流转单向不可逆：`Hot → Warm → Cold → Delete`，无法自动回流热节点
-5. 流转本质：修改索引 `data_tier` 分配标签约束，分片分配器自动将分片搬迁至对应节点池
+5. 流转本质：修改索引 `_tier_preference` 层级约束，分片分配器自动将分片搬迁至对应节点池
    
    ## 6.2 ILM轮询 vs 自定义定时任务 对比
    
@@ -276,7 +276,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
 9. 异常自愈：迁移失败下一轮自动重试；定时任务失败需要人工排查补偿
 10. 资源开销：轮询仅遍历索引元数据，空闲开销极低；定时任务常驻调度维护成本高
 11. 唯一短板：存在最多一个轮询周期时间误差；Cron可精准整点执行
-    补充：修改 `data_tier` 标签是流转动作，两种调度修改标签开销基本一致，差距在调度架构设计。
+    补充：修改 `_tier_preference` 标签是流转动作，两种调度修改标签开销基本一致，差距在调度架构设计。
     
     ## 6.3 ILM 四阶段参数速查表（含义+默认+修改场景+推荐值）
     
@@ -303,7 +303,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
     | 参数                          | 作用            | 默认   | 修改场景               | 推荐值                  |
     | --------------------------- | ------------- | ---- | ------------------ | -------------------- |
     | min_age                     | 滚动后多久转入温节点    | 7d   | 活跃查询周期调整、提前释放热节点资源 | 活跃久：10~15d；快速归档：3~5d |
-    | allocate.require.data_tier  | 强制分片分配warm节点  | warm | 整体下线冷热分层架构         | 注释allocate配置         |
+    | allocate.require._tier_preference | 强制分片分配warm节点  | data_warm | 整体下线冷热分层架构         | 注释allocate配置         |
     | forcemerge.max_num_segments | 段合并优化查询，IO消耗高 | 1    | 温层查询多少、高峰期防IO打满    | 有查询保留1；几乎无查询关闭       |
     | shrink.number_of_shards     | 收缩主分片（不可逆）    | 3    | 集群分片过多内存紧张、仍有聚合查询  | 有查询：3~5片；极少查询：1~2片   |
     | readonly                    | 索引只读防延迟写入生成新段 | 开启   | 业务存在滞后补发数据         | 有迟写则关闭readonly       |
@@ -314,7 +314,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
     | 参数                         | 作用             | 默认   | 修改场景              | 推荐值                     |
     | -------------------------- | -------------- | ---- | ----------------- | ----------------------- |
     | min_age                    | 多久转入冷归档节点      | 30d  | 存储成本敏感提前归档、频繁溯源延后 | 成本敏感：15~20d；频繁溯源：45~60d |
-    | allocate.require.data_tier | 强制分片分配cold节点   | cold | 下线冷热分层架构          | 注释allocate配置            |
+    | allocate.require._tier_preference | 强制分片分配cold节点   | data_cold | 下线冷热分层架构          | 注释allocate配置            |
     | freeze                     | 索引冻结降内存，查询性能下降 | 开启   | 偶尔检索排查、集群内存紧张     | 几乎不查询开启；偶尔检索关闭          |
     | set_priority               | 分片恢复优先级        | 10   | 归档数据降低资源抢占        | 调整5~8                   |
     
@@ -347,7 +347,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
     "warm": {
     "min_age": "7d",
     "actions": {
-    "allocate": {"require":{"data_tier":"warm"}},
+    "allocate": {"require":{"_tier_preference":"data_warm"}},
     "forcemerge": {"max_num_segments": 1},
     "shrink": {"number_of_shards": 3},
     "set_priority": {"priority": 50}
@@ -356,7 +356,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
     "cold": {
     "min_age": "30d",
     "actions": {
-    "allocate": {"require":{"data_tier":"cold"}},
+    "allocate": {"require":{"_tier_preference":"data_cold"}},
     "freeze": {},
     "set_priority": {"priority": 10}
     }
@@ -381,7 +381,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
     "number_of_shards": 9,
     "number_of_replicas": 1,
     "index.lifecycle.name": "order_hot_warm_cold_policy",
-    "index.routing.allocation.data_tier": "hot"
+    "index.routing.allocation.include._tier_preference": "data_hot"
     },
     "mappings": {
     "properties": {
@@ -401,7 +401,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
 14. 流转存在十几分钟正常延迟，轮询+迁移+段合并导致卡点不精准
 15. forcemerge IO消耗极高，尽量避开业务高峰期
 16. 集群必须部署 `data_hot/data_warm/data_cold` 对应节点，缺失则流转卡住
-17. 禁止手动修改索引 `data_tier`，易分片乱跑、集群变黄
+17. 禁止手动修改索引 `_tier_preference`，易分片乱跑、集群变黄
 18. freeze适合长期归档；频繁查询的冷索引建议关闭冻结
 19. 自动删除风险高，核心数据提前配置快照备份，测试验证后上生产
     
@@ -434,7 +434,7 @@ int shardId = Math.abs(hash) % number_of_primary_shards;
     }
     }
     # 查看索引冷热分配标签
-    GET index_name/_settings?filter_path=*.data_tier
+    GET index_name/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference
     ```
     
     ## 6.8 ILM策略修改快速判断口诀
@@ -515,7 +515,7 @@ ILM、分片均衡、磁盘水位属于**常驻动态集群配置**，满足条�
     "dest": {"index": "order_new"},
     "script": {
     "source": """
-    def suffix = Math.abs(ctx._source.orderId.hashCode()) % 3;
+    def suffix = Math.floorMod(ctx._source.orderId.hashCode(), 3);
     ctx._routing = ctx._source.province + "_" + suffix;
     """
     }
@@ -556,7 +556,7 @@ ILM、分片均衡、磁盘水位属于**常驻动态集群配置**，满足条�
    "number_of_shards": 9,
    "number_of_replicas": 1,
    "index.lifecycle.name": "order_hot_warm_cold_policy",
-   "index.routing.allocation.data_tier": "hot"
+   "index.routing.allocation.include._tier_preference": "data_hot"
    },
    "mappings": {
    "properties": {
@@ -639,7 +639,7 @@ PUT _cluster/settings
 
 ### 现象6：冷热分片跨层级乱跑
 
-原因：手动篡改索引data_tier、索引模板配置错乱
+原因：手动篡改索引 _tier_preference、索引模板配置错乱
 处理：重置索引层级绑定，核对节点角色配置
 
 ---
@@ -661,6 +661,6 @@ PUT _cluster/settings
 
 ES分片分为路由数据倾斜、节点分片分配倾斜两类。路由依靠MurmurHash3 32位哈希取模分配分片，主分片创建后不可修改，哈希碰撞不会覆盖数据；省份、日期自定义路由极易热点倾斜，解决方案为路由Key后缀二次打散。
 节点分片依靠IndexBalance、ShardBalance加权算法实现分片数量均衡，受磁盘三级水位、主副隔离、冷热层级三大前置约束管控分配逻辑；容量上单分片控制30~50GB，前期分片规划宁多勿少。
-冷热分层依托ILM实现索引单向Hot→Warm→Cold→Delete流转，仅依据索引创建/滚动时间判断，不识别文档业务时间；采用后台轮询调度，对比自研Cron定时任务流量更平滑、自带幂等状态、异常自愈更强，仅修改索引data_tier标签完成层级迁移，只能节约存储成本，无法治理热分片倾斜。
+冷热分层依托ILM实现索引单向Hot→Warm→Cold→Delete流转，仅依据索引创建/滚动时间判断，不识别文档业务时间；采用后台轮询调度，对比自研Cron定时任务流量更平滑、自带幂等状态、异常自愈更强，仅修改索引 _tier_preference 标签完成层级迁移，只能节约存储成本，无法治理热分片倾斜。
 字段改名改类型、重新分片、修改路由规则均无法原地变更，统一采用**新建索引+Reindex脚本迁移+业务双写+原子别名切换**方案；业务上线初期即规划固定访问别名，底层索引迭代重构无需修改业务代码，做到无感切换、回滚便捷。ILM、分片均衡属于集群常驻自动配置，而Reindex重构属于一次性人工运维变更流程，无法全自动配置执行。
 该分片思想通用于MySQL分库分表、Redis集群、Kafka分区；成熟中间件动态配置、内置自愈能力，运维成本更低，中小企业优先用好开源方案，不盲目自研分布式分片轮子。

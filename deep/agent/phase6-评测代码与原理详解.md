@@ -101,5 +101,5 @@ counter("keyword", kHit); counter("trajectory", tHit); counter("judge", correct)
 ## 8. 诚实边界
 - 6 题小样本：**当回归绊线可以，当基准不行**（要精确就扩 gold 集）；
 - 裁判仍是同家族模型，有自我偏好风险——生产要**多裁判/人工抽检校准**；
-- 无 Langfuse 式数据集版本化（gold 集还在代码里写死）；
+- 无 Langfuse 式数据集版本化（gold 集还在代码里写死）——**后续已补**：gold 集已进 Langfuse 数据集并按 id upsert 版本化（6 题扩到 13 题，含对抗题），见《Agent 中间件优化选型》#8 与《agent 工程化落地纪要》§5；
 - 门禁阈值一刀切 90%，实际应**分维度设**（keyword 可 100，judge 80 起步）。

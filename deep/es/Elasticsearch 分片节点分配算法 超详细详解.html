@@ -196,7 +196,7 @@
 <h2 id="_7">六、冷热分层下的分片分配特殊逻辑（匹配你前面方案）</h2>
 <ol>
 <li>新建滚动索引默认分配到 <code>data_hot</code> 节点</li>
-<li>ILM流转到warm阶段：分配约束强制 <code>data_tier=warm</code>，分配算法只在温节点池打分选择</li>
+<li>ILM流转到warm阶段：分配约束强制 <code>_tier_preference=data_warm</code>，分配算法只在温节点池打分选择</li>
 <li>进入cold阶段：仅冷节点参与分配候选</li>
 <li>不同层级之间分片互不跨池分配，天然冷热隔离</li>
 <li>热点倾斜只需要在hot层做路由打散，warm/cold层倾斜无业务影响</li>
@@ -317,17 +317,18 @@ PUT _cluster/settings
 #### 原因3：节点重启分配延迟（默认1分钟），等待时间未到
 
 报错提示：delayed allocation
-查看延迟配置：
+查看当前被延迟的未分配分片数量：
 
 ```http
-GET _cluster/settings?include_defaults=true&amp;filter_path=unassigned.delayed
+GET _cluster/health
+# 关注返回中的 delayed_unassigned_shards 字段
 ```
 
-可缩短延迟加速分配（谨慎）
+可缩短延迟加速分配（谨慎；索引级动态设置，_all 对所有索引生效）
 
 ```http
-PUT _cluster/settings
-{"transient":{"cluster.routing.allocation.unassigned.delayed.allocation_timeout":"30s"}}
+PUT _all/_settings
+{"index.unassigned.node_left.delayed_timeout":"30s"}
 ```
 
 #### 原因4：冷热分层层级不匹配，分片只能进hot但只剩warm/cold节点
@@ -337,13 +338,13 @@ PUT _cluster/settings
 </code></pre></div>
 
 <ol>
-<li>检查索引绑定data_tier配置</li>
+<li>检查索引绑定的 <code>_tier_preference</code> 层级配置</li>
 <li>
 <p>补齐对应角色节点；或修改索引分配约束临时兼容</p>
 <p><code>http
 PUT 索引/_settings
 {
-"index.routing.allocation.require.data_tier": null
+"index.routing.allocation.include._tier_preference": null
 }</code></p>
 <h4 id="5-clustermax_shards_per_node">原因5：分片数量上限限制 <code>cluster.max_shards_per_node</code> 打满</h4>
 <p>单个节点分片超限，拒绝新分片放入，调高全局阈值</p>
@@ -398,7 +399,7 @@ PUT _cluster/settings
 <h3 id="_19">根因</h3>
 <ol>
 <li>ILM流转后分配require约束未正确设置</li>
-<li>索引模板data_tier配置错乱</li>
+<li>索引模板 <code>_tier_preference</code> 配置错乱</li>
 <li>手动移动分片绕过层级约束</li>
 </ol>
 <h3 id="_20">排障步骤</h3>
@@ -406,13 +407,13 @@ PUT _cluster/settings
 <li>查看索引当前分层约束</li>
 </ol>
 <p><code>http
-GET 索引/_settings?filter_path=*.data_tier</code>
+GET 索引/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference</code>
 25. 修正索引强制分配节点层级</p>
 <p>```http</p>
 <h2 id="hot">强制限定只在hot节点</h2>
 <p>PUT 索引/_settings
 {
-"index.routing.allocation.require.data_tier":"hot"
+"index.routing.allocation.require._tier_preference":"data_hot"
 }
 <code>``
 26. 检查节点角色配置是否正确：</code>node.roles: [data_hot/data_warm/data_cold]`

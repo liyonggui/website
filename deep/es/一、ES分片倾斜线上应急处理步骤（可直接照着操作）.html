@@ -97,6 +97,7 @@
    }</code></p>
 <blockquote>
 <p>业务低谷可改更大，高峰期不要超过4，避免IO打满。
+<code>node_concurrent_recoveries</code> 是 incoming/outgoing 两个方向并发恢复数的快捷设置，等效于同时配置 <code>node_concurrent_incoming_recoveries</code> 与 <code>node_concurrent_outgoing_recoveries</code>（默认各 2）。
 4. 检查并合理设置磁盘水位，防止节点塞满拒绝分片迁入</p>
 </blockquote>
 <p><code>http
@@ -105,16 +106,18 @@
    "transient": {
    "cluster.routing.allocation.disk.watermark.low": "85%",
    "cluster.routing.allocation.disk.watermark.high": "90%",
-   "cluster.routing.allocation.disk.watermark.flood_stage": "95%",
-   "cluster.routing.allocation.disk.include_relocations": true
+   "cluster.routing.allocation.disk.watermark.flood_stage": "95%"
    }
-   }</code>
+   }</code></p>
+<blockquote>
+<p>注：ES 8.0 起磁盘水位判断恒包含搬迁中的分片，旧设置 <code>cluster.routing.allocation.disk.include_relocations</code> 已移除，无需再配。
 5. 热点分片段合并限流，防止CPU/IO打垮节点</p>
+</blockquote>
 <p><code>http
    PUT 索引名/_settings
    {
    "index.merge.scheduler.max_thread_count": 1,
-   "indices.store.throttle.max_bytes_per_sec": "20mb"
+   "indices.recovery.max_bytes_per_sec": "20mb"
    }</code></p>
 <p>### 步骤4：根治方案（业务低峰执行）</p>
 <p>#### 场景A：自定义 routing 热点倾斜（最常见）
@@ -187,7 +190,7 @@ MurmurHash3 是第三代最终版本，废弃 MurmurHash1/2。</p>
 </ol>
 <p>### ES路由完整公式</p>
 <p><code>hashVal = Murmur3HashFunction.hash(routing/_id)
-   shardId = Math.abs(hashVal) % number_of_primary_shards</code></p>
+   shardId = Math.floorMod(hashVal, number_of_primary_shards)   # 真实实现即 floorMod，勿用 Math.abs</code></p>
 <p>源码位置：
    <code>server/src/main/java/org/elasticsearch/cluster/routing/Murmur3HashFunction.java</code>
    底层调用 Lucene <code>StringHelper.murmurhash3_x86_32</code></p>

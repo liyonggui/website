@@ -1,6 +1,6 @@
 ---
 title: "MySQL（InnoDB）事务与锁排查治理手册"
-summary: "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…"
+summary: "适用环境：生产 MySQL 8.4.10。覆盖生产配置基线、事务与锁原理、可粘贴排查 SQL、治理处置与预防最佳实践。注：MySQL 并无 idle_transaction_timeout（MariaDB 特性，报 1193 属正常），空闲事务防护用 wait_timeout + 连接池 + 定时 KILL。"
 date: 2026-02-23
 author: "小番茄程序猿"
 tags:
@@ -16,7 +16,7 @@ draft: false
 ---
 ## MySQL（InnoDB）事务与锁排查治理手册
 
-> 适用环境：生产 **MySQL 8.4.10**（经实测为**裁剪/云版本**——标准 8.4 应有的 `idle_transaction_timeout` 在本实例报 `1193 Unknown system variable`，故**所有参数务必先探针确认存在，再 `SET PERSIST`**）。
+> 适用环境：生产 **MySQL 8.4.10**（Oracle 官方版本）。注意：`idle_transaction_timeout` 报 `1193 Unknown system variable` 属**正常现象**——该变量是 **MariaDB 10.3+** 的特性，Oracle MySQL 从未提供，不是实例被裁剪。空闲事务防护用 `wait_timeout` + 连接池 + 定时 KILL（第 7 节方案）；其他参数仍建议先探针确认存在，再 `SET PERSIST`。
 > 本手册覆盖：生产可执行配置基线、事务与锁原理、排查工具箱（可直接粘贴的 SQL）、治理与处置、预防最佳实践。
 > 整理日期：2026-09-22
 
@@ -40,7 +40,7 @@ draft: false
 
 **三条使用纪律**：
 
-1. **先探针，再设置**。本实例是裁剪版，别假设「标准 8.4 参数都在」。任何 `SET PERSIST` 前，先用 `SHOW GLOBAL VARIABLES LIKE 'xxx';` 或 `SELECT @@xxx;` 确认存在，否则报 `1193`。
+1. **先探针，再设置**。不同 build / 云实例的参数集有差异，别假设「标准 8.4 参数都在」。任何 `SET PERSIST` 前，先用 `SHOW GLOBAL VARIABLES LIKE 'xxx';` 或 `SELECT @@xxx;` 确认存在，否则报 `1193`。
 2. **动态 vs 只读**。多数超时/日志/事务参数是**动态**的，可 `SET PERSIST`（写 `mysqld-auto.cnf`，重启保留）；`performance_schema`、`innodb_buffer_pool_size` 之外的部分底层参数、复制架构参数需改 **my.cnf + 重启**。
 3. **生产红线**：为处理单个卡死会话，**绝不重启整库**；`SET GLOBAL`/`SET PERSIST` 会影响**新建连接**，改前评估、改后观察。
 
@@ -72,7 +72,7 @@ LEFT JOIN performance_schema.global_variables gv ON gv.VARIABLE_NAME = d.name
 ORDER BY 判定, d.name;
 ```
 
-> 说明：`idle_transaction_timeout` 系列本 build 无（`✗ 本build无此参数`），改用第 7 节的「连接池 + 定时 KILL」防空闲事务。
+> 说明：MySQL 没有 `idle_transaction_timeout`（MariaDB 特性，任何 MySQL 版本执行都报 1193），改用第 7 节的「连接池 + 定时 KILL」防空闲事务。
 
 ---
 
@@ -97,7 +97,7 @@ SET PERSIST log_output = 'FILE';                 -- 或 'TABLE' 写 mysql.slow_l
 SET PERSIST innodb_print_all_deadlocks = ON;     -- 所有死锁写入 error log
 SET PERSIST innodb_deadlock_detect = ON;         -- 保持开启（默认 ON）
 
--- ④ 空闲连接超时：与连接池 maxLifetime 对齐（本 build 无 idle_transaction_timeout，靠它+池回收兜底）
+-- ④ 空闲连接超时：与连接池 maxLifetime 对齐（MySQL 无 idle_transaction_timeout，靠它+池回收兜底）
 SET PERSIST wait_timeout = 600;                  -- 非交互连接空闲 10min 断开
 SET PERSIST interactive_timeout = 600;           -- 交互连接同上
 ```
@@ -206,7 +206,7 @@ InnoDB 用 **MVCC**：每行隐藏 `trx_id`（最后修改它的事务）和 `ro
 - 主从架构下放大**复制延迟**；
 - 极端情况影响性能与空间。
 
-> 治理要点同 PG：**长事务是万恶之源**，靠「短事务 + 及时提交 + 超时兜底 + 定时巡检 KILL」。本 build 无 `idle_transaction_timeout`，见第 7 节替代方案。
+> 治理要点同 PG：**长事务是万恶之源**，靠「短事务 + 及时提交 + 超时兜底 + 定时巡检 KILL」。MySQL 无 `idle_transaction_timeout`（MariaDB 特性），见第 7 节替代方案。
 
 **两类「事务挂着」**（处置与预防都不同）：
 
@@ -395,7 +395,7 @@ KILL QUERY 12345;  -- 只中断当前语句，保留连接（相当于 pg_cancel
 **7.3 DBA / 监控侧**
 
 - **定时巡检长事务/空闲事务**（第 5.7 的 SQL），超阈值（如 >5min）告警到运维群，把「挂两天」扼杀在「挂十分钟」。
-- **本 build 无 `idle_transaction_timeout` 的替代方案**——用 MySQL Event（或外部 crontab）定期自动 KILL 空闲未提交事务：
+- **MySQL 无 `idle_transaction_timeout`**（该变量属 MariaDB，MySQL 上执行报 1193）的替代方案——用 MySQL Event（或外部 crontab）定期自动 KILL 空闲未提交事务：
 
 ```sql
 -- 需 event_scheduler=ON（SET PERSIST event_scheduler=ON; 或 my.cnf）
@@ -425,7 +425,7 @@ DELIMITER ;
 
 ## 8. 常见坑与注意事项
 
-- **本实例是裁剪/云版**：`idle_transaction_timeout` 等标准参数可能缺失（`1193`）。**任何参数先探针再设**，别照搬标准 8.4 清单。
+- **MySQL 没有 `idle_transaction_timeout`**：该变量是 MariaDB 10.3+ 特性，在 MySQL 8.4 上执行会报 `1193 Unknown system variable`——这不是实例被裁剪，而是变量本身不属于 MySQL。空闲事务用 `wait_timeout` + 连接池 + 定时 KILL（第 7 节方案）。**其他参数仍建议先探针再设**，别照搬标准清单。
 - **`max_execution_time` 只管 `SELECT`**，**拦不住跑飞的 `UPDATE/DELETE`**——大 DML 无语句级超时兜底，只能靠「走索引 + 分批 + `KILL`」。
 - **`lock_wait_timeout` 默认 1 年**＝「ALTER 无限期卡住」的元凶，务必调小（如 60s，DDL 会话级设 5s）。
 - **MDL 排队优先**：一个等独占锁的 DDL 会把后续所有该表查询堵死，雪崩比 PG 更突然——先杀元凶再谈优化。
@@ -455,11 +455,11 @@ DELIMITER ;
 | SELECT 超时 | `max_execution_time`(仅SELECT) | `statement_timeout`(含DML/DDL) |
 | 行锁等待 | `innodb_lock_wait_timeout` | `lock_timeout` |
 | MDL 等待 | `lock_wait_timeout` | `lock_timeout` |
-| 空闲事务超时 | `idle_transaction_timeout`(本build无) | `idle_in_transaction_session_timeout` |
+| 空闲事务超时 | 无对应变量（MariaDB 的 `idle_transaction_timeout` 不适用于 MySQL；用 `wait_timeout` + 连接池 + Event 定时 KILL） | `idle_in_transaction_session_timeout` |
 | 后台回收 | InnoDB purge；收缩靠 `OPTIMIZE TABLE`/重建 | autovacuum 自动 |
 
 > 详细 PG/KingbaseES 侧见同目录《KingbaseES-锁与事务排查手册.md》。
 
 ---
 
-> 维护说明：参数取值按实际业务量级压测后微调，先分档、后迭代；本 build 缺失的参数以探针结果为准。
+> 维护说明：参数取值按实际业务量级压测后微调，先分档、后迭代；不同 build / 云实例缺失的参数以探针结果为准。

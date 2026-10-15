@@ -90,7 +90,7 @@
 <h2 id="_3">三、压测方法</h2>
 <div class="codehilite"><pre><span></span><code><span class="c1"># prepare 数据（16表×100万）</span>
 sysbench<span class="w"> </span>--db-driver<span class="o">=</span>mysql<span class="w"> </span>--mysql-host<span class="o">=</span>mysql<span class="w"> </span>--mysql-user<span class="o">=</span>sbuser<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--mysql-password<span class="o">=</span>sbpass<span class="w"> </span>--mysql-db<span class="o">=</span>sbtest<span class="w"> </span>--tables<span class="o">=</span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--mysql-password<span class="o">=</span>&lt;本地自定&gt;<span class="w"> </span>--mysql-db<span class="o">=</span>sbtest<span class="w"> </span>--tables<span class="o">=</span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--table-size<span class="o">=</span><span class="m">1000000</span><span class="w"> </span>--threads<span class="o">=</span><span class="m">16</span><span class="w"> </span>oltp_read_write<span class="w"> </span>prepare
 
 <span class="c1"># 压测（递增并发找拐点）</span>

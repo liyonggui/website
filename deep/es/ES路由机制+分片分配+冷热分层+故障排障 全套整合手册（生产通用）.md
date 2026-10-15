@@ -31,7 +31,7 @@ String routingKey = routing != null ? routing : docId;
 // 2.固定32位哈希运算
 int hash = Murmur3HashFunction.hash(routingKey);
 // 3.取模得到目标主分片
-int shardId = Math.abs(hash) % number_of_primary_shards;
+int shardId = Math.floorMod(hash, number_of_primary_shards);   // 必须 floorMod：Math.abs(Integer.MIN_VALUE) 仍为负
 ```
 
 ## 2\. 核心硬性规则
@@ -116,7 +116,7 @@ public class RoutingSplitUtil {
     // 写入：生成打散路由
     public static String getSplitRouting(String bizKey, int splitNum, Long snowflakeId) {
         if (splitNum <= 1) return bizKey;
-        int suffix = Math.abs(snowflakeId % splitNum);
+        int suffix = Math.floorMod(Long.hashCode(snowflakeId), splitNum);
         return bizKey + "_" + suffix;
     }
     // 查询：获取该维度全部路由，并行查询多分片
@@ -181,11 +181,11 @@ PUT _ilm/policy/order_hot_cold_policy
       },
       "warm": {
         "min_age": "7d",
-        "actions": {"allocate":{"require":{"data_tier":"warm"}},"forcemerge":{"max_num_segments":1}}
+        "actions": {"allocate":{"require":{"_tier_preference":"data_warm"}},"forcemerge":{"max_num_segments":1}}
       },
       "cold": {
         "min_age": "30d",
-        "actions": {"allocate":{"require":{"data_tier":"cold"}},"freeze":{}}
+        "actions": {"allocate":{"require":{"_tier_preference":"data_cold"}},"freeze":{}}
       },
       "delete": {"min_age": "90d","actions": {"delete": {}}}
     }

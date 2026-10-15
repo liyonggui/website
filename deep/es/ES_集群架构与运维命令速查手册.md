@@ -255,7 +255,7 @@ shardId = abs(MurmurHash3(routingKey)) % number_of_primary_shards
 
 可以手动回退，**所有层级向上回退操作逻辑完全通用**：
 
-1. 修改索引 `index.routing.allocation.data_tier` 为上层标签；
+1. 修改索引 `index.routing.allocation.include._tier_preference` 为上层标签；
 
 2. ES 自动触发分片搬迁回对应节点池；
 
@@ -275,9 +275,11 @@ shardId = abs(MurmurHash3(routingKey)) % number_of_primary_shards
 
 ### 3\.4 ILM 删除防丢两种方案？
 
-1. ILM策略改造：delete阶段先打快照再删索引；
+1. SLM + wait_for_snapshot（ES 7.6+）：ILM delete 阶段挂 `wait_for_snapshot` 动作，先等待指定 SLM 策略产出包含该索引的快照，再执行删除，到期等不到快照则阶段失败、索引保留；
 
-2. 独立SLM全局定时快照：不侵入ILM，兜底误删、误改、磁盘损坏，生产更推荐。
+2. 独立SLM全局定时快照：不侵入ILM，按天全量备份，兜底误删、误改、磁盘损坏，生产更推荐。
+
+⚠️ 注意：ES 任何版本都没有 ILM 的 `snapshot` action，"delete 阶段前置 snapshot 配置"照抄必报 `unsupported action [snapshot]`，防丢一律走上面两种正规方案。
 
 ## 4、Reindex 重构相关
 
@@ -400,7 +402,7 @@ PUT _cluster/settings
 }
 
 # 查看索引当前冷热层级
-GET 索引名/_settings?filter_path=*.data_tier
+GET 索引名/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference
 
 ```
 
@@ -411,7 +413,7 @@ GET 索引名/_settings?filter_path=*.data_tier
 ```http
 PUT 索引名/_settings
 {
-  "index.routing.allocation.data_tier": "hot"
+  "index.routing.allocation.include._tier_preference": "data_hot"
 }
 POST 索引名/_ilm/stop
 
@@ -422,7 +424,7 @@ POST 索引名/_ilm/stop
 ```http
 PUT 索引名/_settings
 {
-  "index.routing.allocation.data_tier": "warm"
+  "index.routing.allocation.include._tier_preference": "data_warm"
 }
 POST 索引名/_ilm/stop
 
@@ -433,7 +435,7 @@ POST 索引名/_ilm/stop
 ```http
 PUT 索引名/_settings
 {
-  "index.routing.allocation.data_tier": "hot"
+  "index.routing.allocation.include._tier_preference": "data_hot"
 }
 POST 索引名/_ilm/stop
 
@@ -555,21 +557,23 @@ PUT _slm/policy/es_daily_snap_policy
 
 ```
 
-## 10、ILM删除阶段前置快照配置片段
+## 10、ILM 删除阶段前置快照配置片段（ES 7.6+：wait_for_snapshot）
+
+⚠️ ES 没有 ILM `snapshot` action，正确写法是 delete 阶段挂 `wait_for_snapshot`：先等 SLM 策略产出包含该索引的快照，再执行删除。
 
 ```json
 "delete": {
   "min_age": "90d",
   "actions": {
-    "snapshot": {
-      "repository": "es_backup_repo",
-      "name": "ilm-del-snap-{{index}}"
+    "wait_for_snapshot": {
+      "policy": "es_daily_snap_policy"
     },
     "delete": {}
   }
 }
-
 ```
+
+依赖前置：`es_daily_snap_policy` 为已创建的 SLM 策略（`PUT _slm/policy/es_daily_snap_policy`，ES 7.4+）。低于 7.6 的环境改用外部调度脚本在到期前手动打快照。
 
 ---
 
@@ -584,7 +588,7 @@ ES_HOST="http://127.0.0.1:9200"
 # ES_PWD="xxxxxx"
 
 echo "========== ES温层索引批量回迁热节点 开始执行 =========="
-INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.data_tier:warm?pretty" | jq -r 'keys[] | select(startswith(".") | not)')
+INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.include._tier_preference?pretty" | jq -r 'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key')
 
 if [ -z "$INDEX_LIST" ];then
   echo "无warm索引需要回迁"
@@ -594,7 +598,7 @@ fi
 echo "$INDEX_LIST"
 while read index; do
 [ -z "$index" ] && continue
-JSON_BODY='{"index.routing.allocation.data_tier":"hot"}'
+JSON_BODY='{"index.routing.allocation.include._tier_preference":"data_hot"}'
 if [ -n "$ES_USER" ];then
   curl -s -u $ES_USER:$ES_PWD -X PUT "$ES_HOST/$index/_settings" -H "Content-Type: application/json" -d "$JSON_BODY"
   curl -s -u $ES_USER:$ES_PWD -X POST "$ES_HOST/$index/_ilm/stop"
@@ -618,5 +622,5 @@ chmod +x warm_to_hot.sh
 
 ```
 
-如需批量 Cold→Warm / Cold→Hot，修改脚本内查询过滤 `data_tier:cold`，同步修改目标 tier 即可复用。
+如需批量 Cold→Warm / Cold→Hot，修改脚本内 jq 过滤 `contains("data_cold")`，同步修改目标 tier 即可复用。
 

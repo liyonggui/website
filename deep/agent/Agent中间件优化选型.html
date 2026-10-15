@@ -94,7 +94,7 @@
 <h2 id="_2">二、准确度类（检索 / 生成质量）</h2>
 <h3 id="5-rerank-api-agent-rag_searchtop10qwen37-text-reranktop4-04s">5. 专用 Rerank API ⭐⭐⭐ ✅ 已落地（自研 agent 应用 rag_search：向量top10→<code>qwen3.7-text-rerank</code>→top4，实测 ~0.4s/次）</h3>
 <ul>
-<li><strong>治什么</strong>：LLM listwise 重排慢且贵；<strong>专用 rerank 模型一次调用返回每块 relevance_score</strong>。⚠️ <strong>诚实边界</strong>：本项目 toy 语料答案集中在 1~2 块、纯向量 MRR 已近满分，所以 rerank <strong>不会</strong>把 precision@4 抬起来（那 0.55 是"答案1块却保4块"的指标假象，phase2 已用数据证过）。这里实测到的真收益是：每块连续相关性分 + 把噪声块（标题行"# 示例语料"）挤出 top4 + 稳定排序。<strong>量级收益要配 大/杂语料 + 答案分散 + hit@1/MRR 才显形</strong>，别拿 precision@k 验收。</li>
+<li><strong>治什么</strong>：LLM listwise 重排慢且贵；<strong>专用 rerank 模型一次调用返回每块 relevance_score</strong>。⚠️ <strong>诚实边界</strong>：本项目 toy 语料答案集中在 1~2 块、纯向量 MRR 已近满分，所以 rerank <strong>不会</strong>把 precision@4 抬起来（🟡 那 0.55 是指标假象，归因已更正为"宽松裁判 + 40% 库占比"而非早先写的"答案1块却保4块"，见博客 05 号更正篇）。这里实测到的真收益是：每块连续相关性分 + 把噪声块（标题行"# 示例语料"）挤出 top4 + 稳定排序。<strong>量级收益要配 大/杂语料 + 答案分散 + hit@1/MRR 才显形</strong>，别拿 precision@k 验收。</li>
 <li><strong>选型</strong>：<strong>百炼 MaaS OpenAI 兼容 <code>qwen3.7-text-rerank</code></strong>（零新基础设施）；端点 <code>POST .../compatible-api/v1/reranks</code>（注意 <code>compatible-api</code> 非 <code>compatible-mode</code>）。备选 Jina / Cohere / 本地 bge-reranker。</li>
 <li><strong>接哪里</strong>：<code>rag/RagReranker.java</code>（降级安全：失败退回向量原序）+ <code>RagSearchTool</code>；A/B 探针 <code>GET /api/agent/retrieve?rerank=true|false</code>。开关 <code>agent.rerank.*</code>。</li>
 </ul>
@@ -204,7 +204,7 @@
 <td>✅已做</td>
 <td>自动化测试</td>
 <td>无测试→回归裸奔</td>
-<td>已完成：13 单测 + 4 真Redis集成测试(双模式:testcontainer / <code>-Dredis.it.port=6380</code>)，本机 17/17 绿；<code>.github/workflows/ci.yml</code> CI 跑</td>
+<td>已完成：13 单测 + 4 真Redis集成测试(双模式:testcontainer / <code>-Dredis.it.port=6380</code>) + Web层鉴权测试，<code>mvn clean verify</code> 25/25 绿（截至 2026-10-04 工程化落地纪要）；<code>.github/workflows/ci.yml</code> CI 跑</td>
 </tr>
 <tr>
 <td>7</td>

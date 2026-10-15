@@ -56,7 +56,7 @@ draft: false
 - **混合检索中文真实边界（实测）**：RediSearch 按空白/标点分词，**连续中文=一个 token** → 自由中文短语 BM25 命中 0；只有精确词/数字/英文/标点分隔词有效（`8000`✅ `MBA`✅ `网上报名`✅，`学费`❌）。所以词法臂定位成**"精确词增强器"**，中文靠向量臂。
 - **A/B 探针**：`GET /api/agent/retrieve?query=&pool=&keep=&hybrid=&rerank=`（绕开 LLM、确定性）。实测把向量池压到 3，开 hybrid 后有块以 `vec=-1 lex=1` **被纯词法补召回**（融合确实扩召回）。
 
-**诚实边界**：小 FAQ 语料答案集中在 1~2 块、纯向量 MRR 本就接近满分 → 别指望 precision 大幅跳（`phase2-rag` 已证 precision@4=0.55 是"答案1块却保4块"的**指标假象**）。这里实测到的是扩召回 + 连续相关性分 + 剔噪，不是 precision 神话。
+**诚实边界**：小 FAQ 语料答案集中在 1~2 块、纯向量 MRR 本就接近满分 → 别指望 precision 大幅跳（`phase2-rag` 已证 precision@4=0.55 是指标假象——🟡 归因后已更正为"宽松裁判 + 40% 库占比"，见博客 05 号更正篇）。这里实测到的是扩召回 + 连续相关性分 + 剔噪，不是 precision 神话。
 
 ---
 
@@ -156,7 +156,7 @@ python run-langfuse-eval.py cachetrap "cache-trap-$(date +%Y%m%d)"
 bash setup-higress-ai-gateway.sh          # 服务来源/路由；APPLY_RATELIMIT=1 加限流演示
 
 # 测试（本机连已在跑的 redis-stack；CI 用 testcontainer）
-cd 自研 agent 应用 && REDIS_IT_PORT=6380 mvn test      # 17/17
+cd 自研 agent 应用 && REDIS_IT_PORT=6380 mvn clean verify   # 25/25（含 Web 层鉴权测试）
 ```
 
 ---

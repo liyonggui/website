@@ -415,7 +415,7 @@ ALTER SYSTEM SET idle_in_transaction_session_timeout = '5min';
 | 杀会话 | `pg_terminate_backend(pid)` | `KILL <id>` / `KILL QUERY <id>` |
 | 单条超时 | `statement_timeout`（含 DML/DDL） | `max_execution_time`（**仅 SELECT**，单位 ms） |
 | 锁等待超时 | `lock_timeout` | `innodb_lock_wait_timeout`(行锁,默认50s) + `lock_wait_timeout`(**MDL,默认1年**) |
-| 空闲事务超时 | `idle_in_transaction_session_timeout` | `idle_transaction_timeout`(8.0.20+,默认0关) / `wait_timeout` |
+| 空闲事务超时 | `idle_in_transaction_session_timeout` | 无对应变量（MariaDB 的 `idle_transaction_timeout` 不适用于 MySQL，执行报 1193）；用 `wait_timeout` + `innodb_rollback_on_timeout` 或 Event 定时 KILL |
 | 后台回收 | autovacuum 自动 | InnoDB purge；收缩空间要 `OPTIMIZE TABLE`/重建 |
 
 ### 10.2 「改不了表」在 MySQL 里多半是 MDL
@@ -467,7 +467,8 @@ KILL QUERY 12345;  -- 只中断当前语句（相当于 pg_cancel_backend）
 SET SESSION max_execution_time = 30000;        -- SELECT 超 30s 中断（不覆盖 DML！）
 SET SESSION innodb_lock_wait_timeout = 10;     -- 行锁等 10s 快速失败
 SET SESSION lock_wait_timeout = 10;            -- MDL 等 10s（默认一年，务必调小）
-SET GLOBAL idle_transaction_timeout = 60;      -- 空闲事务 60s 断开（8.0.20+）
+-- MySQL 无 idle_transaction_timeout（MariaDB 特性，执行报 1193）：
+-- 空闲事务/会话用 wait_timeout + Event 定时 KILL 兜底，详见《MySQL-事务与锁排查治理手册》第 7 节
 ```
 
 **推荐值（对照第 6 节）**：
@@ -477,7 +478,8 @@ SET GLOBAL idle_transaction_timeout = 60;      -- 空闲事务 60s 断开（8.0.
 | `max_execution_time` | `30000`(30s) | `600000`(10min) | `0` |
 | `innodb_lock_wait_timeout` | `10s` | `30s` | `10s` |
 | `lock_wait_timeout`(MDL) | `10s` | `30s` | `5s`+重试 |
-| `idle_transaction_timeout` | `60s` | `300s` | `300s` |
+
+> 注：MySQL 没有 `idle_transaction_timeout`（MariaDB 特性，任何版本执行都报 `1193`），空闲事务/会话防护用 `wait_timeout` + Event 定时 KILL，参见《MySQL-事务与锁排查治理手册》第 7 节。
 
 **生产红线同 PG**：只为杀单个会话执行 `KILL`，**不要重启整库**；`KILL` 会回滚该事务，杀大写入事务前评估回滚代价。
 

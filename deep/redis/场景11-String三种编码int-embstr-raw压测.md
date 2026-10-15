@@ -341,7 +341,7 @@ Redis Hash 的内部编码由 **field 数量** 和 **field value 大小** 决定
 | 订单**摘要信息** | `HSET order:8001 uid 9527 amount 299 status "PAID"` | ~5-10 |
 | 短配置对象 | `HSET cfg:payment timeout 30 retry 3` | ~3-5 |
 
-**为什么 listpack 适合**：field 少时，listpack 的连续内存块 cache 友好、顺序扫描 O(N) 但 N 小（~50 次全命中）。实测 50 field 时 HGET 比 hashtable 快 20+ 倍。
+**为什么 listpack 适合**：field 少时，listpack 的连续内存块 cache 友好、顺序扫描 O(N) 但 N 小（~50 次全命中）。实测 50f×32B listpack 与 1000f×256B hashtable 的 HGET 相差 15.6 倍（330,986 vs 21,159）——注意两者规模不同，仅示 O(N) vs O(1) 趋势；同规模公平对比见第 13 节（128f 时 hashtable 反超 +21%）。
 
 **注意事项**：
 - field 数**建议 ≤64**，留足余量避免逼近 128 阈值（接近 128 时 O(N) 扫描开始劣化）
@@ -364,14 +364,14 @@ Redis Hash 的内部编码由 **field 数量** 和 **field value 大小** 决定
 
 **注意事项**：
 - field 逼近/超过 128 → hashtable O(1) 反而更优，不要刻意限制在 128 内
-- **绝不对大 Hash 做 HGETALL**：500 field 时阻塞主线程 4.4 秒、16 条 slowlog
+- **绝不对大 Hash 做 HGETALL**：1000f hashtable 实测阻塞主线程 avg 3015ms / max 4682ms、slowlogΔ 44（第 11 节实测表）
 - 大 Hash 查询用 HGET/HMGET 按需取，或 HSCAN 分页
 
 ### 9.1.3 Hash 编码选型速查表
 
 | 你的对象 | 编码 | 一句话原因 |
 |------|:--:|------|
-| field 少（≤64）+ value 小 | **listpack** | cache 友好，单 field 操作快 20+ 倍 |
+| field 少（≤64）+ value 小 | **listpack** | cache 友好，单 field 操作快 15.6 倍（对手方为 1000f hashtable，非同规模） |
 | field 逼近阈值（~128）| **hashtable** | O(1) vs O(N)，实测 +21% |
 | field 多（≥128）| **hashtable** | 唯一选择，O(1) 稳定 |
 | value 大（>64B）| **hashtable** | 唯一选择（listpack 上限 64B）|
@@ -449,23 +449,23 @@ hashtable: dict
 ### 12.2 HGETALL 差异最大（+16335%）——灾难级
 
 - **HGETALL hashtable（1000f）**：avg **3015ms**，slowlogΔ **44**，几乎阻塞 Redis 主线程
-- 根因：遍历 1000 个 dictEntry，每个都要做哈希寻址 + sds 返回，随机访问分散内存，内存寻址次数是 listpack 的 1000 倍
+- 根因：遍历 1000 个 dictEntry，每个都要做哈希寻址 + sds 返回，随机访问分散内存，内存寻址次数是 listpack（50f 全量）的 20 倍
 
 ### 12.3 为什么 HSET/HGET 差异（+2260%/+1464%）小于 HGETALL
 
 单 field 操作只碰一个 field：
 - listpack 只需顺序扫到该 field（≤50 次比较），仍 cache 友好
 - hashtable 需哈希计算 + 内存寻址，但只做 1 次，开销有限
-- 差异虽大但没到 HGETALL 的 1000 倍差距，因为 HGETALL 要处理全部 1000 个 field
+- 差异虽大但没到 HGETALL 的 164 倍差距，因为 HGETALL 要处理全部 1000 个 field
 
 ### 12.4 Hash 生产选型建议（综合公平对比结论）
 
 | 场景 | 推荐编码 | 实测依据 |
 |------|:--:|------|
-| 小对象/小实体（field 很少，如 ≤50，value ≤ 64B）| **listpack** | 单 field 快 20+ 倍（50f 时 HGET 247K vs 11K）|
+| 小对象/小实体（field 很少，如 ≤50，value ≤ 64B）| **listpack** | 单 field 快 15.6 倍（50f 时 HGET 331K vs 21K；对手方为 1000f hashtable，非同规模）|
 | **field 逼近阈值（~128）且高频随机读** | **hashtable** | HGET +21%，末尾 field +22%（O(1) vs O(N)）|
 | 大 Hash（field > 128 或 value > 64B）| hashtable | 唯一选择，但避免 HGETALL |
-| **避免对大 Hash 做 HGETALL** | ❌ | 500f hashtable 阻塞主线程 4.4 秒，16 条 slowlog |
+| **避免对大 Hash 做 HGETALL** | ❌ | 1000f hashtable 阻塞主线程 avg 3015ms / max 4682ms，slowlogΔ 44 |
 | 大 Hash 的查询 | HGET/HMGET 按需取 / HSCAN | 不要全量拉取 |
 
 **核心原则**：
@@ -477,7 +477,7 @@ hashtable: dict
 ## 13. 实测：hashtable 何时优于 listpack（公平对比验证）
 
 > **关键结论：已实测验证，当 field 数逼近阈值（~128）时 hashtable 反超 listpack。**
-> 之前 8 轮（listpack 50 field vs hashtable 500 field）listpack 全胜是因对比不公平。本次用**控制变量**（同 value 32B，仅 field 数差 1 触发编码差异）公平对比，测出了 hashtable 的优势边界。
+> 之前 8 轮（listpack 50 field vs hashtable 1000 field）listpack 全胜是因对比不公平。本次用**控制变量**（同 value 32B，仅 field 数差 1 触发编码差异）公平对比，测出了 hashtable 的优势边界。
 
 ### 13.0 公平对比实测数据（127f listpack vs 128f hashtable，同 value 32B）
 
@@ -521,9 +521,9 @@ hashtable:  dict{ hash(f)→[entry...] }
 
 ### 13.3 为什么之前 listpack 全胜？——对比不公平
 
-之前 8 轮（listpack 50 field vs hashtable 500 field）listpack 全胜的原因：
-1. **listpack 只有 50 field，hashtable 有 500 field**——field 数差 10 倍。listpack 扫 50 次（全 cache 命中）赢过 hashtable 的 1 次（但内存分散）
-2. **value 不同**：listpack 32B vs hashtable 256B，数据量差 8 倍
+之前 8 轮（listpack 50 field vs hashtable 1000 field）listpack 全胜的原因：
+1. **listpack 只有 50 field，hashtable 有 1000 field**——field 数差 20 倍。listpack 扫 50 次（全 cache 命中）赢过 hashtable 的 1 次（但内存分散）
+2. **value 不同**：listpack 32B vs hashtable 256B，单 field 数据量差 8 倍
 
 这是 **listpack 小 vs hashtable 大** 的不公平对比。要测 hashtable 优势必须**控制变量**。
 

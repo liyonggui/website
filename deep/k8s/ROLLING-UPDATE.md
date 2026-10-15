@@ -171,7 +171,7 @@ kubectl rollout undo deployment/service-user -n sc-demo
 |---|---|---|
 | `deploy.yaml` | Deployment 基线：replicas 2、RollingUpdate 策略（maxSurge 1 / maxUnavailable 0）、startup/readiness/liveness 三探针、securityContext（runAsNonRoot + readOnlyRootFilesystem + drop ALL）、resources 限制、preStop、envFrom 引用下面两个对象 | 导出自 live，清自动字段 |
 | `user-env.yaml` | ConfigMap `user-env`：注入 MYSQL_HOST(192.168.0.104)/PORT(3306)/DB(user_db)/USER(root) | 导出自 live，清自动字段 |
-| `user-secret.yaml` | Secret `user-secret`：注入 MYSQL_PASSWORD（base64，含真实密码） | 导出自 live，清自动字段 |
+| `user-secret.yaml` | Secret `user-secret`：注入 MYSQL_PASSWORD（base64，本地敏感值） | 导出自 live，清自动字段 |
 
 > 三份都是 `kubectl get ... -o yaml` 导出后，清理掉 `status` / `resourceVersion` / `uid` / `creationTimestamp` / `last-applied-configuration` 自动字段得到的干净基线。
 
@@ -188,6 +188,6 @@ kubectl apply -f deploy.yaml        # 3. 建 Deployment（依赖前两个）
 - 看历史 / 回滚 → `kubectl rollout history` / `kubectl rollout undo`
 - 始终用 apply 管理，`last-applied-configuration` 与 live 自动对齐，那个 warning 不再出现
 
-⚠️ `user-secret.yaml` 的 `data` 为 base64（含 mysql 真实密码 `Root@123456`）。本地留存无妨，但**切勿提交到公开仓库**。
+⚠️ `user-secret.yaml` 的 `data` 为 base64（含数据库密码等敏感值）。**这类文件只留在本地，切勿提交到任何仓库**——本站早期版本曾把真实密码写进公开页面，属既成泄露，相关密码已在修复时轮换；本文现在只讲结构，不再复述任何真实凭据。
 
 > 想连 Service 也固化（当前是命令行建的 ClusterIP:8081，未落盘）：`kubectl get svc service-user -n sc-demo -o yaml > service.yaml`，同样清理自动字段即可。

@@ -25,7 +25,7 @@ String effectiveRouting = routing != null ? routing : id;
 // 2. 32位哈希运算
 int hash = Murmur3HashFunction.hash(effectiveRouting);
 // 3. 取模得到最终主分片编号
-int shardId = Math.abs(hash) % 主分片数量;
+int shardId = Math.floorMod(hash, 主分片数量);   // 必须 floorMod：Math.abs(Integer.MIN_VALUE) 仍为负
 ```
 
 ### 2\. 核心前置结论
@@ -170,7 +170,7 @@ public class RoutingSplitUtil {
             return bizKey;
         }
         // 根据雪花ID稳定取模，更新数据路由不会漂移
-        int suffix = Math.abs(snowflakeId % splitNum);
+        int suffix = Math.floorMod(Long.hashCode(snowflakeId), splitNum);
         return bizKey + "_" + suffix;
     }
 
@@ -239,7 +239,7 @@ POST _reindex?slices=5&wait_for_completion=false
       // 原始业务路由key：省份
       String bizKey = ctx._source.province;
       // 生成打散路由
-      int suffix = Math.abs(snowId % splitNum);
+      int suffix = (int) Math.floorMod(snowId, (long) splitNum);   // Painless：long 安全取模
       ctx._routing = bizKey + "_" + suffix;
     """
   }
@@ -348,7 +348,7 @@ PUT _ilm/policy/order_hot_cold_policy
  "min_age": "7d",
  "actions": {
  "allocate": {
- "require": {"data_tier": "warm"}
+ "require": {"_tier_preference": "data_warm"}
  },
  "forcemerge": {"max_num_segments": 1},
  "shrink": {"number_of_shards": 3},
@@ -359,7 +359,7 @@ PUT _ilm/policy/order_hot_cold_policy
  "min_age": "30d",
  "actions": {
  "allocate": {
- "require": {"data_tier": "cold"}
+ "require": {"_tier_preference": "data_cold"}
  },
  "freeze": {},
  "set_priority": {"priority": 10}
@@ -397,7 +397,7 @@ PUT _ilm/policy/order_hot_cold_policy
    "number_of_shards": 9,
    "number_of_replicas": 1,
    "index.lifecycle.name": "order_hot_cold_policy",
-   "index.routing.allocation.data_tier": "hot"
+   "index.routing.allocation.include._tier_preference": "data_hot"
    },
    "mappings": {
    "properties": {

@@ -36,7 +36,7 @@ draft: false
 ```http
 GET /索引名/_search?routing=路由值
 {
- "_size": 1,
+ "size": 1,
  "_source": false
 }
 ```
@@ -186,7 +186,7 @@ GET _cat/recovery?v&h=index,shard,percent,source_node,target_node,stage
 # 修改层级标签，触发分片回迁
 PUT 索引名/_settings
 {
- "index.routing.allocation.data_tier": "hot"
+ "index.routing.allocation.include._tier_preference": "data_hot"
 }
 # 暂停ILM防止再次下沉
 POST 索引名/_ilm/stop
@@ -197,7 +197,7 @@ POST 索引名/_ilm/stop
 ```http
 PUT 索引名/_settings
 {
- "index.routing.allocation.data_tier": "warm"
+ "index.routing.allocation.include._tier_preference": "data_warm"
 }
 POST 索引名/_ilm/stop
 ```
@@ -207,7 +207,7 @@ POST 索引名/_ilm/stop
 ```http
 PUT 索引名/_settings
 {
- "index.routing.allocation.data_tier": "hot"
+ "index.routing.allocation.include._tier_preference": "data_hot"
 }
 POST 索引名/_ilm/stop
 ```
@@ -266,7 +266,7 @@ POST _reindex?slices=auto&requests_per_second=2000
  "dest": {"index": "order_new"},
  "script": {
  "source": """
- def suffix = Math.abs(ctx._source.orderId.hashCode()) % 3;
+ def suffix = Math.floorMod(ctx._source.orderId.hashCode(), 3);
  ctx._routing = ctx._source.province + "_" + suffix;
  """
  }
@@ -457,7 +457,7 @@ PUT 索引名/_settings
 ### 查看索引冷热层级标签
 
 ```http
-GET 索引名/_settings?filter_path=*.data_tier
+GET 索引名/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference
 ```
 
 ---
@@ -508,7 +508,7 @@ PUT 索引名/_settings
 ES_HOST="http://127.0.0.1:9200"
 # ES_USER="elastic"
 # ES_PWD="你的密码"
-INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.data_tier:warm" | jq -r 'keys[] | select(startswith(".") | not)')
+INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.include._tier_preference" | jq -r 'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key')
 if [ -z "$INDEX_LIST" ];then
  echo "无warm索引需要回迁"
  exit 0
@@ -516,7 +516,7 @@ fi
 echo "$INDEX_LIST"
 while read index; do
 [ -z "$index" ] && continue
-curl -s -X PUT "$ES_HOST/$index/_settings" -H "Content-Type:application/json" -d '{"index.routing.allocation.data_tier":"hot"}'
+curl -s -X PUT "$ES_HOST/$index/_settings" -H "Content-Type:application/json" -d '{"index.routing.allocation.include._tier_preference":"data_hot"}'
 curl -s -X POST "$ES_HOST/$index/_ilm/stop"
 echo "$index 已设置hot并暂停ILM"
 done <<< "$INDEX_LIST"
@@ -526,7 +526,7 @@ echo "执行完成，查看迁移进度：GET _cat/recovery?v"
 ### 适配 Cold 批量回流只需修改一行过滤条件
 
 ```bash
-INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.data_tier:cold" | jq -r 'keys[] | select(startswith(".") | not)')
+INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.include._tier_preference" | jq -r 'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_cold")) | select(.key | startswith(".") | not) | .key')
 ```
 
 ### 脚本使用方式
@@ -544,7 +544,7 @@ chmod +x warm_to_hot.sh
 文档使用说明：
 
 1. 全文为生产可直接复制执行的运维命令，覆盖分片排查、ILM冷热回流、Reindex重构、别名切换、异常排障全场景；
-2. 回流逻辑统一：修改 `data_tier` + 暂停 ILM，所有层级回退操作模式通用；
+2. 回流逻辑统一：修改 `_tier_preference` + 暂停 ILM，所有层级回退操作模式通用；
 3. 保存为 `ES_运维命令速查手册.md`，日常运维、问题排查、版本重构可快速查阅使用。
 
 

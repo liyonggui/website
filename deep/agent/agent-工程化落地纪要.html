@@ -107,7 +107,7 @@
 <li><strong>混合检索中文真实边界（实测）</strong>：RediSearch 按空白/标点分词，<strong>连续中文=一个 token</strong> → 自由中文短语 BM25 命中 0；只有精确词/数字/英文/标点分隔词有效（<code>8000</code>✅ <code>MBA</code>✅ <code>网上报名</code>✅，<code>学费</code>❌）。所以词法臂定位成<strong>"精确词增强器"</strong>，中文靠向量臂。</li>
 <li><strong>A/B 探针</strong>：<code>GET /api/agent/retrieve?query=&amp;pool=&amp;keep=&amp;hybrid=&amp;rerank=</code>（绕开 LLM、确定性）。实测把向量池压到 3，开 hybrid 后有块以 <code>vec=-1 lex=1</code> <strong>被纯词法补召回</strong>（融合确实扩召回）。</li>
 </ul>
-<p><strong>诚实边界</strong>：小 FAQ 语料答案集中在 1~2 块、纯向量 MRR 本就接近满分 → 别指望 precision 大幅跳（<code>phase2-rag</code> 已证 precision@4=0.55 是"答案1块却保4块"的<strong>指标假象</strong>）。这里实测到的是扩召回 + 连续相关性分 + 剔噪，不是 precision 神话。</p>
+<p><strong>诚实边界</strong>：小 FAQ 语料答案集中在 1~2 块、纯向量 MRR 本就接近满分 → 别指望 precision 大幅跳（<code>phase2-rag</code> 已证 precision@4=0.55 是指标假象——🟡 归因后已更正为"宽松裁判 + 40% 库占比"，见博客 05 号更正篇）。这里实测到的是扩召回 + 连续相关性分 + 剔噪，不是 precision 神话。</p>
 <hr />
 <h2 id="3-facet-namespace">3. 语义缓存的两道防线（facet + namespace）</h2>
 <ul>
@@ -226,7 +226,7 @@ python<span class="w"> </span>run-langfuse-eval.py<span class="w"> </span>cachet
 bash<span class="w"> </span>setup-higress-ai-gateway.sh<span class="w">          </span><span class="c1"># 服务来源/路由；APPLY_RATELIMIT=1 加限流演示</span>
 
 <span class="c1"># 测试（本机连已在跑的 redis-stack；CI 用 testcontainer）</span>
-<span class="nb">cd</span><span class="w"> </span>自研<span class="w"> </span>agent<span class="w"> </span>应用<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">REDIS_IT_PORT</span><span class="o">=</span><span class="m">6380</span><span class="w"> </span>mvn<span class="w"> </span><span class="nb">test</span><span class="w">      </span><span class="c1"># 17/17</span>
+<span class="nb">cd</span><span class="w"> </span>自研<span class="w"> </span>agent<span class="w"> </span>应用<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">REDIS_IT_PORT</span><span class="o">=</span><span class="m">6380</span><span class="w"> </span>mvn<span class="w"> </span>clean<span class="w"> </span>verify<span class="w">   </span><span class="c1"># 25/25（含 Web 层鉴权测试）</span>
 </code></pre></div>
 
 <hr />

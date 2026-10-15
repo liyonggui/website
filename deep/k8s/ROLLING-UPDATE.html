@@ -234,7 +234,7 @@ kubectl<span class="w"> </span>rollout<span class="w"> </span>status<span class=
 </tr>
 <tr>
 <td><code>user-secret.yaml</code></td>
-<td>Secret <code>user-secret</code>：注入 MYSQL_PASSWORD（base64，含真实密码）</td>
+<td>Secret <code>user-secret</code>：注入 MYSQL_PASSWORD（base64，本地敏感值）</td>
 <td>导出自 live，清自动字段</td>
 </tr>
 </tbody>
@@ -253,7 +253,7 @@ kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> <
 - 改配置 → 改对应 yaml → <code>kubectl apply -f &lt;文件&gt;</code>
 - 看历史 / 回滚 → <code>kubectl rollout history</code> / <code>kubectl rollout undo</code>
 - 始终用 apply 管理，<code>last-applied-configuration</code> 与 live 自动对齐，那个 warning 不再出现</p>
-<p>⚠️ <code>user-secret.yaml</code> 的 <code>data</code> 为 base64（含 mysql 真实密码 <code>Root@123456</code>）。本地留存无妨，但<strong>切勿提交到公开仓库</strong>。</p>
+<p>⚠️ <code>user-secret.yaml</code> 的 <code>data</code> 为 base64（含数据库密码等敏感值）。<strong>这类文件只留在本地，切勿提交到任何仓库</strong>——本站早期版本曾把真实密码写进公开页面，属既成泄露，相关密码已在修复时轮换；本文现在只讲结构，不再复述任何真实凭据。</p>
 <blockquote>
 <p>想连 Service 也固化（当前是命令行建的 ClusterIP:8081，未落盘）：<code>kubectl get svc service-user -n sc-demo -o yaml &gt; service.yaml</code>，同样清理自动字段即可。</p>
 </blockquote>

@@ -191,9 +191,9 @@ mode=MIXED  Writer: bat/s=0, cmd/s=0, totalBatches=0
 结果：Writer 吞吐直接归零！
 ```
 
-**混合模式的残酷真相：** 只要有一个服务还在用 HGETALL 读大 Hash，就会拖垮全体。
+**混合模式的观察（结论待定位）：** MIXED 模式下 writer 吞吐归零（见 5.4 数据）；但纯 HGETALL Reader 模式下 writer 仍有 179~222k（见 5.5 表），说明"只要有一个 HGETALL 就拖垮全体"的因果与本数据不符——MIXED 归零更可能与 HGETALL 与 HSCAN 并发叠加或该轮测试配置有关，根因待进一步定位。
 
-**为什么 Writer 吞吐为 0：** 即使 HGETALL 频率不高，但单次 HGETALL 大 Hash 会独占 Redis 主线程数百毫秒。在这段时间内，所有写请求（包括 Pipeline 中的批量写入）全部在单线程上排队，无法被处理。如果写方还使用了阻塞式 pipeline 或事务，排队效应会更加严重——一个 HGETALL 的长阻塞将导致写侧批量请求在 Redis 单线程上排队，写吞吐瞬间归零。
+**可能的机制（未定论）：** 单次 HGETALL 大 Hash 会独占 Redis 主线程数毫秒，期间写请求在单线程上排队；若 HGETALL 与 HSCAN 的游标轮询叠加，阻塞窗口可能进一步放大。但该解释无法说明纯 HGETALL 模式下 writer 为何仍有 179~222k，MIXED 归零的确切原因需要复现实验进一步定位。
 
 ### 5.5 四种模式全景对比
 

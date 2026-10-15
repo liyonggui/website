@@ -1,6 +1,6 @@
 ---
 title: "K8s 实战学习路线图（已学 + 待学）"
-summary: "目标定位：认识 K8s，不是验证功能。本文件是学习进度的总账，记录已亲手跑通的能力、对应的清单文件、关键认知，以及尚未涉及但实战常用的功能与建议路线。 > > 最后更新：2026-…"
+summary: "目标定位：认识 K8s，不是验证功能。本文件是学习进度的总账，记录已亲手跑通的能力、对应的清单文件、关键认知，以及尚未涉及但实战常用的功能与建议路线。最后更新：2026-…"
 date: 2026-09-04
 author: "小番茄程序猿"
 tags:
@@ -41,8 +41,8 @@ draft: false
 | 资源 | 类型 | 关键配置 |
 |---|---|---|
 | `service-user` | Deployment + ClusterIP Service | 2 副本默认、image `sc-user:0.1.0`、端口 8081、`envFrom` 引用 ConfigMap `user-env` + Secret `user-secret`、三探针、securityContext、resources 限制 |
-| MySQL | 外置（docker-compose） | `192.168.0.104:3306`，库 `user_db`，密码 `Root@123456` |
-| `redis` (redis-0/redis-1) | StatefulSet + Headless Service | 1主1从；当前**临时态 redis-1 主 / redis-0 从**（内存级 masterauth 修复，待固化）；密码 `Redis@123456` |
+| MySQL | 外置（docker-compose） | `192.168.0.104:3306`，库 `user_db`，密码以本地 Secret 为准（**切勿写入任何会公开的文件**） |
+| `redis` (redis-0/redis-1) | StatefulSet + Headless Service | 1主1从；当前**临时态 redis-1 主 / redis-0 从**（内存级 masterauth 修复，待固化）；密码以本地 Secret 为准（**切勿写入任何会公开的文件**） |
 | `redis-sentinel` ×3 | Deployment + Service | 监控主库、自动故障转移，quorum=2，端口 26379 |
 | `service-user` HPA | HorizontalPodAutoscaler | CPU 50% 目标，min 2 / max 10 |
 | `service-user` Ingress | Ingress | host `service-user.local`，path `/` → `service-user:8081` |

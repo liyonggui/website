@@ -93,7 +93,7 @@ NodeC
 ```java
 String routingKey = 自定义routing != null ? 自定义routing : 文档_id;
 int hash = Murmur3HashFunction.hash(routingKey);
-int shardId = Math.abs(hash) % number_of_primary_shards;
+int shardId = Math.floorMod(hash, number_of_primary_shards);   // 必须 floorMod：Math.abs(Integer.MIN_VALUE) 仍为负
 ```
 
 ### 硬性约束
@@ -161,7 +161,7 @@ public class RoutingSplitUtil {
     // 写入生成打散路由
     public static String getSplitRouting(String bizKey, int splitNum, Long snowId) {
         if (splitNum <= 1) return bizKey;
-        int suffix = Math.abs(snowId.intValue()) % splitNum;
+        int suffix = Math.floorMod(Long.hashCode(snowId), splitNum);
         return bizKey + "_" + suffix;
     }
     // 查询遍历全部路由批量检索
@@ -314,7 +314,7 @@ PUT _cluster/settings
 
 4. 流转单向不可逆：`Hot → Warm → Cold → Delete`，无原生自动回流能力
 
-5. 流转本质：修改索引 `data_tier` 分配标签约束，分片分配器自动搬迁分片至对应节点池
+5. 流转本质：修改索引 `_tier_preference` 层级约束，分片分配器自动搬迁分片至对应节点池
 
 ## 6\.2 ILM轮询 vs 自定义定时任务 对比
 
@@ -385,7 +385,7 @@ PUT _cluster/settings
 ### 步骤1：查询索引当前冷热层级
 
 ```http
-GET 你的索引名/_settings?filter_path=*.data_tier
+GET 你的索引名/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference
 ```
 
 ### 步骤2：强制修改索引归属热节点，自动触发分片搬迁
@@ -393,7 +393,7 @@ GET 你的索引名/_settings?filter_path=*.data_tier
 ```http
 PUT 你的索引名/_settings
 {
-  "index.routing.allocation.data_tier": "hot"
+  "index.routing.allocation.include._tier_preference": "data_hot"
 }
 ```
 
@@ -443,7 +443,7 @@ POST 你的索引名/_ilm/start
 ```bash
 #!/bin/bash
 # ES温层索引批量回迁热节点脚本
-# 功能：自动查询所有warm索引、过滤系统索引、批量修改data_tier、附带操作提示
+# 功能：自动查询所有warm层索引、过滤系统索引、批量修改 _tier_preference、附带操作提示
 
 # ========== 请自行修改此处配置 ==========
 ES_HOST="http://127.0.0.1:9200"
@@ -457,9 +457,9 @@ echo "1. 正在查询集群所有warm层级业务索引（过滤系统内置索�
 
 # 获取所有warm索引，过滤.开头系统索引
 if [ -n "$ES_USER" ];then
-  INDEX_LIST=$(curl -s -u $ES_USER:$ES_PWD "$ES_HOST/_settings/index.routing.allocation.data_tier:warm?pretty" | jq -r 'keys[] | select(startswith(".") | not)')
+  INDEX_LIST=$(curl -s -u $ES_USER:$ES_PWD "$ES_HOST/_settings/index.routing.allocation.include._tier_preference?pretty" | jq -r 'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key')
 else
-  INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.data_tier:warm?pretty" | jq -r 'keys[] | select(startswith(".") | not)')
+  INDEX_LIST=$(curl -s "$ES_HOST/_settings/index.routing.allocation.include._tier_preference?pretty" | jq -r 'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key')
 fi
 
 # 判断是否存在warm索引
@@ -477,7 +477,7 @@ echo "---------------------------------------------------------"
 while read index; do
   [ -z "$index" ] && continue
   echo "正在处理索引：【$index】"
-  JSON_BODY='{"index.routing.allocation.data_tier":"hot"}'
+  JSON_BODY='{"index.routing.allocation.include._tier_preference":"data_hot"}'
   if [ -n "$ES_USER" ];then
     curl -s -u $ES_USER:$ES_PWD -X PUT "$ES_HOST/$index/_settings" -H "Content-Type: application/json" -d "$JSON_BODY"
   else
@@ -520,7 +520,7 @@ ES的ILM冷热流转是单向的，不支持自动从温层回退到热节点。
 
 - 高峰期IO打满：临时关闭集群自动分片均衡
 
-- 冷热分片乱跑：禁止手动修改data_tier，核对节点角色
+- 冷热分片乱跑：禁止手动修改 _tier_preference，核对节点角色
 
 - 分片搬迁过慢：调高恢复带宽与并发数
 

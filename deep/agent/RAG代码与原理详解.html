@@ -102,14 +102,14 @@
 6. 注意：索引向量维度要和 embedding 一致(1024)，换 embedding 要重建索引；metadata 想按 source 过滤要声明为可索引字段；生产设 similarityThreshold+过滤；Redis 顺带解决"重启即失"和暴力 O(N)。
 - 替代：PgVector(Postgres+pgvector，运维熟)、Milvus/Qdrant(大规模)。同套路：加 starter+换 Bean+配连接。</p>
 <h2 id="7-rerank-embedding">⑦ 混合检索 + rerank（补 embedding 短板）</h2>
-<p><strong>embedding 单用的毛病</strong>：精确词/稀有词/专名/数字(如 <code>02:00</code>、<code>string2ll</code>、<code>t_string.c</code>)拉不准；只认"像不像"不认"到没到位"→ 召回一堆主题相关但不答这题的块（=你 precision@4=0.55 的根因）。</p>
+<p><strong>embedding 单用的毛病</strong>：精确词/稀有词/专名/数字(如 <code>02:00</code>、<code>string2ll</code>、<code>t_string.c</code>)拉不准；只认"像不像"不认"到没到位"→ 召回一堆主题相关但不答这题的块。（注：这里说的是 embedding 的通用短板； toy 语料 precision@4=0.55 的归因已更正，不是检索差，见下方诚实边界与博客 05。）</p>
 <p><strong>药一 混合检索(向量+BM25)</strong>：向量强在语义/换说法，BM25 强在精确词/稀有词/数字，能力互补。两路各召回一批 → <strong>RRF 倒数排名融合</strong>。例：问 string2ll，向量给泛块、BM25 精确命中含该词的块 → 融合后排上来。</p>
 <p><strong>药二 rerank(精排)</strong>：
 - 召回用 <strong>bi-encoder</strong>：query 和 doc 各自独立编码，快但糙。
 - rerank 用 <strong>cross-encoder</strong>：把 query+候选doc 拼一起逐对精算相关性，准但贵。
 - 标准两阶段：<code>召回(向量+BM25) top20 → rerank 精排 → 取 top4 喂 LLM</code>。你 MaaS 空间有 <code>qwen3.7-text-rerank</code>。
 - 效果：召回20块里只3块真相关，rerank 把3块顶到前3、只取top3 → precision 逼近1。</p>
-<p><strong>诚实边界</strong>：你那个 toy 语料 <strong>MRR 已 1.0</strong>(答案块排第一)，precision@4 低很大程度是"答案只在1块却保留4块"的<strong>指标假象</strong>。所以：小库/答案集中→先收紧 topK+阈值就够；大库/答案分散/有精确词→混合检索+rerank 才是刚需。<strong>先判断问题属于哪种，再决定上不上重武器</strong>（别为显先进堆架构）。</p>
+<p><strong>诚实边界</strong>：你那个 toy 语料 <strong>MRR 已 1.0</strong>(答案块排第一)，precision@4 低是<strong>指标假象</strong>。🟡 <strong>归因已更正（博客 05）</strong>：不是早年写的"答案只在 1 块却保留 4 块"，真实原因是"宽松裁判 + topK=4 交出全库 40%"（语料库总共才 10 块）——测的是语料库的主题集中度，不是检索器质量。结论不变：小库/答案集中→先收紧 topK+阈值就够；大库/答案分散/有精确词→混合检索+rerank 才是刚需。<strong>先判断问题属于哪种，再决定上不上重武器</strong>（别为显先进堆架构）。</p>
 <p><strong>落地结构</strong>：<code>Query → 向量topK20 + BM25 topK20 → RRF融合 → cross-encoder rerank → top4 → 喂LLM</code>。Spring AI 有模块化 RAG(<code>RetrievalAugmentationAdvisor</code>/<code>DocumentRetriever</code>/<code>QueryTransformer</code>查询改写/rerank)；BM25 生产向量库(Redis/PgVector)自带混合，不用手搓。</p>
 <hr />
 <p><strong>一句话总纲</strong>：embedding 把语义压成方向、余弦量像不像(RAG地基与天花板)；SimpleVectorStore 是内存暴力版，生产换 RedisVectorStore 只动依赖+Bean+配置；混合检索补精确词、rerank 补排序精度，但先分清"系统差 vs 指标/数据特性"再决定上不上重武器。</p>

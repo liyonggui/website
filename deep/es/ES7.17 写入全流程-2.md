@@ -22,23 +22,23 @@ draft: false
 
 ## 目录
 
-1. [分片路由：数据分片分配算法](https://www.doubao.cn)
+1. [分片路由：数据分片分配算法](#_3)
 
-2. [Translog事务日志：WAL预写日志存储算法](https://www.doubao.cn)
+2. [Translog事务日志：WAL预写日志存储算法](#translog)
 
-3. [内存缓冲区：内存索引结构与并发算法](https://www.doubao.cn)
+3. [内存缓冲区：内存索引结构与并发算法](#_4)
 
-4. [Refresh刷新：倒排索引构建\+词条排序核心算法](https://www.doubao.cn)
+4. [Refresh刷新：倒排索引构建\+词条排序核心算法](#refresh)
 
-5. [Flush落盘：磁盘Segment文件全套存储算法](https://www.doubao.cn)
+5. [Flush落盘：磁盘Segment文件全套存储算法](#flush-segment)
 
-6. [Merge段合并：后台索引合并与清理算法](https://www.doubao.cn)
+6. [Merge段合并：后台索引合并与清理算法](#merge)
 
-7. [不同字段类型专属存储算法区分](https://www.doubao.cn)
+7. [不同字段类型专属存储算法区分](#_5)
 
-8. [写入全流程算法执行顺序（背诵精简版）](https://www.doubao.cn)
+8. [写入全流程算法执行顺序（背诵精简版）](#_6)
 
-9. 高频核心问答（纯考点）
+9. [高频核心问答（纯考点）](#_7)
 
 ---
 
@@ -53,9 +53,9 @@ draft: false
 - **核心路由源码逻辑**
 
 ```java
-// ES原生分片路由计算逻辑
-int hash = Murmur3.hash128(routingKey);
-int shardId = Math.abs(hash) % 主分片数量;
+// ES原生分片路由计算逻辑（示意）
+int hash = Murmur3HashFunction.hash(routingKey);   // 32 位有符号整型
+int shardId = Math.floorMod(hash, 主分片数量);     // 必须 floorMod：Math.abs(Integer.MIN_VALUE) 仍为负，会算出负分片号
 
 ```
 

@@ -136,7 +136,7 @@ NodeC
 <h2 id="1">1、路由计算公式（底层固定）</h2>
 <div class="codehilite"><pre><span></span><code><span class="n">String</span><span class="w"> </span><span class="n">routingKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">自定义routing</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">自定义routing</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">文档_id</span><span class="p">;</span>
 <span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Murmur3HashFunction</span><span class="p">.</span><span class="na">hash</span><span class="p">(</span><span class="n">routingKey</span><span class="p">);</span>
-<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">hash</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">number_of_primary_shards</span><span class="p">;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">shardId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">floorMod</span><span class="p">(</span><span class="n">hash</span><span class="p">,</span><span class="w"> </span><span class="n">number_of_primary_shards</span><span class="p">);</span><span class="w">   </span><span class="c1">// 必须 floorMod：Math.abs(Integer.MIN_VALUE) 仍为负</span>
 </code></pre></div>
 
 <h3 id="_5">硬性约束</h3>
@@ -220,7 +220,7 @@ NodeC
 <span class="w">    </span><span class="c1">// 写入生成打散路由</span>
 <span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kd">static</span><span class="w"> </span><span class="n">String</span><span class="w"> </span><span class="nf">getSplitRouting</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">bizKey</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">splitNum</span><span class="p">,</span><span class="w"> </span><span class="n">Long</span><span class="w"> </span><span class="n">snowId</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">splitNum</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="p">;</span>
-<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">suffix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">abs</span><span class="p">(</span><span class="n">snowId</span><span class="p">.</span><span class="na">intValue</span><span class="p">())</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">splitNum</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">suffix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Math</span><span class="p">.</span><span class="na">floorMod</span><span class="p">(</span><span class="n">Long</span><span class="p">.</span><span class="na">hashCode</span><span class="p">(</span><span class="n">snowId</span><span class="p">),</span><span class="w"> </span><span class="n">splitNum</span><span class="p">);</span>
 <span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">bizKey</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">"_"</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">suffix</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">    </span><span class="c1">// 查询遍历全部路由批量检索</span>
@@ -386,7 +386,7 @@ NodeC
 <p>流转单向不可逆：<code>Hot → Warm → Cold → Delete</code>，无原生自动回流能力</p>
 </li>
 <li>
-<p>流转本质：修改索引 <code>data_tier</code> 分配标签约束，分片分配器自动搬迁分片至对应节点池</p>
+<p>流转本质：修改索引 <code>_tier_preference</code> 层级约束，分片分配器自动搬迁分片至对应节点池</p>
 </li>
 </ol>
 <h2 id="62-ilm-vs">6.2 ILM轮询 vs 自定义定时任务 对比</h2>
@@ -493,13 +493,13 @@ NodeC
 想要反向回滚，只能<strong>人工修改索引冷热标签，强制触发分片回迁</strong>，同时必须规避ILM巡检再次自动迁回。</p>
 <h2 id="102">10.2 单索引手动回滚步骤（生产精准操作，分步执行）</h2>
 <h3 id="1_4">步骤1：查询索引当前冷热层级</h3>
-<div class="codehilite"><pre><span></span><code><span class="err">GET 你的索引名/_settings?filter_path=*.data_tier</span>
+<div class="codehilite"><pre><span></span><code><span class="err">GET 你的索引名/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference</span>
 </code></pre></div>
 
 <h3 id="2_2">步骤2：强制修改索引归属热节点，自动触发分片搬迁</h3>
 <div class="codehilite"><pre><span></span><code><span class="err">PUT 你的索引名/_settings</span>
 <span class="err">{</span>
-<span class="err">  "index.routing.allocation.data_tier": "hot"</span>
+<span class="err">  "index.routing.allocation.include._tier_preference": "data_hot"</span>
 <span class="err">}</span>
 </code></pre></div>
 
@@ -542,7 +542,7 @@ NodeC
 <h3 id="warm_to_hotsh-shell">warm_to_hot.sh 完整shell脚本</h3>
 <div class="codehilite"><pre><span></span><code><span class="ch">#!/bin/bash</span>
 <span class="c1"># ES温层索引批量回迁热节点脚本</span>
-<span class="c1"># 功能：自动查询所有warm索引、过滤系统索引、批量修改data_tier、附带操作提示</span>
+<span class="c1"># 功能：自动查询所有warm层索引、过滤系统索引、批量修改 _tier_preference、附带操作提示</span>
 
 <span class="c1"># ========== 请自行修改此处配置 ==========</span>
 <span class="nv">ES_HOST</span><span class="o">=</span><span class="s2">"http://127.0.0.1:9200"</span>
@@ -556,9 +556,9 @@ NodeC
 
 <span class="c1"># 获取所有warm索引，过滤.开头系统索引</span>
 <span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_USER</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="k">then</span>
-<span class="w">  </span><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span>-u<span class="w"> </span><span class="nv">$ES_USER</span>:<span class="nv">$ES_PWD</span><span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:warm?pretty"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+<span class="w">  </span><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span>-u<span class="w"> </span><span class="nv">$ES_USER</span>:<span class="nv">$ES_PWD</span><span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.include._tier_preference?pretty"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key'</span><span class="k">)</span>
 <span class="k">else</span>
-<span class="w">  </span><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.data_tier:warm?pretty"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'keys[] | select(startswith(".") | not)'</span><span class="k">)</span>
+<span class="w">  </span><span class="nv">INDEX_LIST</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/_settings/index.routing.allocation.include._tier_preference?pretty"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'to_entries[] | select((.value.settings.index.routing.allocation.include._tier_preference // "") | contains("data_warm")) | select(.key | startswith(".") | not) | .key'</span><span class="k">)</span>
 <span class="k">fi</span>
 
 <span class="c1"># 判断是否存在warm索引</span>
@@ -576,7 +576,7 @@ NodeC
 <span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>index<span class="p">;</span><span class="w"> </span><span class="k">do</span>
 <span class="w">  </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$index</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">continue</span>
 <span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"正在处理索引：【</span><span class="nv">$index</span><span class="s2">】"</span>
-<span class="w">  </span><span class="nv">JSON_BODY</span><span class="o">=</span><span class="s1">'{"index.routing.allocation.data_tier":"hot"}'</span>
+<span class="w">  </span><span class="nv">JSON_BODY</span><span class="o">=</span><span class="s1">'{"index.routing.allocation.include._tier_preference":"data_hot"}'</span>
 <span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_USER</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="k">then</span>
 <span class="w">    </span>curl<span class="w"> </span>-s<span class="w"> </span>-u<span class="w"> </span><span class="nv">$ES_USER</span>:<span class="nv">$ES_PWD</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">"</span><span class="nv">$ES_HOST</span><span class="s2">/</span><span class="nv">$index</span><span class="s2">/_settings"</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$JSON_BODY</span><span class="s2">"</span>
 <span class="w">  </span><span class="k">else</span>
@@ -641,7 +641,7 @@ NodeC
 <p>高峰期IO打满：临时关闭集群自动分片均衡</p>
 </li>
 <li>
-<p>冷热分片乱跑：禁止手动修改data_tier，核对节点角色</p>
+<p>冷热分片乱跑：禁止手动修改 _tier_preference，核对节点角色</p>
 </li>
 <li>
 <p>分片搬迁过慢：调高恢复带宽与并发数</p>

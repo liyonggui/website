@@ -103,7 +103,7 @@
 </li>
 </ol>
 <h2 id="5">5. 底层流转本质动作</h2>
-<p>ILM不搬运数据，只<strong>修改索引分片分配标签</strong>：给索引打上<code>data_tier:warm/cold</code>强制标签，ES分片分配算法自动将分片搬迁至对应节点池，全程集群内部自愈。</p>
+<p>ILM不搬运数据，只<strong>修改索引分片分配标签</strong>：给索引打上<code>_tier_preference: data_warm/data_cold</code>强制标签，ES分片分配算法自动将分片搬迁至对应节点池，全程集群内部自愈。</p>
 <hr />
 <h2 id="ilm">二、ILM全阶段参数详解（表格速查，全覆盖）</h2>
 <h2 id="_2">通用公共参数</h2>
@@ -223,7 +223,7 @@
 <span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"require"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">              </span><span class="nt">"data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"warm"</span>
+<span class="w">              </span><span class="nt">"_tier_preference"</span><span class="p">:</span><span class="w"> </span><span class="s2">"data_warm"</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">          </span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"forcemerge"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -242,7 +242,7 @@
 <span class="w">        </span><span class="nt">"actions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">"allocate"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">"require"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">              </span><span class="nt">"data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cold"</span>
+<span class="w">              </span><span class="nt">"_tier_preference"</span><span class="p">:</span><span class="w"> </span><span class="s2">"data_cold"</span>
 <span class="w">            </span><span class="p">}</span>
 <span class="w">          </span><span class="p">},</span>
 <span class="w">          </span><span class="nt">"freeze"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
@@ -271,7 +271,7 @@
 <span class="w">      </span><span class="nt">"number_of_shards"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"number_of_replicas"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"index.lifecycle.name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"order_hot_warm_cold_policy"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"index.routing.allocation.data_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hot"</span>
+<span class="w">      </span><span class="nt">"index.routing.allocation.include._tier_preference"</span><span class="p">:</span><span class="w"> </span><span class="s2">"data_hot"</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">"mappings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -383,7 +383,7 @@
 <span class="err">}</span>
 
 <span class="err"># 5.查看索引当前冷热节点分配标签</span>
-<span class="err">GET index_name/_settings?filter_path=*.data_tier</span>
+<span class="err">GET index_name/_settings?filter_path=*.settings.index.routing.allocation.include._tier_preference</span>
 </code></pre></div>
 
 <hr />

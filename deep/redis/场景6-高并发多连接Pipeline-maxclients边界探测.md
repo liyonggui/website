@@ -192,7 +192,7 @@ pool.setMaxWait(Duration.ofMillis(200));  // 等 200ms 还拿不到就超时
 │       · reserved_for_ops: 哨兵/监控/运维预留, 建议 50~200   │
 │       · safetyFactor: 1.1~1.3（缓冲突发峰值）              │
 │       · 例: maxclients=10000, 实例=10, reserved=200,       │
-│               safetyFactor=1.2 → floor(9800/10/1.2)=650    │
+│               safetyFactor=1.2 → floor(9800/10/1.2)=816    │
 │     - 以实际 INFO clients 的 maxclients 为准（发行版可能不同）│
 │     - 监控 connected_clients 逼近 maxclients 时告警         │
 │                                                             │
@@ -500,7 +500,9 @@ poolMaxTotal_per_instance ≤ floor((maxclients - reserved_for_ops) / instance_c
 
 示例:
   maxclients=10000, instance_count=10, reserved_for_ops=200, safetyFactor=1.2
-  → floor((10000 - 200) / 10 / 1.2) = floor(9800 / 10 / 1.2) = floor(816.7) = 650
+  → floor((10000 - 200) / 10 / 1.2) = floor(816.7) = 816
+
+  ※ 以上为示例参数，接入时请按公式重算你环境的实例数与预留。
 
   directMaxConnections（DIRECT+Semaphore）同理：
   directMaxConnections ≤ floor((maxclients - reserved_for_ops) / instance_count / safetyFactor)

@@ -7,7 +7,7 @@
       <title>我发出去的文章里有一句承重墙是错的（第 4 篇更正）</title>
       <link>https://liyonggui.github.io/website/blog/05-%E7%AC%AC4%E7%AF%87%E6%9B%B4%E6%AD%A3-%E6%89%BF%E9%87%8D%E5%A2%99%E6%98%AF%E9%94%99%E7%9A%84.html</link>
       <guid>https://liyonggui.github.io/website/blog/05-%E7%AC%AC4%E7%AF%87%E6%9B%B4%E6%AD%A3-%E6%89%BF%E9%87%8D%E5%A2%99%E6%98%AF%E9%94%99%E7%9A%84.html</guid>
-      <description>「高并发实测」系列 · 第 4 篇更正。 &gt; &gt; 第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条…</description>
+      <description>「高并发实测」系列 · 第 4 篇更正。第 4 篇《RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子》发出去之后，收到一条…</description>
       <pubDate>Sun, 11 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
@@ -42,7 +42,7 @@
       <title>RAG 的 precision 只有 0.55，我以为检索烂了，MRR 一测才发现是我用错了尺子</title>
       <link>https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html</link>
       <guid>https://liyonggui.github.io/website/blog/04-RAG%E8%AF%84%E6%B5%8B%E4%B8%89%E5%B1%82%E5%8F%8D%E8%BD%AC.html</guid>
-      <description>「高并发实测」系列第 4 篇。 &gt; &gt; 环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…</description>
+      <description>「高并发实测」系列第 4 篇。环境：Spring AI + 内存向量库（SimpleVectorStore），语料是我自己几份项目文档按空行粗切成 chunk，embed…</description>
       <pubDate>Thu, 08 Oct 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
@@ -119,7 +119,7 @@
       <title>Agent 工程化实测：p95 从 836ms 降到 12ms，而真正的收获是发现瓶颈根本不在 Agent 这层</title>
       <link>https://liyonggui.github.io/website/blog/03-Agent%E5%B7%A5%E7%A8%8B%E5%8C%96%E5%AE%9E%E6%B5%8B.html</link>
       <guid>https://liyonggui.github.io/website/blog/03-Agent%E5%B7%A5%E7%A8%8B%E5%8C%96%E5%AE%9E%E6%B5%8B.html</guid>
-      <description>「高并发实测」系列第 3 篇。 &gt; &gt; 环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …</description>
+      <description>「高并发实测」系列第 3 篇。环境：单机笔记本，Docker 跑 MySQL / Mongo / Redis / MinIO，后端服务（Java 17 / Spring …</description>
       <pubDate>Sun, 13 Sep 2026 00:00:00 -0000</pubDate>
     </item>
     <item>
@@ -140,7 +140,7 @@
       <title>高并发写入实测：把最重的 MySQL 改回同步，QPS 反而涨了 38%</title>
       <link>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</link>
       <guid>https://liyonggui.github.io/website/blog/02-%E5%BC%82%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E6%9B%B4%E5%BF%AB.html</guid>
-      <description>「高并发实测」系列第 2 篇。 &gt; &gt; 环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…</description>
+      <description>「高并发实测」系列第 2 篇。环境：4C/8T 单机笔记本，Docker 部署 MySQL / Redis / ES / Mongo / Kafka，Spring Boo…</description>
       <pubDate>Wed, 09 Sep 2026 00:00:00 -0000</pubDate>
     </item>
 </channel></rss>

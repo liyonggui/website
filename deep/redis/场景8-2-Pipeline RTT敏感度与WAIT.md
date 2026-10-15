@@ -489,17 +489,19 @@ POST /rtt/wait-sweep     — 跑一次同步 WAIT sweep，返回 6 组 JSON
 
 | Mode | No WAIT (cmd/s) | Sync WAIT (cmd/s) | 退化率 |
 |:--|:--|:--|:--|
-| **SINGLE_KEY** | 347,400 | 239,980 | **-31.9%** |
-| **DISTRIBUTED** | 480,400 | 415,820 | **-14.4%** |
-| **SHARDED** | 521,680 | 441,240 | **-9.3%** |
+| **SINGLE_KEY** | 347,400 | 239,980 | **-30.9%** |
+| **DISTRIBUTED** | 480,400 | 415,820 | **-13.4%** |
+| **SHARDED** | 521,680 | 441,240 | **-15.4%** |
 
 #### 10ms 延迟（跨 AZ，tc netem delay 10ms）
 
 | Mode | No WAIT (cmd/s) | Sync WAIT (cmd/s) | 退化率 |
 |:--|:--|:--|:--|
-| **SINGLE_KEY** | 167,300 | 83,120 | **-46.8%** |
-| **DISTRIBUTED** | 169,020 | 81,940 | **-49.8%** |
-| **SHARDED** | 172,380 | 13,180 | **-47.1%** |
+| **SINGLE_KEY** | 167,300 | 83,120 | **-50.3%** |
+| **DISTRIBUTED** | 169,020 | 81,940 | **-51.5%** |
+| **SHARDED** | 172,380 | 13,180 | **-92.4%** |
+
+> 注: SHARDED 的 -92.4% 是多节点 WAIT 串行叠加导致的单独恶化（详见发现 2），SINGLE_KEY / DISTRIBUTED 仍为吞吐腰斩（-50.3% / -51.5%）。
 
 ### 8.17.5 关键发现
 
@@ -511,8 +513,8 @@ Sync WAIT 每批耗时: t_batch + WAIT_RTT
 
 退化率 ∝ WAIT_RTT / t_batch
 
-无延迟时 t_batch ≈ 0.05ms，WAIT_RTT ≈ 0.02ms → 退化 9~32%
-10ms 延迟时 t_batch ≈ 0.6ms，WAIT_RTT ≈ 10ms → 退化 47~50% ← 吞吐腰斩！
+无延迟时 t_batch ≈ 0.05ms，WAIT_RTT ≈ 0.02ms → 退化 13~31%
+10ms 延迟时 t_batch ≈ 0.6ms，WAIT_RTT ≈ 10ms → 退化 50~92%（SINGLE_KEY/DISTRIBUTED 吞吐腰斩，SHARDED 多节点 WAIT 叠加单独恶化至 -92.4%）
 ```
 
 #### 发现 2: SHARDED 在 10ms 下退化最严重

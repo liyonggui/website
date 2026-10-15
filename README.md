@@ -9,9 +9,11 @@
 | 首页 | `index.html` | 技术画像、精选项目、**最近更新**（自动索引）、联系方式 |
 | 项目 | `projects.html` | 高并发后端家族 + AI Agent 工程化家族（含实测指标可视化）+ 工程实战复盘 |
 | 博客 | `blog.html` | 多平台连载文章（CSDN / 掘金 / 知乎），渲染后的文章页 |
-| 深度 | `deep.html` | 底层原理专栏，分 MySQL / Redis / ES / 压测 / K8s / Agent 六系列 |
+| 深度 | `deep.html` | 底层原理专栏，分 MySQL / Redis / ES / 压测 / K8s / Agent / 工程实战七系列 |
+| 同行 | `community.html` | 发起/响应技术组队邀约（GitHub issue 模板）+ 当前在学方向 |
 | 学习 | `learn.html` | 学习线路总览 + 作者学习心得（方法 / 踩坑 / 节奏） |
 | 关于 | `about.html` | 作者介绍、承接合作、联系方式（邮箱 Base64 反爬展示） |
+| English | `about-en.html` | 英文门面页（与 about.html hreflang 互指） |
 | 标签 | `tags.html` | 按标签筛选全部文章（数据驱动） |
 | 归档 | `archives.html` | 按年份时间线浏览 |
 | 搜索 | `search.html` | 纯客户端检索：标题/摘要/标签/系列（不含正文全文） |
@@ -55,7 +57,8 @@ verify_titles.py      # 全站校验：元数据 + HTML 结构 + 静态页 h1 �
 ```
 .
 ├── index.html / projects.html / blog.html   # 手写页面
-├── learn.html / about.html                  # 学习总览与关于页
+├── learn.html / about.html / about-en.html   # 学习总览、关于页与英文门面
+├── community.html                            # 同行组队邀约页（链 issue 模板）
 ├── tags.html / archives.html / search.html  # 数据驱动的发现页
 ├── deep.html                                # 深度专栏索引（生成）
 ├── *-path.html                              # 学习线路页（gen_path.py 生成）
@@ -66,6 +69,9 @@ verify_titles.py      # 全站校验：元数据 + HTML 结构 + 静态页 h1 �
 ├── assets/                                  # css（含暗色模式）/ js / img / logo.svg
 ├── add_front_matter.py gen_articles.py gen_deep.py gen_path.py gen_projects.py
 ├── generate_index.py verify_titles.py       # 索引生成 / 站点校验（CI 同款）
+├── doc_roles.py path_data.py project_data.py assign_dates.py  # 角色/线路/项目/日期数据与工具
+├── submit_indexnow.py + <32位hex>.txt       # IndexNow 推送脚本与密钥文件（Bing/Yandex 收录）
+├── requirements.txt                         # CI 钉版本依赖（PyYAML/Markdown/Pygments）
 └── .github/workflows/site-check.yml         # push 时自动：生成 → 校验
 ```
 
