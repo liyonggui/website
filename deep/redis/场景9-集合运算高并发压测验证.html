@@ -1917,6 +1917,10 @@ powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/prob-c
 <div class="codehilite"><pre><span></span><code>内存对比 (10K member):
   Set   ████████████████████████████████████████████  504KB
   BF    ██  28KB  (省 18×)
+
+※ 28KB 为 RedisBloom 模块实测值（含模块固定开销，小容量下每元素成本被抬高）；
+  按标准公式 m = -n·ln(p)/(ln2)² 理论值 ~12KB（9.6 bit/item @1%）。
+  规模越大实测越贴近理论值，见 9.18.6 理论推算表。
 </code></pre></div>
 
 <p><strong>对比 2：唯一计数</strong></p>
@@ -1983,7 +1987,8 @@ powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/prob-c
   - 精度:   HLL 实测误差 1.23% (理论 0.81%, 10K 小样本接近)
 
   ⚠ 注意: 本压测的绝对吞吐值受 docker exec redis-cli 进程开销限制 (~2K ops/sec)。
-         实际直连部署可达 100K~200K ops/sec (参考 9.5 节 setop-concur 实测)。
+         9.5 节 setop-concur 实测峰值同为 38,031 ops/sec（1K members × 20 并发），
+         可见该开销下集合运算吞吐天花板在 ~38K ops/sec。
          横向比较仍有效——同样的管道开销下, 概率结构和精确结构吞吐同级。
 </code></pre></div>
 
@@ -2003,7 +2008,7 @@ powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/prob-c
 <td style="text-align: left;">1 万</td>
 <td style="text-align: left;">~500KB</td>
 <td style="text-align: left;"><strong>12KB</strong></td>
-<td style="text-align: left;">~14KB</td>
+<td style="text-align: left;">~12KB</td>
 <td style="text-align: left;">~40KB</td>
 </tr>
 <tr>
@@ -2031,22 +2036,26 @@ powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/prob-c
 <td style="text-align: left;">1 亿</td>
 <td style="text-align: left;"><strong>~6GB</strong></td>
 <td style="text-align: left;"><strong>12KB</strong></td>
-<td style="text-align: left;"><strong>~500MB</strong></td>
+<td style="text-align: left;"><strong>~120MB</strong></td>
 <td style="text-align: left;">~40KB</td>
 </tr>
 <tr>
 <td style="text-align: left;">10 亿</td>
 <td style="text-align: left;"><strong>≥ 60GB</strong></td>
 <td style="text-align: left;"><strong>12KB</strong></td>
-<td style="text-align: left;">~5GB</td>
+<td style="text-align: left;">~1.2GB</td>
 <td style="text-align: left;">~40KB</td>
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p>注: BloomFilter 列按标准公式 <code>m = -n·ln(p)/(ln2)²</code>（p=1%）推算，≈9.6 bit/item；
+RedisBloom 小容量实测值（如 10K = 28KB）高于理论值，差额为模块固定开销，规模越大越贴近理论值。</p>
+</blockquote>
 <div class="codehilite"><pre><span></span><code>1 亿条数据下的内存可视化:
 
   Set             ██████████████████████████████████████████  ~6GB
-  BloomFilter     ███  ~500MB
+  BloomFilter     █  ~120MB
   CMS             █  ~40KB
   HyperLogLog     █  ~12KB  ← 只有约 1.5 行 Set 的内存
 </code></pre></div>
@@ -2104,7 +2113,7 @@ powershell<span class="w"> </span>-File<span class="w"> </span>loadtester/prob-c
 │  ② 真正的收益在内存 (10K 实测):                                      │
 │     Set 504KB → HLL 14KB  (省 36×)                                  │
 │     Set 504KB → BF 28KB   (省 18×)                                  │
-│     1 亿条: Set ~6GB, HLL ~12KB, BF ~500MB                         │
+│     1 亿条: Set ~6GB, HLL ~12KB, BF ~120MB                         │
 │                                                                     │
 │  ③ 精度实测:                                                       │
 │     HLL: 1.23% (vs 理论 0.81%, 10K 小样本)                          │

@@ -1790,7 +1790,7 @@
   },
   {
     "title": "MySQL（InnoDB）事务与锁排查治理手册",
-    "summary": "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…",
+    "summary": "适用环境：生产 MySQL 8.4.10。覆盖生产配置基线、事务与锁原理、可粘贴排查 SQL、治理处置与预防最佳实践。注：MySQL 并无 idle_transaction_timeout（MariaDB 特性，报 1193 属正常），空闲事务防护用 wait_timeout + 连接池 + 定时 KILL。",
     "date": "2026-02-23",
     "tags": [
       "MySQL",

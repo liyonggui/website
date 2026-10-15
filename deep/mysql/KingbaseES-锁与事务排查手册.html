@@ -694,7 +694,7 @@
 <tr>
 <td>空闲事务超时</td>
 <td><code>idle_in_transaction_session_timeout</code></td>
-<td><code>idle_transaction_timeout</code>(8.0.20+,默认0关) / <code>wait_timeout</code></td>
+<td>无对应变量（MariaDB 的 <code>idle_transaction_timeout</code> 不适用于 MySQL，执行报 1193）；用 <code>wait_timeout</code> + <code>innodb_rollback_on_timeout</code> 或 Event 定时 KILL</td>
 </tr>
 <tr>
 <td>后台回收</td>
@@ -746,7 +746,8 @@
 <span class="k">SET</span><span class="w"> </span><span class="k">SESSION</span><span class="w"> </span><span class="n">max_execution_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">30000</span><span class="p">;</span><span class="w">        </span><span class="c1">-- SELECT 超 30s 中断（不覆盖 DML！）</span>
 <span class="k">SET</span><span class="w"> </span><span class="k">SESSION</span><span class="w"> </span><span class="n">innodb_lock_wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w">     </span><span class="c1">-- 行锁等 10s 快速失败</span>
 <span class="k">SET</span><span class="w"> </span><span class="k">SESSION</span><span class="w"> </span><span class="n">lock_wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span><span class="w">            </span><span class="c1">-- MDL 等 10s（默认一年，务必调小）</span>
-<span class="k">SET</span><span class="w"> </span><span class="k">GLOBAL</span><span class="w"> </span><span class="n">idle_transaction_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60</span><span class="p">;</span><span class="w">      </span><span class="c1">-- 空闲事务 60s 断开（8.0.20+）</span>
+<span class="c1">-- MySQL 无 idle_transaction_timeout（MariaDB 特性，执行报 1193）：</span>
+<span class="c1">-- 空闲事务/会话用 wait_timeout + Event 定时 KILL 兜底，详见《MySQL-事务与锁排查治理手册》第 7 节</span>
 </code></pre></div>
 
 <p><strong>推荐值（对照第 6 节）</strong>：</p>
@@ -778,14 +779,11 @@
 <td><code>30s</code></td>
 <td><code>5s</code>+重试</td>
 </tr>
-<tr>
-<td><code>idle_transaction_timeout</code></td>
-<td><code>60s</code></td>
-<td><code>300s</code></td>
-<td><code>300s</code></td>
-</tr>
 </tbody>
 </table>
+<blockquote>
+<p>注：MySQL 没有 <code>idle_transaction_timeout</code>（MariaDB 特性，任何版本执行都报 <code>1193</code>），空闲事务/会话防护用 <code>wait_timeout</code> + Event 定时 KILL，参见《MySQL-事务与锁排查治理手册》第 7 节。</p>
+</blockquote>
 <p><strong>生产红线同 PG</strong>：只为杀单个会话执行 <code>KILL</code>，<strong>不要重启整库</strong>；<code>KILL</code> 会回滚该事务，杀大写入事务前评估回滚代价。</p>
 <h3 id="105-mysql">10.5 MySQL 特有的坑</h3>
 <ul>

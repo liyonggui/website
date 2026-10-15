@@ -712,19 +712,19 @@ WAIT 语义要点:
 <td style="text-align: left;"><strong>SINGLE_KEY</strong></td>
 <td style="text-align: left;">347,400</td>
 <td style="text-align: left;">239,980</td>
-<td style="text-align: left;"><strong>-31.9%</strong></td>
+<td style="text-align: left;"><strong>-30.9%</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>DISTRIBUTED</strong></td>
 <td style="text-align: left;">480,400</td>
 <td style="text-align: left;">415,820</td>
-<td style="text-align: left;"><strong>-14.4%</strong></td>
+<td style="text-align: left;"><strong>-13.4%</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>SHARDED</strong></td>
 <td style="text-align: left;">521,680</td>
 <td style="text-align: left;">441,240</td>
-<td style="text-align: left;"><strong>-9.3%</strong></td>
+<td style="text-align: left;"><strong>-15.4%</strong></td>
 </tr>
 </tbody>
 </table>
@@ -743,22 +743,25 @@ WAIT 语义要点:
 <td style="text-align: left;"><strong>SINGLE_KEY</strong></td>
 <td style="text-align: left;">167,300</td>
 <td style="text-align: left;">83,120</td>
-<td style="text-align: left;"><strong>-46.8%</strong></td>
+<td style="text-align: left;"><strong>-50.3%</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>DISTRIBUTED</strong></td>
 <td style="text-align: left;">169,020</td>
 <td style="text-align: left;">81,940</td>
-<td style="text-align: left;"><strong>-49.8%</strong></td>
+<td style="text-align: left;"><strong>-51.5%</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>SHARDED</strong></td>
 <td style="text-align: left;">172,380</td>
 <td style="text-align: left;">13,180</td>
-<td style="text-align: left;"><strong>-47.1%</strong></td>
+<td style="text-align: left;"><strong>-92.4%</strong></td>
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p>注: SHARDED 的 -92.4% 是多节点 WAIT 串行叠加导致的单独恶化（详见发现 2），SINGLE_KEY / DISTRIBUTED 仍为吞吐腰斩（-50.3% / -51.5%）。</p>
+</blockquote>
 <h3 id="8175">8.17.5 关键发现</h3>
 <h4 id="1-wait-rtt">发现 1: WAIT 退化本质是 RTT 叠加</h4>
 <div class="codehilite"><pre><span></span><code>No WAIT 每批耗时:  t_batch = awaitAll + 调度开销
@@ -766,8 +769,8 @@ Sync WAIT 每批耗时: t_batch + WAIT_RTT
 
 退化率 ∝ WAIT_RTT / t_batch
 
-无延迟时 t_batch ≈ 0.05ms，WAIT_RTT ≈ 0.02ms → 退化 9~32%
-10ms 延迟时 t_batch ≈ 0.6ms，WAIT_RTT ≈ 10ms → 退化 47~50% ← 吞吐腰斩！
+无延迟时 t_batch ≈ 0.05ms，WAIT_RTT ≈ 0.02ms → 退化 13~31%
+10ms 延迟时 t_batch ≈ 0.6ms，WAIT_RTT ≈ 10ms → 退化 50~92%（SINGLE_KEY/DISTRIBUTED 吞吐腰斩，SHARDED 多节点 WAIT 叠加单独恶化至 -92.4%）
 </code></pre></div>
 
 <h4 id="2-sharded-10ms">发现 2: SHARDED 在 10ms 下退化最严重</h4>

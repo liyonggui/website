@@ -179,7 +179,7 @@
 <li><strong>刷盘策略</strong>：降级期数据不能只进 page cache——至少 <code>FileChannel.force(false)</code> 定时（如每 100ms）触发，否则机器宕机一样丢</li>
 </ol>
 <h2 id="_6">六、磁盘水位线（不做就是反向故障）</h2>
-<p>按 5,000 QPS × 200B 估算落盘量：</p>
+<p>按 5,000 QPS × 200B 估算落盘量（= 1,000,000 B/s ≈ 0.95 MB/s）：</p>
 <table>
 <thead>
 <tr>
@@ -190,15 +190,15 @@
 <tbody>
 <tr>
 <td>5 分钟</td>
-<td>~3 GB</td>
+<td>~286 MB</td>
 </tr>
 <tr>
 <td>30 分钟</td>
-<td>~18 GB</td>
+<td>~1.7 GB</td>
 </tr>
 <tr>
 <td>2 小时</td>
-<td>~72 GB</td>
+<td>~6.8 GB</td>
 </tr>
 </tbody>
 </table>

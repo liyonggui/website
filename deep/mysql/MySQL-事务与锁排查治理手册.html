@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>MySQL（InnoDB）事务与锁排查治理手册 · 小番茄程序猿</title>
-<meta name="description" content="适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…"/>
+<meta name="description" content="适用环境：生产 MySQL 8.4.10。覆盖生产配置基线、事务与锁原理、可粘贴排查 SQL、治理处置与预防最佳实践。注：MySQL 并无 idle_transaction_timeout（MariaDB 特性，报 1193 属正常），空闲事务防护用 wait_timeout + 连接池 + 定时 KILL。"/>
 <meta name="keywords" content="MySQL, 事务, 锁, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="MySQL（InnoDB）事务与锁排查治理手册 · 小番茄程序猿" />
-<meta property="og:description" content="适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…" />
+<meta property="og:description" content="适用环境：生产 MySQL 8.4.10。覆盖生产配置基线、事务与锁原理、可粘贴排查 SQL、治理处置与预防最佳实践。注：MySQL 并无 idle_transaction_timeout（MariaDB 特性，报 1193 属正常），空闲事务防护用 wait_timeout + 连接池 + 定时 KILL。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL（InnoDB）事务与锁排查治理手册", "description": "适用环境：生产 MySQL 8.4.10（经实测为裁剪/云版本——标准 8.4 应有的 idletransactiontimeout 在本实例报 1193 Unknown syst…", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-23", "keywords": "MySQL, 事务, 锁, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL（InnoDB）事务与锁排查治理手册", "description": "适用环境：生产 MySQL 8.4.10。覆盖生产配置基线、事务与锁原理、可粘贴排查 SQL、治理处置与预防最佳实践。注：MySQL 并无 idle_transaction_timeout（MariaDB 特性，报 1193 属正常），空闲事务防护用 wait_timeout + 连接池 + 定时 KILL。", "url": "https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/MySQL-%E4%BA%8B%E5%8A%A1%E4%B8%8E%E9%94%81%E6%8E%92%E6%9F%A5%E6%B2%BB%E7%90%86%E6%89%8B%E5%86%8C.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-23", "keywords": "MySQL, 事务, 锁, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -52,7 +52,7 @@
   <div class="article-layout">
     <article class="prose">
 <blockquote>
-<p>适用环境：生产 <strong>MySQL 8.4.10</strong>（经实测为<strong>裁剪/云版本</strong>——标准 8.4 应有的 <code>idle_transaction_timeout</code> 在本实例报 <code>1193 Unknown system variable</code>，故<strong>所有参数务必先探针确认存在，再 <code>SET PERSIST</code></strong>）。
+<p>适用环境：生产 <strong>MySQL 8.4.10</strong>（Oracle 官方版本）。注意：<code>idle_transaction_timeout</code> 报 <code>1193 Unknown system variable</code> 属<strong>正常现象</strong>——该变量是 <strong>MariaDB 10.3+</strong> 的特性，Oracle MySQL 从未提供，不是实例被裁剪。空闲事务防护用 <code>wait_timeout</code> + 连接池 + 定时 KILL（第 7 节方案）；其他参数仍建议先探针确认存在，再 <code>SET PERSIST</code>。
 本手册覆盖：生产可执行配置基线、事务与锁原理、排查工具箱（可直接粘贴的 SQL）、治理与处置、预防最佳实践。
 整理日期：2026-09-22</p>
 </blockquote>
@@ -73,7 +73,7 @@
 <h2 id="1">1. 使用说明与环境判定</h2>
 <p><strong>三条使用纪律</strong>：</p>
 <ol>
-<li><strong>先探针，再设置</strong>。本实例是裁剪版，别假设「标准 8.4 参数都在」。任何 <code>SET PERSIST</code> 前，先用 <code>SHOW GLOBAL VARIABLES LIKE 'xxx';</code> 或 <code>SELECT @@xxx;</code> 确认存在，否则报 <code>1193</code>。</li>
+<li><strong>先探针，再设置</strong>。不同 build / 云实例的参数集有差异，别假设「标准 8.4 参数都在」。任何 <code>SET PERSIST</code> 前，先用 <code>SHOW GLOBAL VARIABLES LIKE 'xxx';</code> 或 <code>SELECT @@xxx;</code> 确认存在，否则报 <code>1193</code>。</li>
 <li><strong>动态 vs 只读</strong>。多数超时/日志/事务参数是<strong>动态</strong>的，可 <code>SET PERSIST</code>（写 <code>mysqld-auto.cnf</code>，重启保留）；<code>performance_schema</code>、<code>innodb_buffer_pool_size</code> 之外的部分底层参数、复制架构参数需改 <strong>my.cnf + 重启</strong>。</li>
 <li><strong>生产红线</strong>：为处理单个卡死会话，<strong>绝不重启整库</strong>；<code>SET GLOBAL</code>/<code>SET PERSIST</code> 会影响<strong>新建连接</strong>，改前评估、改后观察。</li>
 </ol>
@@ -103,7 +103,7 @@
 </code></pre></div>
 
 <blockquote>
-<p>说明：<code>idle_transaction_timeout</code> 系列本 build 无（<code>✗ 本build无此参数</code>），改用第 7 节的「连接池 + 定时 KILL」防空闲事务。</p>
+<p>说明：MySQL 没有 <code>idle_transaction_timeout</code>（MariaDB 特性，任何 MySQL 版本执行都报 1193），改用第 7 节的「连接池 + 定时 KILL」防空闲事务。</p>
 </blockquote>
 <hr />
 <h2 id="2-sql">2. 生产常用配置基线（可执行 SQL）</h2>
@@ -125,7 +125,7 @@
 <span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">innodb_print_all_deadlocks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">ON</span><span class="p">;</span><span class="w">     </span><span class="c1">-- 所有死锁写入 error log</span>
 <span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">innodb_deadlock_detect</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">ON</span><span class="p">;</span><span class="w">         </span><span class="c1">-- 保持开启（默认 ON）</span>
 
-<span class="c1">-- ④ 空闲连接超时：与连接池 maxLifetime 对齐（本 build 无 idle_transaction_timeout，靠它+池回收兜底）</span>
+<span class="c1">-- ④ 空闲连接超时：与连接池 maxLifetime 对齐（MySQL 无 idle_transaction_timeout，靠它+池回收兜底）</span>
 <span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">wait_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="p">;</span><span class="w">                  </span><span class="c1">-- 非交互连接空闲 10min 断开</span>
 <span class="k">SET</span><span class="w"> </span><span class="n">PERSIST</span><span class="w"> </span><span class="n">interactive_timeout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="p">;</span><span class="w">           </span><span class="c1">-- 交互连接同上</span>
 </code></pre></div>
@@ -376,7 +376,7 @@
 <li>极端情况影响性能与空间。</li>
 </ul>
 <blockquote>
-<p>治理要点同 PG：<strong>长事务是万恶之源</strong>，靠「短事务 + 及时提交 + 超时兜底 + 定时巡检 KILL」。本 build 无 <code>idle_transaction_timeout</code>，见第 7 节替代方案。</p>
+<p>治理要点同 PG：<strong>长事务是万恶之源</strong>，靠「短事务 + 及时提交 + 超时兜底 + 定时巡检 KILL」。MySQL 无 <code>idle_transaction_timeout</code>（MariaDB 特性），见第 7 节替代方案。</p>
 </blockquote>
 <p><strong>两类「事务挂着」</strong>（处置与预防都不同）：</p>
 <table>
@@ -562,7 +562,7 @@
 <p><strong>7.3 DBA / 监控侧</strong></p>
 <ul>
 <li><strong>定时巡检长事务/空闲事务</strong>（第 5.7 的 SQL），超阈值（如 &gt;5min）告警到运维群，把「挂两天」扼杀在「挂十分钟」。</li>
-<li><strong>本 build 无 <code>idle_transaction_timeout</code> 的替代方案</strong>——用 MySQL Event（或外部 crontab）定期自动 KILL 空闲未提交事务：</li>
+<li><strong>MySQL 无 <code>idle_transaction_timeout</code></strong>（该变量属 MariaDB，MySQL 上执行报 1193）的替代方案——用 MySQL Event（或外部 crontab）定期自动 KILL 空闲未提交事务：</li>
 </ul>
 <div class="codehilite"><pre><span></span><code><span class="c1">-- 需 event_scheduler=ON（SET PERSIST event_scheduler=ON; 或 my.cnf）</span>
 <span class="k">DELIMITER</span><span class="w"> </span><span class="err">$$</span>
@@ -591,7 +591,7 @@
 <hr />
 <h2 id="8">8. 常见坑与注意事项</h2>
 <ul>
-<li><strong>本实例是裁剪/云版</strong>：<code>idle_transaction_timeout</code> 等标准参数可能缺失（<code>1193</code>）。<strong>任何参数先探针再设</strong>，别照搬标准 8.4 清单。</li>
+<li><strong>MySQL 没有 <code>idle_transaction_timeout</code></strong>：该变量是 MariaDB 10.3+ 特性，在 MySQL 8.4 上执行会报 <code>1193 Unknown system variable</code>——这不是实例被裁剪，而是变量本身不属于 MySQL。空闲事务用 <code>wait_timeout</code> + 连接池 + 定时 KILL（第 7 节方案）。<strong>其他参数仍建议先探针再设</strong>，别照搬标准清单。</li>
 <li><strong><code>max_execution_time</code> 只管 <code>SELECT</code></strong>，<strong>拦不住跑飞的 <code>UPDATE/DELETE</code></strong>——大 DML 无语句级超时兜底，只能靠「走索引 + 分批 + <code>KILL</code>」。</li>
 <li><strong><code>lock_wait_timeout</code> 默认 1 年</strong>＝「ALTER 无限期卡住」的元凶，务必调小（如 60s，DDL 会话级设 5s）。</li>
 <li><strong>MDL 排队优先</strong>：一个等独占锁的 DDL 会把后续所有该表查询堵死，雪崩比 PG 更突然——先杀元凶再谈优化。</li>
@@ -680,7 +680,7 @@
 </tr>
 <tr>
 <td>空闲事务超时</td>
-<td><code>idle_transaction_timeout</code>(本build无)</td>
+<td>无对应变量（MariaDB 的 <code>idle_transaction_timeout</code> 不适用于 MySQL；用 <code>wait_timeout</code> + 连接池 + Event 定时 KILL）</td>
 <td><code>idle_in_transaction_session_timeout</code></td>
 </tr>
 <tr>
@@ -695,7 +695,7 @@
 </blockquote>
 <hr />
 <blockquote>
-<p>维护说明：参数取值按实际业务量级压测后微调，先分档、后迭代；本 build 缺失的参数以探针结果为准。</p>
+<p>维护说明：参数取值按实际业务量级压测后微调，先分档、后迭代；不同 build / 云实例缺失的参数以探针结果为准。</p>
 </blockquote>
     </article>
     <aside class="toc-side"><details class="toc" open>

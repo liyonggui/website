@@ -59,33 +59,34 @@
 <p><strong>闭环压测中，客户端要等上一个请求返回才发下一个。于是当系统变慢时，客户端"自动配合"降低了施压速率——最慢的那批请求根本没被完整计入样本。结果：系统越卡，你测到的延迟越好看。</strong></p>
 <p>这就是"协同（coordinated）"的含义：<strong>压测工具和被测系统"协作"把问题隐藏了。</strong></p>
 <h2 id="_2">二、一个能算清楚的例子</h2>
-<p>假设某服务真实性质：<strong>99% 请求 1ms，1% 请求 1000ms</strong>（每 100 个有 1 个慢 1 秒）。</p>
-<p>用 <strong>1 个 VU</strong> 闭环压测 10 秒：</p>
+<p>先修一个老版本写错的算术：服务"99% 请求 1ms、1% 请求 1000ms"，用 <strong>1 个 VU</strong> 闭环压 10 秒——VU 顺序发请求，每次发什么和上次等多久无关，所以样本里慢请求占比<strong>仍然是 1%</strong>。老版写"快请求 ~9,900 个 + 慢请求 ~10 个、占比稀释成 0.1%"，那是 19.9 秒的工作量，10 秒内根本发不完；单 VU 闭环扭曲的是<strong>吞吐</strong>（平均延迟 10.99ms → 约 91 req/s，其中 1% 慢请求贡献了 10ms），不是延迟分布的形状。</p>
+<p>真正的稀释发生在<strong>多 VU + 同步卡顿</strong>：10 个 VU 闭环，服务每 10 秒集体卡 1 秒（GC、下游抖动、锁竞争都长这样）。</p>
 <table>
 <thead>
 <tr>
 <th></th>
-<th>发生了什么</th>
-<th style="text-align: right;">样本数</th>
+<th>同样 10 秒窗口</th>
+<th style="text-align: right;">慢请求样本</th>
+<th style="text-align: right;">占比</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>快请求（1ms）</td>
-<td>1 秒内能连发约 1000 个</td>
-<td style="text-align: right;">~9,900 个</td>
+<td>开环 100 req/s</td>
+<td>发出 1000 个，卡顿那 1 秒里发出的 100 个全慢</td>
+<td style="text-align: right;">100</td>
+<td style="text-align: right;"><strong>10%</strong></td>
 </tr>
 <tr>
-<td>慢请求（1000ms）</td>
-<td>每碰到一次，这 1 秒就"什么都没发"</td>
-<td style="text-align: right;">~10 个</td>
+<td>闭环 10 VU</td>
+<td>卡顿只困住每个 VU 各 1 个在途请求；其余 9 秒里 10 VU 各发约 9,000 个</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;"><strong>≈0.011%</strong></td>
 </tr>
 </tbody>
 </table>
-<p>测出来：慢请求占比 = 10 / 9,910 ≈ <strong>0.1%</strong></p>
-<p>真实情况：慢请求占比 = <strong>1%</strong></p>
-<p><strong>慢请求被系统性降权了 10 倍。</strong> 你想看 p99，结果 p99 附近的那条尾巴被压测工具自己"协调"掉了。</p>
-<p>极端化一下更直观：如果慢请求是 10 秒，那 1 个 VU 在整个测试期间只能发出个位数次慢请求——<strong>你测出的 p99.9 可能一次都没覆盖到它。</strong></p>
+<p><strong>同样一次卡顿，闭环样本里只留下 10 个慢请求，开环会留下 100 个——差距就是 VU 数。</strong> 再叠加闭环在非卡顿期的高吞吐（90,000 vs 1,000），占比被稀释约三个数量级。这就是"系统越卡，你测到的延迟越好看"的算术本质：<strong>客户端用"干脆不发"来配合系统，而真实用户不会。</strong></p>
+<p>极端化一下更直观：如果单次卡顿要 10 秒，那 1 个 VU 在 10 秒的测试里最多撞上 1 次——<strong>你测出的 p99.9 直接没有样本。</strong></p>
 <h2 id="vs">三、闭环 vs 开环：回答的是两个不同问题</h2>
 <table>
 <thead>

@@ -96,7 +96,7 @@
 <ul>
 <li>位数组大小 m（<strong>bit 单位</strong>）：<code>m = -(n × ln p) / (ln 2)²</code>（n=预估最大元素数，p=目标误判率）；</li>
 <li>哈希函数个数 k：<code>k = (m/n) × ln 2 ≈ 0.7 × (m/n)</code>；</li>
-<li>例：n=1 亿、p=0.01% → m≈958MB、k≈7；<strong>实际内存 ≈ m/8 字节</strong>（bit→byte）；</li>
+<li>例：n=1 亿、p=0.01% → m ≈ 1.92×10⁹ bit ≈ 240MB、k ≈ 13；<strong>实际内存 ≈ m/8 字节</strong>（bit→byte）；</li>
 <li><strong>容量必须按历史峰值 × 冗余（建议 2~4 倍）预估</strong>，并配套监控与自动告警（填充率阈值 60%/75%/90%），避免超载；超出容量后误判率急剧上升，且无扩容手段（需重建）。</li>
 </ul>
 <p><strong>5. 架构取舍</strong></p>
@@ -960,7 +960,7 @@ CONFIG GET hash-max-listpack-value</code>
 <li>因此"刻意限容保 listpack"不是银弹：field 逼近 128 时 hashtable 反而更稳。</li>
 </ul>
 <blockquote>
-<p>🔴 <strong>hashtable 的红线：严禁对大 Hash 做 HGETALL</strong>。500 field 的 hashtable 做 HGETALL 是 O(N) 全量读取，实测阻塞主线程 4.4 秒、16 条 slowlog（场景 5）。同理，Set 的 hashtable 做 SMEMBERS 慢 30 倍+（14K vs 476K ops/s，场景 11）。<strong>大 hashtable 必须用 HGET/HMGET 按需取，或 HSCAN 分页。</strong></p>
+<p>🔴 <strong>hashtable 的红线：严禁对大 Hash 做 HGETALL</strong>。1000 field 的 hashtable 做 HGETALL 是 O(N) 全量读取，实测阻塞主线程 avg 3015ms / max 4682ms、slowlogΔ 44（场景 11）。同理，Set 的 hashtable 做 SMEMBERS 慢 30 倍+（14K vs 476K ops/s，场景 11）。<strong>大 hashtable 必须用 HGET/HMGET 按需取，或 HSCAN 分页。</strong></p>
 </blockquote>
 <p><strong>HSCAN 使用注意</strong>：<code>count</code> 只是 hint（不保证精确返回条数），返回可能重复且<strong>不保证顺序</strong>——需做去重 + 游标结束检测；<strong>避免在 Lua 脚本中做长循环 HSCAN</strong>（阻塞主线程）。若需全量消费，建议后台异步分批导出，或从业务层分页读取并降峰。</p>
 <h4 id="613">6.1.3 生产规范</h4>
@@ -1255,7 +1255,7 @@ CONFIG GET hash-max-listpack-value</code>
 <ul>
 <li><strong>热点 Key 是 Cluster 单点瓶颈</strong>：<code>slot = CRC16(key) % 16384</code> 固定映射，高频 INCR 全部路由到同一 master，水平扩展不分散同 key 负载；</li>
 <li><strong>单点写入放大复制压力</strong>：replication backlog 被覆盖 → psync 失效 → 触发全量同步 → BGSAVE/COW 爆发；</li>
-<li>五种模式实测：SINGLE_KEY 直连 ~307K cmd/s；<strong>LOCAL_BUFFERED 本地 Atomic 自增 + 定期 INCRBY 刷写达 ~35,000,000/s</strong>；COMPUTED 本地计算 + 批量写回 ~95,000,000/s（Redis 每秒仅 1 次写）；</li>
+<li>五种模式实测：SINGLE_KEY 直连 359,610 cmd/s（sweep 5s 预热 + 15s 采样口径）；<strong>LOCAL_BUFFERED 本地 Atomic 自增 + 定期 INCRBY 刷写达 ~35,000,000/s</strong>；COMPUTED 本地计算 + 批量写回 ~95,000,000/s（Redis 每秒仅 1 次写）；</li>
 <li><strong>结论</strong>：需要强一致/实时去重 → 用 Lua/WAIT/单点原子（牺牲吞吐）；否则优先"计算在应用层，汇总写回 Redis"（LOCAL_BUFFERED/COMPUTED），本地吞吐千万级/s，且不受网络 RTT 影响（RTT&gt;2ms 应切本地方案）。</li>
 </ul>
 <h3 id="72-key">7.2 大 Key</h3>
@@ -1495,7 +1495,7 @@ CLUSTER NODES
 <p><strong>生产最优</strong>：Raw ZADD 实时写 + 异步定时 ZREMRANGEBYRANK 裁剪。</p>
 <h3 id="112-ttl-key-3">11.2 短期 TTL 海量过期 key（场景 3）</h3>
 <p><strong>核心问题</strong>：大量秒级 TTL key 同时到期，active-expire 采样式扫描抢占主线程，P99 抖动。</p>
-<p><strong>三种武器实测对比</strong>：</p>
+<p><strong>五轮优化组合实测对比（场景3 优化验证 1-4）</strong>：</p>
 <table>
 <thead>
 <tr>
@@ -1503,6 +1503,8 @@ CLUSTER NODES
 <th style="text-align: left;">① 基线（固定TTL）</th>
 <th style="text-align: left;">② Redis 层（hz=50,effort=2,lazyfree）</th>
 <th style="text-align: left;">③ 应用层（TTL+rand）</th>
+<th style="text-align: left;">④ 全量组合（打散+hz=50+effort=2+lazyfree）</th>
+<th style="text-align: left;">⑤ 打散+lazyfree</th>
 </tr>
 </thead>
 <tbody>
@@ -1511,18 +1513,32 @@ CLUSTER NODES
 <td style="text-align: left;"><strong>51~159ms</strong></td>
 <td style="text-align: left;"><strong>5.6~17ms</strong></td>
 <td style="text-align: left;">6.7~34ms</td>
+<td style="text-align: left;">6.0~16ms</td>
+<td style="text-align: left;"><strong>5.0~15ms</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>max</strong></td>
 <td style="text-align: left;"><strong>82~262ms</strong></td>
 <td style="text-align: left;"><strong>8~41ms</strong></td>
 <td style="text-align: left;">12~123ms</td>
+<td style="text-align: left;">13~85ms</td>
+<td style="text-align: left;"><strong>7~41ms</strong></td>
 </tr>
 <tr>
 <td style="text-align: left;">吞吐</td>
 <td style="text-align: left;">37k~236k/s</td>
-<td style="text-align: left;"><strong>384k~471k/s</strong></td>
+<td style="text-align: left;">384k~471k/s</td>
 <td style="text-align: left;">187k~432k/s</td>
+<td style="text-align: left;">329k~466k/s</td>
+<td style="text-align: left;"><strong>423k~481k/s</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">综合评分</td>
+<td style="text-align: left;">❌</td>
+<td style="text-align: left;">⭐⭐⭐⭐</td>
+<td style="text-align: left;">⭐⭐⭐</td>
+<td style="text-align: left;">⭐⭐⭐</td>
+<td style="text-align: left;">⭐⭐⭐⭐⭐（最佳）</td>
 </tr>
 </tbody>
 </table>
@@ -1530,8 +1546,8 @@ CLUSTER NODES
 <ol>
 <li><strong>P99 尖刺根因</strong>：active-expire 在主线程采样式扫描 + 同步释放内存。</li>
 <li><code>hz</code> 控制扫描频率（密度），<code>effort</code> 控制单次扫描深度（阻塞），<code>lazyfree-lazy-expire</code> 只异步化内存回收，<strong>不消除扫描开销</strong>。</li>
-<li><strong>决策树</strong>：能改配置 → 开 lazyfree + 短 TTL 用 hz=50/effort=2；能改应用 → TTL 随机打散（P99: 159→34ms）；都不能 → 横向拆分或接受 P99&gt;50ms。</li>
-<li><strong>实测最优组合</strong>：<code>hz=50 + effort=2 + lazyfree=yes</code>，P99 从 159ms→16.96ms（↓9.3 倍），吞吐翻倍。</li>
+<li><strong>决策树</strong>：能改配置 → 开 lazyfree + 短 TTL 用 hz=50/effort=2（②）；能改应用 → TTL 随机打散（③: P99 159→34ms；再配合 lazyfree 即 ⑤: P99→5.0~15ms，五轮最佳）；都不能 → 横向拆分或接受 P99&gt;50ms。</li>
+<li><strong>实测最优组合</strong>：<strong>⑤ = TTL 打散 + <code>lazyfree-lazy-expire=yes</code></strong>（P99 5.0~15ms、稳态吞吐 423k~481k）；不能改代码时最优为 ②（<code>hz=50 + effort=2 + lazyfree</code>，P99 5.6~17ms）。<strong>避免 ④</strong>（打散+hz=50+effort=2 全叠）——④ 与 ⑤ 的差距在 hz/effort 而非打散本身。</li>
 <li>长 TTL 周期批量写入 → 质数/互质 TTL 打破 LCM 汇集。</li>
 </ol>
 <h3 id="113-4">11.3 分布式信号量（场景 4）</h3>

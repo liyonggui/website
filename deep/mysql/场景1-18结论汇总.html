@@ -61,7 +61,7 @@
 - <strong>atomic（原子 UPDATE）</strong>：<code>UPDATE t_stock SET stock=stock-1 WHERE stock&gt;0</code>，单行原子、无超卖、吞吐最高，单库首选。
 - <strong>pessimistic（悲观锁）</strong>：<code>SELECT FOR UPDATE</code>，无超卖、安全，但并发锁等待、吞吐低。
 - <strong>optimistic（乐观锁版本号）</strong>：无超卖，高冲突下重试开销大。</p>
-<p><strong>实测</strong>：多行分布式下 atomic 吞吐 &gt; pessimistic &gt; optimistic；单行热点 atomic 远胜悲观锁。
+<p><strong>实测</strong>：多行分布式下 atomic（2204 QPS）&gt; optimistic（2054）&gt; pessimistic（1765）；单行热点下 atomic 与 pessimistic 吞吐相当（103 vs 114 QPS，差异在噪声范围内，均受单行行锁串行化限制）——atomic 的优势是"正确 + 代码最简"，不是绝对吞吐。
 <strong>工程结论</strong>：单行热点优先 atomic；多行/分布式用乐观锁或分库；悲观锁仅一致性要求极高时用。</p>
 <hr />
 <h2 id="2">场景2：事务隔离级别</h2>
@@ -154,8 +154,11 @@
 - <strong>owner 防误删</strong>：释放校验 owner，防误删他人锁。
 - <strong>过期续期</strong>：expire 防持有者宕机死锁，可续期。
 - <strong>悲观锁 FOR UPDATE</strong>：行锁互斥临界区。</p>
-<p><strong>实测</strong>：分布式锁下临界区 0 丢失更新；无锁则丢失更新（lostUpdates=-949）。吞吐：分布式锁 166 vs 无锁 11467（一致性换吞吐）。
+<p><strong>实测</strong>：分布式锁下临界区 0 丢失更新；无锁则出现丢失更新（<code>lostUpdates ≠ 0</code>）；分布式锁吞吐显著低于无锁读（一致性换吞吐）。</p>
+<blockquote>
+<p>🟡 <strong>数据订正</strong>：本篇早期版本引用的 <code>lostUpdates=-949</code>、吞吐「分布式锁 166 vs 无锁 11467」在全站无出处（场景12 原文只有定性描述、无具体数字），已删除；待场景12 补测留档后更新。
 <strong>工程结论</strong>：MySQL 锁表简单可靠，适合一致性高、并发中等；超高并发用 Redis/Redisson。注意：Seata（分布式事务）≠ 分布式锁，解决不同问题。</p>
+</blockquote>
 <hr />
 <h2 id="13innodb">场景13：InnoDB 参数调优</h2>
 <p><strong>结论</strong>：调优本质是<strong>「性能 vs 持久性」权衡</strong>。

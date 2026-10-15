@@ -1100,13 +1100,16 @@ t=7    M 恢复网络 → Sentinel 发 SLAVEOF → M 降级为 slave
 脑裂时旧主角色        master                  master（不变）
 脑裂时旧主写入        接受 ❌→ 数据分裂        拒绝 ✅→ 哑火
 恢复后数据丢失        隔离窗口内 100%         0 ✅
-最大 master 数        ？个（理论无上限）        2 个（1 个哑火 + 1 个活的）
+最大 master 数        2 个（1 个哑火 + 1 个活的）  2 个（1 个哑火 + 1 个活的）
 
 公式:
   防脑裂的最小值 = 1（无论有多少个 replica）
   防 N-1 个 replica 同时挂的值 = N（冗余度的需求，不是脑裂防护的需求）
 </code></pre></div>
 
+<blockquote>
+<p>注：「最大 master 数」与 <code>min-replicas-to-write</code> 取值无关——一次 failover 只产生一个新主，任意时刻同时存在的 master 上限就是 2（哑火旧主 + 新主）；两种配置的区别只在旧主是否继续接受写入。</p>
+</blockquote>
 <h3 id="101110-replica">10.11.10 双刃剑：replica 全部宕机时的可用性</h3>
 <p><strong><code>min-replicas-to-write</code> 防得了脑裂，但防不了"replica 真的全挂了"。</strong></p>
 <h4 id="_2">场景</h4>
@@ -1223,7 +1226,7 @@ Replica 全挂           拒绝写入 ⚠️          只是没新写入        
 → 最多 2 个 master                            → 该 slot 出现新主分片
                                                → 最多 6 个 master（3 旧 + 3 新）
 影响全部数据                                  影响按 slot 粒度（仅隔离主分片负责的 slot）
-无 epoch 保护                                有 epoch，但仅在恢复后生效——隔离期间旧主照写不误
+无 epoch 保护                                有 epoch，但仅在恢复后收敛；隔离期间旧主在 node-timeout 检测窗口内仍可写入
 </code></pre></div>
 
 <h4 id="cluster">Cluster 脑裂示意</h4>
@@ -1264,7 +1267,7 @@ M1 + M2 同时隔离:
 <tr>
 <td>隔离中</td>
 <td>旧主分片 epoch 未变，仍认为自己是 master</td>
-<td><strong>接受写入</strong> ❌</td>
+<td><strong>检测窗口内接受写入</strong> ❌（node-timeout 过后默认 full-coverage 拒写）</td>
 </tr>
 <tr>
 <td>恢复后</td>
@@ -1273,7 +1276,7 @@ M1 + M2 同时隔离:
 </tr>
 </tbody>
 </table>
-<p><strong>epoch 只管事后清理，不管事前阻止。</strong> 就脑裂来说，Cluster 和 Sentinel 面临完全相同的问题：主分片不检查副分片健康状态就接受写入。</p>
+<p><strong>epoch 只管事后清理，不管事前阻止。</strong> 就脑裂来说，Cluster 与 Sentinel 类似但不等同：默认 full-coverage 下 Cluster 旧主的写窗口仅限 node-timeout 检测期（过后 CLUSTERDOWN 拒写），Sentinel 旧主在未配 <code>min-replicas-to-write</code> 时持续接受写入；且 Cluster 恢复后靠 epoch 自动降级收敛，Sentinel 靠 failover 提升新主。</p>
 <h4 id="_7">解决方案：完全相同</h4>
 <p><code>min-replicas-to-write</code> 同样适用于 Cluster 的每个主分片，原理一模一样：</p>
 <div class="codehilite"><pre><span></span><code><span class="c1"># 在 Cluster 每个主分片上执行（或写入 redis.conf）</span>
@@ -1800,13 +1803,13 @@ redis-cli<span class="w"> </span>-p<span class="w"> </span><span class="m">7000<
 <tbody>
 <tr>
 <td>范围</td>
-<td style="text-align: center;">1 个主分片</td>
-<td style="text-align: center;">集群分裂为两个以上分区</td>
+<td style="text-align: center;">1 个主分片（其余节点仍可 failover 恢复该 slot 服务）</td>
+<td style="text-align: center;">集群分裂为两个以上分区，所有节点 CLUSTERDOWN</td>
 </tr>
 <tr>
-<td>隔离节点行为</td>
-<td style="text-align: center;">仍接受写入（默认）</td>
-<td style="text-align: center;"><strong>拒绝写入</strong>（<code>cluster-require-full-coverage</code>）</td>
+<td>隔离节点写入</td>
+<td style="text-align: center;">node-timeout 检测窗口内仍接受，窗口后 CLUSTERDOWN 拒写（默认 full-coverage）</td>
+<td style="text-align: center;">两个分区均 CLUSTERDOWN 拒写</td>
 </tr>
 <tr>
 <td>恢复结果</td>
