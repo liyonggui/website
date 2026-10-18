@@ -31,6 +31,9 @@ draft: false
 | 数据 | sbtest 库，16 表 × 100 万行 ≈ 1600 万行 |
 | Sysbench | 1.0.17（Docker `docker.1ms.run/severalnines/sysbench`）|
 | 账号 | sbuser（mysql_native_password）|
+| 宿主硬件 | **未记录**（CPU 型号/核数、内存容量、磁盘类型均未留档） |
+
+> ⚠ **复现前提**：本文结论是「该硬件上的一次实测上限」，与宿主 CPU/内存/磁盘强相关。换机器、换磁盘（HDD↔SSD）、换 MySQL 参数后结论会变，**必须以本文方法重测**，不要直接搬用数字。补测时应先补齐宿主硬件配置。
 
 ## 三、压测方法
 

@@ -5,3 +5,9 @@ data/comments.md
 # Python 运行缓存
 __pycache__/
 *.pyc
+
+# 本地规划文档：内容保留在工作区，仅不纳入 git 跟踪
+/落地方案.md
+
+# 审计临时输出
+.audit_full.txt

@@ -1,6 +1,6 @@
 ---
 title: "MySQL 故障排查实战总结"
-summary: "User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…"
+summary: "MySQL 生产故障排查实战总结：按问题类别（慢查询、死锁/锁等待/MDL、复制延迟、IO 瓶颈、OOM、服务崩溃、备份恢复、安全权限、字符集、架构热点）整理「症状 → 快速定位命令 → 根因与解决 → 预防建议」，附现场救援命令清单、故障案例、监控告警建议与标准化运维排查流程模板。"
 date: 2026-02-22
 author: "小番茄程序猿"
 tags:
@@ -12,16 +12,7 @@ reading_time: 16
 featured: false
 draft: false
 ---
-# Copilot Chat Conversation Export: MySQL故障排查实战总结
-
-**User:** @liyonggui
-**Thread URL:** https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c1b4d
-
-## @liyonggui
-
-MySQL生产中实际遇到的问题排查总结
-
-## Copilot
+# MySQL 故障排查实战总结
 
 下面是一个可直接用于生产排查的实战总结（按问题类别 → 诊断要点 → 常用命令/快速定位 → 解决思路 → 预防建议）。把它放进运维手册或故障工单模板里即可直接使用。
 
@@ -222,7 +213,6 @@ MySQL生产中实际遇到的问题排查总结
 - 备份与恢复演练：备份不等于可恢复，至少每季度演练恢复流程。
 - 文档化：每次故障都写成 RCA（原因、修复、预防），持续改进 runbook。
 
-如果你希望，我可以：
-- 把上面的内容整理成一个可打印的“一页故障排查速查表”（PDF/Markdown）。
-- 根据你们的 MySQL 版本（如 5.7 / 8.0 / Percona）和部署架构（单机/主从/组复制/云 RDS），定制更具体的配置与阈值建议。
-要哪个我现在就生成？
+---
+
+> **来源说明**：本文整理自 GitHub Copilot Chat 对话导出（@liyonggui，[Thread URL](https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c1b4d)），内容为生产环境 MySQL 故障排查的实战总结；文中命令与阈值需结合自身版本与实际机器调整。

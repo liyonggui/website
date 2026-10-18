@@ -1,6 +1,6 @@
 ---
 title: "场景 1 — Lettuce Pipeline 压测问题排查与优化"
-summary: "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…"
+summary: "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 9 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…"
 date: 2026-06-11
 author: "小番茄程序猿"
 tags:
@@ -18,7 +18,7 @@ draft: false
 
 ## 概述
 
-使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 batch（batchSize 条 SETEX）、`setAutoFlushCommands(false)`、`flushCommands()` + `awaitAll()`。Redis 保持默认持久化关闭（appendonly no、不开 RDB 快照）以聚焦写入路径的性能。
+使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 9 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 batch（batchSize 条 SETEX）、`setAutoFlushCommands(false)`、`flushCommands()` + `awaitAll()`。Redis 保持默认持久化关闭（appendonly no、不开 RDB 快照）以聚焦写入路径的性能。
 
 ## 压测架构
 
@@ -33,7 +33,7 @@ Worker-N ── Redis 连接 N ── [SETEX × batchSize] ── flushCommands 
 - `setAutoFlushCommands(false)` 开启 Pipeline 模式
 - 批量攒满后一次性 `flushCommands()` + `awaitAll()` 等待响应
 
-## 七问题排查与修复
+## 九问题排查与修复
 
 ### 问题 1：Redis CPU 100%，硬件天花板
 
@@ -478,8 +478,7 @@ DEL 和 EXPIRE 的 key 仍是 `"mc:del:" + rng.nextInt(200_000)` 的方式——
 
 #### 8.4 退化根因（服务端视角）
 
-#### 8.4 退化根因（服务端视角）
-
+**根因不在客户端，在服务端单线程的命令执行成本。**
 ```
 单一 SET Pipeline:
   主线程: [RESP 解析] → [SET 路径: dict entry 写入] → [RESP 编码] → 循环
@@ -641,9 +640,9 @@ pipeline.flushCommands();
 
 ---
 
-### 问题 8.9：ZSet 排行榜专项测试（Rounds 6-9）
+### 问题 9：ZSet 排行榜专项测试（Rounds 6-9）
 
-#### 8.9.1 测试动机
+#### 9.1 测试动机
 
 前 5 轮已确认 ZADD（skiplist O(logN)）是混合 Pipeline 的退化第一大元凶。但 Redis ZSet 有两种内部编码：
 
@@ -655,7 +654,7 @@ pipeline.flushCommands();
 2. 排行榜 Top-N 裁剪（Lua 原子判定）能比 Raw ZADD 更快吗？
 3. 高并发下分片是否有优势？
 
-#### 8.9.2 Rounds 6-7: Raw ZADD 单key vs 16分片（高并发 64 连接）
+#### 9.2 Rounds 6-7: Raw ZADD 单key vs 16分片（高并发 64 连接）
 
 **测试配置**：batchSize=200, concurrency=64, warmup=15s + sample=15s。Round 6 先 `prePopulateZset` 插入 500K member 强制触发 skiplist，Round 7 先 `prePopulateZsetShards(16片, 每片50)` 保持初始 listpack。
 
@@ -676,7 +675,7 @@ pipeline.flushCommands();
 
 分片的路由开销（`shardIndex()` 哈希计算 + `shardKey()` 字符串拼接）在热路径上成了纯负收益——listpack 没享受到，路由开销照付不误。
 
-#### 8.9.3 并发数对比：c=8 vs c=64
+#### 9.3 并发数对比：c=8 vs c=64
 
 | Round | 场景 | c=8 cmds/s | c=64 cmds/s | 变化 |
 |-------|------|-----------|------------|------|
@@ -686,7 +685,7 @@ pipeline.flushCommands();
 
 **c=8 时分片有 +16.5% 优势（217K vs 186K），c=64 时优势消失（177K vs 169K）。** 低并发下分片的路由开销被 listpack 的优势盖过；高并发下全部秒转 skiplist，路由开销凸显。
 
-#### 8.9.4 Rounds 8-9: 排行榜 Top-N 裁剪对比（Lua vs Pipeline）
+#### 9.4 Rounds 8-9: 排行榜 Top-N 裁剪对比（Lua vs Pipeline）
 
 Round 8/9 的目标是模拟生产排行榜：**ZSet member 数永远 ≤ N，member 数稳定后编码永不退化**。对比了两种实现：
 
@@ -731,7 +730,7 @@ futures.add(async.zremrangebyrank(key, 0, -(maxSize + 1)));
 
 `ZREMRANGEBYRANK` 本身有 O(log N) 的定位开销，高频触发时开销不容忽视。
 
-#### 8.9.5 ZSet 分片机制详解
+#### 9.5 ZSet 分片机制详解
 
 **分片原理**：将一个大 ZSet 按 member hash 路由到 N 个分片，每个分片独立保持 listpack 编码（< 128 member）。
 
@@ -760,7 +759,7 @@ rng.nextInt() → member 查表 → hashCode() → 位混合 → 取模 → Stri
 
 **本例中全不满足**：高写入速率 + 全量写入 + 无容量限制 → 分片纯粹增加 CPU 开销。
 
-#### 8.9.6 生产排行榜最佳实践
+#### 9.6 生产排行榜最佳实践
 
 | 方案 | 命令数/次 | 吞吐 (c=64) | 延迟 | 适用场景 |
 |------|----------|------------|------|----------|
@@ -792,7 +791,7 @@ futures.add(async.zadd("leaderboard", score, member));
 redis.zremrangebyrank("leaderboard", 0, -(TOP_N + 1));
 ```
 
-#### 8.9.7 ZSet 专项测试结论
+#### 9.7 ZSet 专项测试结论
 
 ```
 实测结论（Rounds 6-9, c=64）:
@@ -856,8 +855,6 @@ redis.zremrangebyrank("leaderboard", 0, -(TOP_N + 1));
 |------|----------|-------------------------------|------|
 | Top-100 | 93,104 | **104,405** | **+12%** |
 | Top-1000 | 59,688 | **138,225** | **+132%** |
-
-> **说明**：第 5 轮 `3种+ZADD×10` 的 cmds/s 仅 81K，是因为每条 ZADD 携带 10 个成员（命令数被低估）。等效写入速率 ≈ 81K × 4.06 = **332K 次/秒**，比第 3 轮（241K）等效提升 38%。但 P50 从 3ms → 9.4ms、P99 从 8ms → 22.9ms，仅适用离线场景。
 
 > **精度说明**：以上数据为单次压测结果，多次运行存在波动，实际值可能随系统负载、JIT 预热等因素偏离。强烈建议补充 p50/p95/p99 尾部延迟分布、标准差及多次运行的置信区间，以便更全面评估系统行为。
 
@@ -928,6 +925,6 @@ redis.zremrangebyrank("leaderboard", 0, -(TOP_N + 1));
 | 交叉验证 | 使用 `memtier_benchmark` 或 `redis-benchmark` 对比结果，校验自研工具的测试结论是否一致 |
 | AOF/持久化专项测试 | 在单独场景下执行 AOF 持久化测试，记录磁盘 I/O 延迟与 fsync 时长 |
 | 混合命令类型 Pipeline | Pipeline 中混入不同类型命令——**已实测**，详见问题 8。结论：退化由 ZADD 占比主导，建议按类型分拆；ZADD 多元素打包可吞吐换延迟 |
-| **ZSet 排行榜 Top-N 裁剪** | **已实测**（Rounds 6-9），详见 8.9。结论：Pipeline ZADD+ZREMRANGEBYRANK 完胜 Lua EVAL（+12%~132%）；最佳方案为 Raw ZADD + 异步定时裁剪 |
+| **ZSet 排行榜 Top-N 裁剪** | **已实测**（Rounds 6-9），详见问题 9。结论：Pipeline ZADD+ZREMRANGEBYRANK 完胜 Lua EVAL（+12%~132%）；最佳方案为 Raw ZADD + 异步定时裁剪 |
 | **ZSet 分片** | **已实测**。高吞吐写入下 0.16 秒突破 listpack 阈值，路由开销成纯负收益。仅读多写少 + 固定容量场景可用 |
 | **UNLINK 替代 DEL** | DEL 在主线程同步释放内存，UNLINK 异步交由后台线程回收——DEL 占比高时有显著收益 |

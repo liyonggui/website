@@ -1,6 +1,6 @@
 ---
 title: "数据同步工具对比：mysqldump / DataX / Flink CDC"
-summary: "定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。"
+summary: "对比三种 MySQL 数据同步/迁移方案：mysqldump（全量逻辑备份，离线）、DataX（异构库离线批式同步）、Flink CDC（基于 binlog 的实时增量同步）——各自定位、适用场景、依赖条件与选型建议。"
 date: 2026-04-27
 author: "小番茄程序猿"
 tags:

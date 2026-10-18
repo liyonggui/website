@@ -367,9 +367,9 @@ TCP ESTABLISHED 连接数异常增长          →  连接泄漏风险
 # ulimit -n、ifconfig 丢包计数、top/htop
 ```
 
-### 6.12 连接池预热（Pre-warm）
+### 6.11 连接池预热（Pre-warm）
 
-#### 6.12.1 问题：连接池的"首请求惩罚"
+#### 6.11.1 问题：连接池的"首请求惩罚"
 
 ```
 commons-pool2 的连接池默认是懒加载：
@@ -383,7 +383,7 @@ commons-pool2 的连接池默认是懒加载：
   - 导致压测起步阶段出现短暂延迟尖刺
 ```
 
-#### 6.12.2 方案：异步预热
+#### 6.11.2 方案：异步预热
 
 **通用方法（不依赖 `preparePool()` — 所有连接池库都可用）：**
 
@@ -432,7 +432,7 @@ CompletableFuture.runAsync(() -> {
   启动慢 5ms，零风险                       启动快 + 握手照做
 ```
 
-#### 6.12.3 不预热 vs 同步预热 vs 异步预热
+#### 6.11.3 不预热 vs 同步预热 vs 异步预热
 
 | | 不预热 | 同步预热 | 异步预热（推荐） |
 |:--|:--|:--|:--|
@@ -443,7 +443,7 @@ CompletableFuture.runAsync(() -> {
 
 > *如果预热线程跑得比第一个请求慢，第一个请求仍走 lazy borrow，不会报错。
 
-#### 6.12.4 预热适用所有中间件
+#### 6.11.4 预热适用所有中间件
 
 ```
 定律：只要涉及连接池，就值得预热。
@@ -464,9 +464,9 @@ CompletableFuture.runAsync(() -> {
 
 ---
 
-### 6.13 场景 6 总结：生产落地 checklist
+### 6.12 场景 6 总结：生产落地 checklist
 
-#### 6.13.1 问题根源
+#### 6.12.1 问题根源
 
 ```
 问题: 微服务拆分后，每个 Worker 线程独占/新建 Redis 连接 →
@@ -478,7 +478,7 @@ CompletableFuture.runAsync(() -> {
   - 连接创建/保留无上限
 ```
 
-#### 6.13.2 三种方案对比
+#### 6.12.2 三种方案对比
 
 | | DIRECT（裸） | POOL | **DIRECT + Semaphore** ⭐ |
 |:--|:--|:--|:--|
@@ -490,7 +490,7 @@ CompletableFuture.runAsync(() -> {
 | **Pub/Sub** | ✅ 天然 | ✅ 需专用连接 | ✅ 天然 |
 | **推荐场景** | 低并发已知安全 | 多服务共享 Redis | 单租户高吞吐 + 安全兜底 |
 
-#### 6.13.3 poolMaxTotal 安全公式
+#### 6.12.3 poolMaxTotal 安全公式
 
 ```
 poolMaxTotal_per_instance ≤ floor((maxclients - reserved_for_ops) / instance_count / safetyFactor)
@@ -508,7 +508,7 @@ poolMaxTotal_per_instance ≤ floor((maxclients - reserved_for_ops) / instance_c
   directMaxConnections ≤ floor((maxclients - reserved_for_ops) / instance_count / safetyFactor)
 ```
 
-#### 6.13.4 监控告警基线
+#### 6.12.4 监控告警基线
 
 ```
 Redis 侧:
@@ -526,7 +526,7 @@ Redis 侧:
   ephemeral port 使用率 > 60%          →  客户端端口可能耗尽
 ```
 
-#### 6.13.5 核心建议（一条条可执行）
+#### 6.12.5 核心建议（一条条可执行）
 
 ```
 1. 不要让 Worker 无限制 connect(): 客户端侧必须有硬上限（Pool 或 Semaphore）
@@ -541,7 +541,7 @@ Redis 侧:
 10. blocked_clients 表示阻塞命令等待中的客户端（BLPOP/XREAD），非被拒绝的连接
 ```
 
-#### 6.13.6 一句话结论
+#### 6.12.6 一句话结论
 
 > **DIRECT+Semaphore 以仅 10 条连接打满 ~155k cmd/s 吞吐 + Redis 零拒绝 + Pub/Sub 天然支持，是单租户高吞吐场景的最优方案。无论选哪种方案，都必须把 maxclients / reserved_for_ops / instance_count 纳入配置和监控策略。**
 

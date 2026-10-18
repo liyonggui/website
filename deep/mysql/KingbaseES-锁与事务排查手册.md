@@ -4,8 +4,8 @@ summary: "适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境�
 date: 2026-02-15
 author: "小番茄程序猿"
 tags:
-  - MySQL
-  - Elasticsearch
+  - KingbaseES
+  - PostgreSQL
   - 事务
   - 锁
 category: deep
