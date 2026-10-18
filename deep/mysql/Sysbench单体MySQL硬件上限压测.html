@@ -85,8 +85,15 @@
 <td>账号</td>
 <td>sbuser（mysql_native_password）</td>
 </tr>
+<tr>
+<td>宿主硬件</td>
+<td><strong>未记录</strong>（CPU 型号/核数、内存容量、磁盘类型均未留档）</td>
+</tr>
 </tbody>
 </table>
+<blockquote>
+<p>⚠ <strong>复现前提</strong>：本文结论是「该硬件上的一次实测上限」，与宿主 CPU/内存/磁盘强相关。换机器、换磁盘（HDD↔SSD）、换 MySQL 参数后结论会变，<strong>必须以本文方法重测</strong>，不要直接搬用数字。补测时应先补齐宿主硬件配置。</p>
+</blockquote>
 <h2 id="_3">三、压测方法</h2>
 <div class="codehilite"><pre><span></span><code><span class="c1"># prepare 数据（16表×100万）</span>
 sysbench<span class="w"> </span>--db-driver<span class="o">=</span>mysql<span class="w"> </span>--mysql-host<span class="o">=</span>mysql<span class="w"> </span>--mysql-user<span class="o">=</span>sbuser<span class="w"> </span><span class="se">\</span>

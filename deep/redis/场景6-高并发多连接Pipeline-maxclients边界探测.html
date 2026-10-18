@@ -621,8 +621,8 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
 <span class="c1"># ulimit -n、ifconfig 丢包计数、top/htop</span>
 </code></pre></div>
 
-<h3 id="612-pre-warm">6.12 连接池预热（Pre-warm）</h3>
-<h4 id="6121">6.12.1 问题：连接池的"首请求惩罚"</h4>
+<h3 id="611-pre-warm">6.11 连接池预热（Pre-warm）</h3>
+<h4 id="6111">6.11.1 问题：连接池的"首请求惩罚"</h4>
 <div class="codehilite"><pre><span></span><code>commons-pool2 的连接池默认是懒加载：
   创建 Pool → 池空（0 条连接）→ 第一个 Worker borrow → 触发 Supplier → TCP 握手 → 拿到连接
                                                      ↑
@@ -634,7 +634,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
   - 导致压测起步阶段出现短暂延迟尖刺
 </code></pre></div>
 
-<h4 id="6122">6.12.2 方案：异步预热</h4>
+<h4 id="6112">6.11.2 方案：异步预热</h4>
 <p><strong>通用方法（不依赖 <code>preparePool()</code> — 所有连接池库都可用）：</strong></p>
 <div class="codehilite"><pre><span></span><code><span class="c1">// 并非所有客户端库都有 preparePool() API。</span>
 <span class="c1">// 通用做法：后台线程循环 borrow()/return() 若干次以建立 minIdle 连接。</span>
@@ -678,7 +678,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
   启动慢 5ms，零风险                       启动快 + 握手照做
 </code></pre></div>
 
-<h4 id="6123-vs-vs">6.12.3 不预热 vs 同步预热 vs 异步预热</h4>
+<h4 id="6113-vs-vs">6.11.3 不预热 vs 同步预热 vs 异步预热</h4>
 <table>
 <thead>
 <tr>
@@ -718,7 +718,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
 <blockquote>
 <p>*如果预热线程跑得比第一个请求慢，第一个请求仍走 lazy borrow，不会报错。</p>
 </blockquote>
-<h4 id="6124">6.12.4 预热适用所有中间件</h4>
+<h4 id="6114">6.11.4 预热适用所有中间件</h4>
 <div class="codehilite"><pre><span></span><code>定律：只要涉及连接池，就值得预热。
 
   MySQL/PG    → HikariCP 自带 initialization-fail-timeout
@@ -736,8 +736,8 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
 </code></pre></div>
 
 <hr />
-<h3 id="613-6-checklist">6.13 场景 6 总结：生产落地 checklist</h3>
-<h4 id="6131">6.13.1 问题根源</h4>
+<h3 id="612-6-checklist">6.12 场景 6 总结：生产落地 checklist</h3>
+<h4 id="6121">6.12.1 问题根源</h4>
 <div class="codehilite"><pre><span></span><code>问题: 微服务拆分后，每个 Worker 线程独占/新建 Redis 连接 →
      连接数随并发线性增长 → 触发 maxclients → rejected_connections → 业务失败。
 
@@ -747,7 +747,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
   - 连接创建/保留无上限
 </code></pre></div>
 
-<h4 id="6132">6.13.2 三种方案对比</h4>
+<h4 id="6122">6.12.2 三种方案对比</h4>
 <table>
 <thead>
 <tr>
@@ -802,7 +802,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
 </tr>
 </tbody>
 </table>
-<h4 id="6133-poolmaxtotal">6.13.3 poolMaxTotal 安全公式</h4>
+<h4 id="6123-poolmaxtotal">6.12.3 poolMaxTotal 安全公式</h4>
 <div class="codehilite"><pre><span></span><code>poolMaxTotal_per_instance ≤ floor((maxclients - reserved_for_ops) / instance_count / safetyFactor)
 
   reserved_for_ops: 哨兵、监控、运维脚本预留（建议 50~200，视环境调整）
@@ -818,7 +818,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
   directMaxConnections ≤ floor((maxclients - reserved_for_ops) / instance_count / safetyFactor)
 </code></pre></div>
 
-<h4 id="6134">6.13.4 监控告警基线</h4>
+<h4 id="6124">6.12.4 监控告警基线</h4>
 <div class="codehilite"><pre><span></span><code>Redis 侧:
   connected_clients &gt; maxclients × 0.7  →  P1 警告
   connected_clients &gt; maxclients × 0.9  →  P0 紧急
@@ -834,7 +834,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
   ephemeral port 使用率 &gt; 60%          →  客户端端口可能耗尽
 </code></pre></div>
 
-<h4 id="6135">6.13.5 核心建议（一条条可执行）</h4>
+<h4 id="6125">6.12.5 核心建议（一条条可执行）</h4>
 <div class="codehilite"><pre><span></span><code>1. 不要让 Worker 无限制 connect(): 客户端侧必须有硬上限（Pool 或 Semaphore）
 2. 命令型调用优先使用连接池（pool），Pub/Sub 用专用独立长连接或单独 pool
 3. 高吞吐短命命令 + 需要 Pub/Sub → DIRECT + Semaphore（或 Semaphore + 池组合）
@@ -847,7 +847,7 @@ TCP<span class="w"> </span>ESTABLISHED<span class="w"> </span>连接数异常增
 10. blocked_clients 表示阻塞命令等待中的客户端（BLPOP/XREAD），非被拒绝的连接
 </code></pre></div>
 
-<h4 id="6136">6.13.6 一句话结论</h4>
+<h4 id="6126">6.12.6 一句话结论</h4>
 <blockquote>
 <p><strong>DIRECT+Semaphore 以仅 10 条连接打满 ~155k cmd/s 吞吐 + Redis 零拒绝 + Pub/Sub 天然支持，是单租户高吞吐场景的最优方案。无论选哪种方案，都必须把 maxclients / reserved_for_ops / instance_count 纳入配置和监控策略。</strong></p>
 </blockquote>

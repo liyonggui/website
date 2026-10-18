@@ -291,7 +291,7 @@ curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </spa
 - kill master 后，<strong>Sentinel 自动提升 replica 为新 master</strong>（<code>get-master-addr-by-name mymaster</code> 返回 <code>172.19.0.4</code>）
 - <strong>应用层重试 + 哨兵自动跟随新 master</strong> = 写入最终全部成功</p>
 <blockquote>
-<p>在本测试条件下（observeSec=35s + 应用层指数退避重试），所有最终返回成功的批次在新 master 上可见 → 从客户端可用性角度看 failRate=0（零丢失）。注意：这表示写已被复制到至少一个 replica 的内存中（由 WAIT 或复制语义保证），但不等同于写已持久化到磁盘；若需要持久化保证，还应配合 AOF/RDB 策略或更强同步策略。</p>
+<p>在本测试条件下（observeSec=35s + 应用层指数退避重试），所有最终返回成功的批次在新 master 上可见 → 从客户端可用性角度看 failRate=0（零丢失）。注意：这只证明<strong>写入最终被新 master 接受</strong>；本测试未使用 WAIT，异步复制下这些写是否已到达至少一个 replica 的内存<strong>未经验证</strong>（如需该保证，可加 <code>WAIT 1</code> 复测）。同时 failRate=0 也不等同于写已持久化到磁盘；若需要持久化保证，还应配合 AOF/RDB 策略或更强同步策略。</p>
 </blockquote>
 <h3 id="1054-0">10.5.4 集群对比（修复后同样为 0）</h3>
 <blockquote>

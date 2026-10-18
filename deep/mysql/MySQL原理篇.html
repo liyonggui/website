@@ -216,7 +216,7 @@
 <ul>
 <li><strong>作用</strong>：缓存数据页，避免每次访问都读磁盘，大幅提升性能。</li>
 <li><strong>预读</strong>：顺序读时把相邻页一次性读入。</li>
-<li><strong>LRU 淘汰</strong>：8.0 用 LRU+分区（young/old），防全表扫把热点挤出。</li>
+<li><strong>LRU 淘汰</strong>：5.6+ 起为 LRU 分区（young/old 两个子链表），防全表扫把热点挤出。</li>
 <li><strong>脏页刷盘</strong>：后台线程异步把脏页写回磁盘（与 WAL 配合）。</li>
 <li><strong>调优</strong>：<code>innodb_buffer_pool_size</code> 建议物理内存 60%-75%（见 <code>补测B8-容量规划</code>）。</li>
 </ul>
@@ -264,7 +264,7 @@
 <ul>
 <li>解决"写一半断电导致页损坏（partial page）"问题。</li>
 <li>数据页先整页写入双写缓冲（共享表空间），再写实际数据文件。</li>
-<li>崩溃恢复时若页损坏，从双写缓冲还原。<strong>8.0.20+ 默认启用</strong>。</li>
+<li>崩溃恢复时若页损坏，从双写缓冲还原。双写缓冲自 5.5/5.6 起默认启用；MySQL 8.0.20 的变化是双写文件从共享表空间迁入独立的 <code>#innodb_dblwr</code> 文件（数量可由 <code>innodb_doublewrite_files</code> 配置）。</li>
 </ul>
 <blockquote>
 <p>关联 <code>场景13-InnoDB参数调优</code>、<code>补测B8-容量规划</code>。</p>
@@ -733,7 +733,7 @@
 <ul>
 <li><strong>InnoDB 行锁</strong>：基于索引实现（无索引则退化为表锁/全表锁）。</li>
 <li><strong>MyISAM 只有表锁</strong>：并发写性能差。</li>
-<li><strong>无索引条件 UPDATE</strong>：会锁全表（<code>补测4</code> 相关），危险。</li>
+<li><strong>无索引条件 UPDATE</strong>：会锁全表（InnoDB 行锁基于索引实现，无索引条件时锁范围退化为全表），危险。</li>
 </ul>
 <h3 id="54">5.4 间隙锁 / 临键锁（重点）</h3>
 <div class="codehilite"><pre><span></span><code>记录:  ... 10 | 20 | 30 ...
@@ -799,7 +799,7 @@
 </tr>
 <tr>
 <td><strong>SQLSTATE</strong></td>
-<td>HY000 (40001?)</td>
+<td>HY000</td>
 <td>40001</td>
 </tr>
 </tbody>
@@ -1337,8 +1337,8 @@ log_replica_updates = ON             # 从库级联复制
         <li><a href="../../deep/mysql/MySQL事务隔离、锁机制、索引差异 核心汇总文档.html"><span class="rel-title">MySQL事务隔离、锁机制、索引差异 核心汇总文档</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/场景12-分布式锁.html"><span class="rel-title">场景 12 · 分布式锁（基于 MySQL 唯一索引 / 锁表）</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/MySQL-事务与锁排查治理手册.html"><span class="rel-title">MySQL（InnoDB）事务与锁排查治理手册</span><span class="rel-meta">mysql 系列</span></a></li>
-        <li><a href="../../deep/mysql/KingbaseES-锁与事务排查手册.html"><span class="rel-title">KingbaseES / PostgreSQL 锁与长事务排查手册</span><span class="rel-meta">mysql 系列</span></a></li>
         <li><a href="../../deep/mysql/补测B3-热点行锁治理.html"><span class="rel-title">补测 B3 · 热点行锁治理（Redis 缓存前置 / 分段锁）</span><span class="rel-meta">mysql 系列</span></a></li>
+        <li><a href="../../deep/mysql/补测B12-死锁后的应用重试机制.html"><span class="rel-title">补测 B12 · 死锁后的应用重试机制</span><span class="rel-meta">mysql 系列</span></a></li>
       </ul>
     </div>
   </section>

@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>数据同步工具对比：mysqldump / DataX / Flink CDC · 小番茄程序猿</title>
-<meta name="description" content="定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。"/>
+<meta name="description" content="对比三种 MySQL 数据同步/迁移方案：mysqldump（全量逻辑备份，离线）、DataX（异构库离线批式同步）、Flink CDC（基于 binlog 的实时增量同步）——各自定位、适用场景、依赖条件与选型建议。"/>
 <meta name="keywords" content="MySQL, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="数据同步工具对比：mysqldump / DataX / Flink CDC · 小番茄程序猿" />
-<meta property="og:description" content="定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。" />
+<meta property="og:description" content="对比三种 MySQL 数据同步/迁移方案：mysqldump（全量逻辑备份，离线）、DataX（异构库离线批式同步）、Flink CDC（基于 binlog 的实时增量同步）——各自定位、适用场景、依赖条件与选型建议。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "数据同步工具对比：mysqldump / DataX / Flink CDC", "description": "定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。", "url": "https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-27", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "数据同步工具对比：mysqldump / DataX / Flink CDC", "description": "对比三种 MySQL 数据同步/迁移方案：mysqldump（全量逻辑备份，离线）、DataX（异构库离线批式同步）、Flink CDC（基于 binlog 的实时增量同步）——各自定位、适用场景、依赖条件与选型建议。", "url": "https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/%E6%95%B0%E6%8D%AE%E5%90%8C%E6%AD%A5%E5%B7%A5%E5%85%B7%E5%AF%B9%E6%AF%94-mysqldump-DataX-FlinkCDC.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-04-27", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>

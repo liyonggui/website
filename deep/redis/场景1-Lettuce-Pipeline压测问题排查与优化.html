@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>场景 1 — Lettuce Pipeline 压测问题排查与优化 · 小番茄程序猿</title>
-<meta name="description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…"/>
+<meta name="description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 9 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…"/>
 <meta name="keywords" content="Redis, 压测, 缓存, redis"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="场景 1 — Lettuce Pipeline 压测问题排查与优化 · 小番茄程序猿" />
-<meta property="og:description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…" />
+<meta property="og:description" content="使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 9 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 1 — Lettuce Pipeline 压测问题排查与优化", "description": "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…", "url": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-11", "keywords": "Redis, 压测, 缓存, redis"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "场景 1 — Lettuce Pipeline 压测问题排查与优化", "description": "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 9 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…", "url": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/%E5%9C%BA%E6%99%AF1-Lettuce-Pipeline%E5%8E%8B%E6%B5%8B%E9%97%AE%E9%A2%98%E6%8E%92%E6%9F%A5%E4%B8%8E%E4%BC%98%E5%8C%96.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-11", "keywords": "Redis, 压测, 缓存, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -52,7 +52,7 @@
   <div class="article-layout">
     <article class="prose">
 <h2 id="_1">概述</h2>
-<p>使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 batch（batchSize 条 SETEX）、<code>setAutoFlushCommands(false)</code>、<code>flushCommands()</code> + <code>awaitAll()</code>。Redis 保持默认持久化关闭（appendonly no、不开 RDB 快照）以聚焦写入路径的性能。</p>
+<p>使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 9 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 batch（batchSize 条 SETEX）、<code>setAutoFlushCommands(false)</code>、<code>flushCommands()</code> + <code>awaitAll()</code>。Redis 保持默认持久化关闭（appendonly no、不开 RDB 快照）以聚焦写入路径的性能。</p>
 <h2 id="_2">压测架构</h2>
 <div class="codehilite"><pre><span></span><code>Worker-1 ── Redis 连接 1 ── [SETEX × batchSize] ── flushCommands ── awaitAll ── 循环
 Worker-2 ── Redis 连接 2 ── [SETEX × batchSize] ── flushCommands ── awaitAll ── 循环
@@ -65,7 +65,7 @@ Worker-N ── Redis 连接 N ── [SETEX × batchSize] ── flushCommands 
 <li><code>setAutoFlushCommands(false)</code> 开启 Pipeline 模式</li>
 <li>批量攒满后一次性 <code>flushCommands()</code> + <code>awaitAll()</code> 等待响应</li>
 </ul>
-<h2 id="_3">七问题排查与修复</h2>
+<h2 id="_3">九问题排查与修复</h2>
 <h3 id="1redis-cpu-100">问题 1：Redis CPU 100%，硬件天花板</h3>
 <p><strong>现象</strong>：conc=8、batch=500 时 Redis CPU 接近 100%，吞吐约 746k cmds/s（覆盖写场景）。</p>
 <p><strong>根因</strong>：命令执行在 Redis 主线程中完成，这是吞吐的主要瓶颈。Redis 6+ 支持 I/O 线程（io-threads）来减轻网络拷贝/解析开销，但<strong>命令执行本身仍然在主线程中单线程完成</strong>。建议测试是否已开启 io-threads 以评估对网络密集型场景的影响。</p>
@@ -728,7 +728,7 @@ db-&gt;expires (过期字典)
 <p><strong>发现 4：DEL/EXPIRE 的开销被低估——仍有 String 拼接在热路径中</strong></p>
 <p>DEL 和 EXPIRE 的 key 仍是 <code>"mc:del:" + rng.nextInt(200_000)</code> 的方式——<strong>这是当前热路径中仅存的 String 拼接点</strong>，每批 100 条中 20 条在做字符串分配。其他命令（SET/SETEX/HSET/ZADD）的 key 已全部预计算。</p>
 <h4 id="84">8.4 退化根因（服务端视角）</h4>
-<h4 id="84_1">8.4 退化根因（服务端视角）</h4>
+<p><strong>根因不在客户端，在服务端单线程的命令执行成本。</strong></p>
 <div class="codehilite"><pre><span></span><code>单一 SET Pipeline:
   主线程: [RESP 解析] → [SET 路径: dict entry 写入] → [RESP 编码] → 循环
    - 分支预测命中率极高
@@ -977,8 +977,8 @@ io-threads-do-reads<span class="w"> </span>yes
 </code></pre></div>
 
 <hr />
-<h3 id="89zset-rounds-6-9">问题 8.9：ZSet 排行榜专项测试（Rounds 6-9）</h3>
-<h4 id="891">8.9.1 测试动机</h4>
+<h3 id="9zset-rounds-6-9">问题 9：ZSet 排行榜专项测试（Rounds 6-9）</h3>
+<h4 id="91">9.1 测试动机</h4>
 <p>前 5 轮已确认 ZADD（skiplist O(logN)）是混合 Pipeline 的退化第一大元凶。但 Redis ZSet 有两种内部编码：</p>
 <ul>
 <li><strong>listpack</strong>（紧凑数组）：member 数 &lt; <code>zset-max-ziplist-entries</code>（默认 128）时使用，内存小、O(N) 但 N 小时极快</li>
@@ -988,7 +988,7 @@ io-threads-do-reads<span class="w"> </span>yes
 1. ZSet 分片能否避免 listpack→skiplist 退化？
 2. 排行榜 Top-N 裁剪（Lua 原子判定）能比 Raw ZADD 更快吗？
 3. 高并发下分片是否有优势？</p>
-<h4 id="892-rounds-6-7-raw-zadd-key-vs-16-64">8.9.2 Rounds 6-7: Raw ZADD 单key vs 16分片（高并发 64 连接）</h4>
+<h4 id="92-rounds-6-7-raw-zadd-key-vs-16-64">9.2 Rounds 6-7: Raw ZADD 单key vs 16分片（高并发 64 连接）</h4>
 <p><strong>测试配置</strong>：batchSize=200, concurrency=64, warmup=15s + sample=15s。Round 6 先 <code>prePopulateZset</code> 插入 500K member 强制触发 skiplist，Round 7 先 <code>prePopulateZsetShards(16片, 每片50)</code> 保持初始 listpack。</p>
 <table>
 <thead>
@@ -1043,7 +1043,7 @@ io-threads-do-reads<span class="w"> </span>yes
 </code></pre></div>
 
 <p>分片的路由开销（<code>shardIndex()</code> 哈希计算 + <code>shardKey()</code> 字符串拼接）在热路径上成了纯负收益——listpack 没享受到，路由开销照付不误。</p>
-<h4 id="893-c8-vs-c64">8.9.3 并发数对比：c=8 vs c=64</h4>
+<h4 id="93-c8-vs-c64">9.3 并发数对比：c=8 vs c=64</h4>
 <table>
 <thead>
 <tr>
@@ -1079,7 +1079,7 @@ io-threads-do-reads<span class="w"> </span>yes
 </tbody>
 </table>
 <p><strong>c=8 时分片有 +16.5% 优势（217K vs 186K），c=64 时优势消失（177K vs 169K）。</strong> 低并发下分片的路由开销被 listpack 的优势盖过；高并发下全部秒转 skiplist，路由开销凸显。</p>
-<h4 id="894-rounds-8-9-top-n-lua-vs-pipeline">8.9.4 Rounds 8-9: 排行榜 Top-N 裁剪对比（Lua vs Pipeline）</h4>
+<h4 id="94-rounds-8-9-top-n-lua-vs-pipeline">9.4 Rounds 8-9: 排行榜 Top-N 裁剪对比（Lua vs Pipeline）</h4>
 <p>Round 8/9 的目标是模拟生产排行榜：<strong>ZSet member 数永远 ≤ N，member 数稳定后编码永不退化</strong>。对比了两种实现：</p>
 <p><strong>方案 A（已废弃）：Lua 原子判定</strong></p>
 <div class="codehilite"><pre><span></span><code><span class="c1">-- 每次执行 2~4 个命令 + Lua VM + ~250B 脚本体</span>
@@ -1174,7 +1174,7 @@ io-threads-do-reads<span class="w"> </span>yes
 - Top-100：每达到 100 条后，<strong>每次 ZADD 都需 ZREMRANGEBYRANK 删除溢出</strong>
 - Top-1000：每达到 1000 条后，990 次 ZADD 后才触发一次清理</p>
 <p><code>ZREMRANGEBYRANK</code> 本身有 O(log N) 的定位开销，高频触发时开销不容忽视。</p>
-<h4 id="895-zset">8.9.5 ZSet 分片机制详解</h4>
+<h4 id="95-zset">9.5 ZSet 分片机制详解</h4>
 <p><strong>分片原理</strong>：将一个大 ZSet 按 member hash 路由到 N 个分片，每个分片独立保持 listpack 编码（&lt; 128 member）。</p>
 <div class="codehilite"><pre><span></span><code><span class="c1">// 分片路由（ZSetShardingUtils）</span>
 <span class="kt">int</span><span class="w"> </span><span class="n">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">member</span><span class="p">.</span><span class="na">hashCode</span><span class="p">();</span>
@@ -1215,7 +1215,7 @@ io-threads-do-reads<span class="w"> </span>yes
 </tbody>
 </table>
 <p><strong>本例中全不满足</strong>：高写入速率 + 全量写入 + 无容量限制 → 分片纯粹增加 CPU 开销。</p>
-<h4 id="896">8.9.6 生产排行榜最佳实践</h4>
+<h4 id="96">9.6 生产排行榜最佳实践</h4>
 <table>
 <thead>
 <tr>
@@ -1275,7 +1275,7 @@ io-threads-do-reads<span class="w"> </span>yes
 <span class="n">redis</span><span class="p">.</span><span class="na">zremrangebyrank</span><span class="p">(</span><span class="s">"leaderboard"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="p">(</span><span class="n">TOP_N</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
 </code></pre></div>
 
-<h4 id="897-zset">8.9.7 ZSet 专项测试结论</h4>
+<h4 id="97-zset">9.7 ZSet 专项测试结论</h4>
 <div class="codehilite"><pre><span></span><code>实测结论（Rounds 6-9, c=64）:
   1. 分片在高吞吐写入下无效——0.16 秒突破 128 阈值，路由开销成纯负收益
   2. Pipeline ZADD+ZREMRANGEBYRANK 比 Lua EVAL 快 12%-132%，零脚本开销是关键
@@ -1506,7 +1506,6 @@ io-threads-do-reads<span class="w"> </span>yes
 </tbody>
 </table>
 <blockquote>
-<p><strong>说明</strong>：第 5 轮 <code>3种+ZADD×10</code> 的 cmds/s 仅 81K，是因为每条 ZADD 携带 10 个成员（命令数被低估）。等效写入速率 ≈ 81K × 4.06 = <strong>332K 次/秒</strong>，比第 3 轮（241K）等效提升 38%。但 P50 从 3ms → 9.4ms、P99 从 8ms → 22.9ms，仅适用离线场景。</p>
 <p><strong>精度说明</strong>：以上数据为单次压测结果，多次运行存在波动，实际值可能随系统负载、JIT 预热等因素偏离。强烈建议补充 p50/p95/p99 尾部延迟分布、标准差及多次运行的置信区间，以便更全面评估系统行为。</p>
 </blockquote>
 <hr />
@@ -1634,7 +1633,7 @@ io-threads-do-reads<span class="w"> </span>yes
 </tr>
 <tr>
 <td style="text-align: left;"><strong>ZSet 排行榜 Top-N 裁剪</strong></td>
-<td style="text-align: left;"><strong>已实测</strong>（Rounds 6-9），详见 8.9。结论：Pipeline ZADD+ZREMRANGEBYRANK 完胜 Lua EVAL（+12%~132%）；最佳方案为 Raw ZADD + 异步定时裁剪</td>
+<td style="text-align: left;"><strong>已实测</strong>（Rounds 6-9），详见问题 9。结论：Pipeline ZADD+ZREMRANGEBYRANK 完胜 Lua EVAL（+12%~132%）；最佳方案为 Raw ZADD + 异步定时裁剪</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>ZSet 分片</strong></td>
@@ -1653,7 +1652,7 @@ io-threads-do-reads<span class="w"> </span>yes
     <ul>
       <li class="lv2"><a href="#_1">概述</a></li>
       <li class="lv2"><a href="#_2">压测架构</a></li>
-      <li class="lv2"><a href="#_3">七问题排查与修复</a></li>
+      <li class="lv2"><a href="#_3">九问题排查与修复</a></li>
       <li class="lv3"><a href="#1redis-cpu-100">问题 1：Redis CPU 100%，硬件天花板</a></li>
       <li class="lv3"><a href="#2pipeline">问题 2：Pipeline 并发过载反噬</a></li>
       <li class="lv3"><a href="#3">问题 3：随机数生成器的并发争用</a></li>
@@ -1662,7 +1661,7 @@ io-threads-do-reads<span class="w"> </span>yes
       <li class="lv3"><a href="#6pipeline">问题 6：Pipeline 超时配置有效性</a></li>
       <li class="lv3"><a href="#7stop-semaphore">问题 7：stop() 的优雅关闭与 Semaphore 响应性</a></li>
       <li class="lv3"><a href="#8">问题 8（实测）：管道混合多类型命令的退化与优化</a></li>
-      <li class="lv3"><a href="#89zset-rounds-6-9">问题 8.9：ZSet 排行榜专项测试（Rounds 6-9）</a></li>
+      <li class="lv3"><a href="#9zset-rounds-6-9">问题 9：ZSet 排行榜专项测试（Rounds 6-9）</a></li>
       <li class="lv2"><a href="#_4">最终压测数据</a></li>
       <li class="lv3"><a href="#setex">单一命令类型（SETEX 基线）</a></li>
       <li class="lv3"><a href="#8concurrency8">混合命令类型（问题 8，实测值，concurrency=8）</a></li>

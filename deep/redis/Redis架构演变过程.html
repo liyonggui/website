@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Redis 架构演变过程 · 小番茄程序猿</title>
-<meta name="description" content="下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…"/>
+<meta name="description" content="下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，按固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…"/>
 <meta name="keywords" content="Redis, redis"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="Redis 架构演变过程 · 小番茄程序猿" />
-<meta property="og:description" content="下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…" />
+<meta property="og:description" content="下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，按固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Redis 架构演变过程", "description": "下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…", "url": "https://liyonggui.github.io/website/deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-07", "keywords": "Redis, redis"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Redis 架构演变过程", "description": "下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，按固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…", "url": "https://liyonggui.github.io/website/deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/redis/Redis%E6%9E%B6%E6%9E%84%E6%BC%94%E5%8F%98%E8%BF%87%E7%A8%8B.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-06-07", "keywords": "Redis, redis"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -51,7 +51,7 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<p>下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以及新的瓶颈是什么。每一阶段包含：1) 业务痛点，2) 架构图逻辑文字描述，3) 可承载量级（含 QPS/数据量 上限）和 4) 该架构无法解决的新瓶颈（引出下一阶段）。最后给出高阶总结与从小厂到大厂的落地路线图，并附选型对照表。全篇逻辑连贯、层层递进，便于新手理解。</p>
+<p>下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，按固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以及新的瓶颈是什么。每一阶段包含：1) 业务痛点，2) 架构图逻辑文字描述，3) 可承载量级（含 QPS/数据量 上限）和 4) 该架构无法解决的新瓶颈（引出下一阶段）。最后给出高阶总结与从小厂到大厂的落地路线图，并附选型对照表。全篇逻辑连贯、层层递进，便于新手理解。</p>
 <hr />
 <h2 id="single-node"><strong>阶段一：单机单节点阶段（Single Node）</strong></h2>
 <ul>

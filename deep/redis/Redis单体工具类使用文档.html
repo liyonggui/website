@@ -57,7 +57,7 @@
 <p><strong>当前项目架构</strong>：工具类保持单体语义不变，但 <code>RedisConfig</code> 已扩展为 <strong>3 分片模式</strong>——
 批处理消费者 (<code>UserSetBatchConsumer</code>) 通过 <code>redisShard0/1/2</code> 三个独立 <code>ReactiveStringRedisTemplate</code>
 按 <code>vu % 3</code> 哈希路由到 3 个 Redis 实例（6379/6380/6381）。各分片仍为单节点单机，
-本章工具类适用于任意单个分片的直接操作。详见《Redis单体K6压测说明》第十章。</p>
+本章工具类适用于任意单个分片的直接操作。</p>
 </blockquote>
 <h2 id="_1">一、总体设计</h2>
 <table>

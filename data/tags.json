@@ -1,7 +1,7 @@
 [
   {
     "name": "MySQL",
-    "count": 46
+    "count": 45
   },
   {
     "name": "Redis",
@@ -9,7 +9,7 @@
   },
   {
     "name": "Elasticsearch",
-    "count": 15
+    "count": 14
   },
   {
     "name": "压测",
@@ -88,6 +88,10 @@
     "count": 1
   },
   {
+    "name": "KingbaseES",
+    "count": 1
+  },
+  {
     "name": "LLM",
     "count": 1
   },
@@ -97,6 +101,10 @@
   },
   {
     "name": "MongoDB",
+    "count": 1
+  },
+  {
+    "name": "PostgreSQL",
     "count": 1
   },
   {

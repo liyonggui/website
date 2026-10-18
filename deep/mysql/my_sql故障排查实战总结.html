@@ -4,17 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>MySQL 故障排查实战总结 · 小番茄程序猿</title>
-<meta name="description" content="User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…"/>
+<meta name="description" content="MySQL 生产故障排查实战总结：按问题类别（慢查询、死锁/锁等待/MDL、复制延迟、IO 瓶颈、OOM、服务崩溃、备份恢复、安全权限、字符集、架构热点）整理「症状 → 快速定位命令 → 根因与解决 → 预防建议」，附现场救援命令清单、故障案例、监控告警建议与标准化运维排查流程模板。"/>
 <meta name="keywords" content="MySQL, mysql"/>
 <link rel="canonical" href="https://liyonggui.github.io/website/deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html"/>
 <link rel="alternate" type="application/rss+xml" title="RSS" href="../../rss.xml" />
 <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="MySQL 故障排查实战总结 · 小番茄程序猿" />
-<meta property="og:description" content="User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…" />
+<meta property="og:description" content="MySQL 生产故障排查实战总结：按问题类别（慢查询、死锁/锁等待/MDL、复制延迟、IO 瓶颈、OOM、服务崩溃、备份恢复、安全权限、字符集、架构热点）整理「症状 → 快速定位命令 → 根因与解决 → 预防建议」，附现场救援命令清单、故障案例、监控告警建议与标准化运维排查流程模板。" />
 <meta property="og:url" content="https://liyonggui.github.io/website/deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html" />
 <meta property="og:image" content="https://liyonggui.github.io/website/assets/logo.svg" />
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL 故障排查实战总结", "description": "User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…", "url": "https://liyonggui.github.io/website/deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-22", "keywords": "MySQL, mysql"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "MySQL 故障排查实战总结", "description": "MySQL 生产故障排查实战总结：按问题类别（慢查询、死锁/锁等待/MDL、复制延迟、IO 瓶颈、OOM、服务崩溃、备份恢复、安全权限、字符集、架构热点）整理「症状 → 快速定位命令 → 根因与解决 → 预防建议」，附现场救援命令清单、故障案例、监控告警建议与标准化运维排查流程模板。", "url": "https://liyonggui.github.io/website/deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html", "mainEntityOfPage": "https://liyonggui.github.io/website/deep/mysql/my_sql%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%AE%9E%E6%88%98%E6%80%BB%E7%BB%93.html", "author": {"@type": "Person", "name": "小番茄程序猿"}, "publisher": {"@type": "Person", "name": "小番茄程序猿"}, "image": "https://liyonggui.github.io/website/assets/logo.svg", "inLanguage": "zh-CN", "datePublished": "2026-02-22", "keywords": "MySQL, mysql"}</script>
 <link rel="stylesheet" href="../../assets/css/style.css?v=12"/>
 <link rel="stylesheet" href="../../assets/css/article.css?v=2"/>
 <link rel="stylesheet" href="../../assets/css/pygments.css"/>
@@ -51,11 +51,6 @@
   </div>
   <div class="article-layout">
     <article class="prose">
-<p><strong>User:</strong> @liyonggui
-<strong>Thread URL:</strong> https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c1b4d</p>
-<h2 id="liyonggui">@liyonggui</h2>
-<p>MySQL生产中实际遇到的问题排查总结</p>
-<h2 id="copilot">Copilot</h2>
 <p>下面是一个可直接用于生产排查的实战总结（按问题类别 → 诊断要点 → 常用命令/快速定位 → 解决思路 → 预防建议）。把它放进运维手册或故障工单模板里即可直接使用。</p>
 <p>概览结论（先看这三项）
 - 先看主机资源（CPU、内存、磁盘 I/O、网络），再看 MySQL 本身（SHOW PROCESSLIST / SHOW ENGINE INNODB STATUS / slow query log / error log），最后查看复制/备份状态与外部依赖。
@@ -236,20 +231,12 @@
 - 变更保护：schema/配置修改必须走审批、预发布验证与回滚方案。
 - 备份与恢复演练：备份不等于可恢复，至少每季度演练恢复流程。
 - 文档化：每次故障都写成 RCA（原因、修复、预防），持续改进 runbook。</p>
-<p>如果你希望，我可以：
-- 把上面的内容整理成一个可打印的“一页故障排查速查表”（PDF/Markdown）。
-- 根据你们的 MySQL 版本（如 5.7 / 8.0 / Percona）和部署架构（单机/主从/组复制/云 RDS），定制更具体的配置与阈值建议。
-要哪个我现在就生成？</p>
+<hr />
+<blockquote>
+<p><strong>来源说明</strong>：本文整理自 GitHub Copilot Chat 对话导出（@liyonggui，<a href="https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c1b4d">Thread URL</a>），内容为生产环境 MySQL 故障排查的实战总结；文中命令与阈值需结合自身版本与实际机器调整。</p>
+</blockquote>
     </article>
-    <aside class="toc-side"><details class="toc" open>
-  <summary>目录</summary>
-  <nav>
-    <ul>
-      <li class="lv2"><a href="#liyonggui">@liyonggui</a></li>
-      <li class="lv2"><a href="#copilot">Copilot</a></li>
-    </ul>
-  </nav>
-</details></aside>
+    <aside class="toc-side"></aside>
   </div>
 
   <section class="related">

@@ -702,7 +702,7 @@
   },
   {
     "title": "场景 1 — Lettuce Pipeline 压测问题排查与优化",
-    "summary": "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 7 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…",
+    "summary": "使用 Lettuce 原生客户端对单机 Redis 进行 Pipeline 持续压力测试，逐步发现并解决 9 个问题。架构为多个 Worker（每线程一条专属连接）循环构造 bat…",
     "tags": [
       "Redis",
       "压测",
@@ -728,7 +728,7 @@
   },
   {
     "title": "Redis 架构演变过程",
-    "summary": "下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，严格按你要求的固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…",
+    "summary": "下面我以“中间件/数据库/缓存（以 MySQL + Redis 为主）”的典型演进为线索，按固定结构，从小到大、逐级拆解每一代架构的为什么、如何做、能支撑到什么量级、以…",
     "tags": [
       "Redis"
     ],
@@ -934,7 +934,7 @@
   },
   {
     "title": "数据同步工具对比：mysqldump / DataX / Flink CDC",
-    "summary": "定位：MySQL 自带命令行工具，做全量逻辑备份，把表结构 + 数据导出为 SQL 文件，恢复时逐条执行。",
+    "summary": "对比三种 MySQL 数据同步/迁移方案：mysqldump（全量逻辑备份，离线）、DataX（异构库离线批式同步）、Flink CDC（基于 binlog 的实时增量同步）——各自定位、适用场景、依赖条件与选型建议。",
     "tags": [
       "MySQL"
     ],
@@ -1278,7 +1278,7 @@
   },
   {
     "title": "MySQL 故障排查实战总结",
-    "summary": "User: @liyonggui Thread URL: https://github.com/copilot/c/ebba3e5c-102d-4e1d-8c4e-20fa606c…",
+    "summary": "MySQL 生产故障排查实战总结：按问题类别（慢查询、死锁/锁等待/MDL、复制延迟、IO 瓶颈、OOM、服务崩溃、备份恢复、安全权限、字符集、架构热点）整理「症状 → 快速定位命令 → 根因与解决 → 预防建议」，附现场救援命令清单、故障案例、监控告警建议与标准化运维排查流程模板。",
     "tags": [
       "MySQL"
     ],
@@ -1291,8 +1291,8 @@
     "title": "KingbaseES / PostgreSQL 锁与长事务排查手册",
     "summary": "适用环境：KingbaseES（金仓，PostgreSQL 兼容）生产环境，客户端 KStudio，经零信任 VPN 连接。 > …",
     "tags": [
-      "MySQL",
-      "Elasticsearch",
+      "KingbaseES",
+      "PostgreSQL",
       "事务",
       "锁"
     ],
