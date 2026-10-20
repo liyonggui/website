@@ -99,7 +99,7 @@ __RELATED__
 </main>
 <footer>
   <div class="wrap">
-    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客</span>
+    <span>© <span id="year"></span> 小番茄程序猿 · 全栈作品集与博客 · 未经许可，请勿转载</span>
     <span class="foot-links"><a href="__PREFIX__about.html">关于</a> · <a href="__PREFIX__tags.html">标签</a> · <a href="__PREFIX__archives.html">归档</a> · <a href="__PREFIX__search.html">搜索</a> · <a href="__PREFIX__rss.xml">RSS</a></span>
   </div>
 </footer>

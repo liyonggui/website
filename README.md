@@ -97,3 +97,7 @@ python -m http.server 8080
 - 纯静态、相对路径、无框架；样式体系见 `assets/css/style.css`（设计 token + 暗色模式 `[data-theme=dark]`）。
 - 文章元数据存于每个 `.md` 的 YAML front matter；`draft: true` 的文章不进任何索引。
 - CI（`.github/workflows/site-check.yml`）在每次 push 时自动重建并校验，防手滑。
+
+## 版权与转载
+
+全站内容（`blog/`、`deep/`、`project/` 等）均为原创，**保留所有权利**：未经许可请勿转载、复制或商用；个人学习引用请注明出处并附原文链接。详见 [LICENSE](LICENSE)。
