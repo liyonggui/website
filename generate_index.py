@@ -193,10 +193,49 @@ def enc_url(rel):
     return SITE_URL + quote(rel, safe="/")
 
 
+_GIT_LASTMOD_CACHE = {}
+
+
+def git_lastmod(rel_path):
+    """取文件最后一次提交日期（YYYY-MM-DD）作为 lastmod。
+
+    日期必须确定性：本地与 CI（actions/checkout 需 fetch-depth: 0）都跑
+    `git log`，同一提交得到同一结果，避免生成产物 diff。
+    工作区有未提交改动时回退为今天——正常流程「本地生成→当天提交」下，
+    提交后 CI 里 git log 取到的提交日期与本地生成时的今天一致。
+    若隔天提交导致 CI 红条，本地重跑一遍生成器再提交即可自愈。
+    """
+    if rel_path in _GIT_LASTMOD_CACHE:
+        return _GIT_LASTMOD_CACHE[rel_path]
+    date = ""
+    try:
+        import subprocess
+
+        def git(*args):
+            return subprocess.run(["git", *args], cwd=ROOT,
+                                  capture_output=True, text=True, timeout=10)
+
+        dirty = git("status", "--porcelain", "--", rel_path)
+        if dirty.returncode == 0 and dirty.stdout.strip():
+            date = datetime.date.today().isoformat()
+        else:
+            out = git("log", "-1", "--format=%cs", "--", rel_path)
+            if out.returncode == 0:
+                date = out.stdout.strip()
+    except Exception:
+        date = ""
+    if not date:
+        date = datetime.date.today().isoformat()
+    _GIT_LASTMOD_CACHE[rel_path] = date
+    return date
+
+
 def build_sitemap(records):
-    urls = [(SITE_URL + p, "weekly", pri, "") for p, pri in STATIC_PAGES]
+    urls = [(SITE_URL + p, "weekly", pri, git_lastmod(p or "index.html"))
+            for p, pri in STATIC_PAGES]
     for f in sorted((ROOT / "project").glob("*.html")):
-        urls.append((SITE_URL + "project/" + f.name, "monthly", "0.6", ""))
+        urls.append((SITE_URL + "project/" + f.name, "monthly", "0.6",
+                     git_lastmod("project/" + f.name)))
     for r in records:
         urls.append((enc_url(r["url"]), "monthly", "0.6", r["date"]))
     lines = [

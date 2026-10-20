@@ -48,6 +48,7 @@ HEAD = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>深度技术 · 底层原理专栏 | 小番茄程序猿.dev</title>
   <meta name="description" content="MySQL / Redis / Elasticsearch 底层原理与治理、高并发压测方法论、K8s 底层、AI Agent 原理详解——项目背后的硬核底层知识库。" />
+  <link rel="canonical" href="https://liyonggui.github.io/website/deep.html" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="深度技术 · 底层原理专栏 | 小番茄程序猿.dev" />

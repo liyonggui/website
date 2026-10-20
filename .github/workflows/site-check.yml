@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # sitemap lastmod 用 git log 提交日期，需要全量历史保证生成产物确定性
 
       - name: Setup Python
         uses: actions/setup-python@v5
